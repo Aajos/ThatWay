@@ -55,7 +55,7 @@ private struct TabBar: View {
                 Button { app.selectTab(s) } label: {
                     VStack(spacing: 6) {
                         TabGlyph(screen: s).stroke(theme.ink, lineWidth: 1.8).frame(width: 20, height: 20)
-                        Text(s.label).font(.system(size: 10, weight: .heavy)).tracking(0.6).foregroundStyle(theme.ink)
+                        Text(s.label).font(.nunito(10, .extraBold)).tracking(0.6).foregroundStyle(theme.ink)
                     }
                     .opacity(app.screen == s ? 1 : 0.34)
                     .frame(width: 74)

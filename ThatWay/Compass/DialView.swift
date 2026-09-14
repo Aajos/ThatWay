@@ -26,21 +26,28 @@ struct DialView: View {
                 .overlay(Circle().stroke(theme.ink.opacity(0.18), lineWidth: 1))
                 .shadow(color: .black.opacity(0.45), radius: 30, y: 20)
 
+            // recolour wash — tints the dial face itself with the current accent
+            // (a friend's colour when pointing at them), echoing the aura outside it.
+            Circle()
+                .fill(RadialGradient(colors: [app.accent.opacity(0.22), .clear], center: .init(x: 0.5, y: 0.32), startRadius: 0, endRadius: 148 * k))
+                .frame(width: 286 * k, height: 286 * k)
+                .blendMode(.plusLighter)
+
             // ticks
             TickRing(color: theme.ink)
                 .padding(14 * k)
 
             // cardinal letters
             VStack {
-                Text("N").font(.system(size: 13, weight: .black)).tracking(2).foregroundStyle(theme.accent)
+                Text("N").font(.nunito(13, .black)).tracking(2).foregroundStyle(theme.accent)
                 Spacer()
-                Text("S").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.ink.opacity(0.66))
+                Text("S").font(.nunito(12, .bold)).foregroundStyle(theme.ink.opacity(0.66))
             }
             .padding(.vertical, 30 * k)
             HStack {
-                Text("W").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.ink.opacity(0.66))
+                Text("W").font(.nunito(12, .bold)).foregroundStyle(theme.ink.opacity(0.66))
                 Spacer()
-                Text("E").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.ink.opacity(0.66))
+                Text("E").font(.nunito(12, .bold)).foregroundStyle(theme.ink.opacity(0.66))
             }
             .padding(.horizontal, 30 * k)
 
@@ -71,10 +78,10 @@ struct DialView: View {
         .overlay(alignment: .top) {
             VStack(spacing: 7) {
                 Text(app.fmt(app.activeDist))
-                    .font(.system(size: 34, weight: .black))
+                    .font(.nunito(34, .black))
                     .foregroundStyle(theme.ink)
                 Text(app.guiding ? "TO THE TURN" : "STRAIGHT LINE")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.nunito(10, .bold))
                     .tracking(1.6)
                     .foregroundStyle(theme.ink.opacity(0.8))
             }
@@ -84,6 +91,7 @@ struct DialView: View {
         .animation(.easeOut(duration: 0.6), value: app.tiltDeg)
         .animation(.easeOut(duration: 0.6), value: app.laneDeg)
         .animation(.spring(response: 0.55, dampingFraction: 0.75), value: app.needleDeg)
+        .animation(.easeOut(duration: 0.45), value: app.accent)
     }
 }
 

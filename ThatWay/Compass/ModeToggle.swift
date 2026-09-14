@@ -23,11 +23,11 @@ struct ModeToggle: View {
         HStack(spacing: 8) {
             VStack(alignment: .trailing, spacing: 6) {
                 Text("Point")
-                    .font(.system(size: 11, weight: .heavy))
+                    .font(.nunito(11, .extraBold))
                     .foregroundStyle(theme.ink)
                     .opacity(app.guiding ? 0.3 : 1)
                 Text("Guidance")
-                    .font(.system(size: 11, weight: .heavy))
+                    .font(.nunito(11, .extraBold))
                     .foregroundStyle(theme.ink)
                     .opacity(app.guiding ? 1 : 0.3)
             }
