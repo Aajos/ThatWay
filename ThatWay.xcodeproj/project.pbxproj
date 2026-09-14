@@ -29,9 +29,22 @@
 		87370DE83056E8F500DC0268 /* ThatWayUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ThatWayUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		8751456F3057EBFA008D8B73 /* Exceptions for "ThatWay" folder in "ThatWay" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 87370DD03056E8F300DC0268 /* ThatWay */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		87370DD33056E8F300DC0268 /* ThatWay */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8751456F3057EBFA008D8B73 /* Exceptions for "ThatWay" folder in "ThatWay" target */,
+			);
 			path = ThatWay;
 			sourceTree = "<group>";
 		};
@@ -397,6 +410,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ThatWay/Info.plist;
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "ThatWay needs your location for navigation.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "ThatWay needs your location for navigation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -428,6 +444,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ThatWay/Info.plist;
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "ThatWay needs your location for navigation.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "ThatWay needs your location for navigation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
