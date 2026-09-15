@@ -10,26 +10,34 @@ import SwiftUI
 struct DialView: View {
     @EnvironmentObject var app: AppModel
     let k: CGFloat
+    @State private var breathing = false
 
     var body: some View {
         let theme = app.currentTheme
+        let glassColors = app.dialGlassColors
 
         ZStack {
-            // aura glow
+            // aura glow — breathes continuously, tinted by the dominant dial-glass colors.
             Circle()
-                .fill(RadialGradient(colors: [app.accent.opacity(0.19), .clear], center: .center, startRadius: 0, endRadius: 160 * k))
+                .fill(RadialGradient(colors: [glassColors[0].opacity(breathing ? 0.32 : 0.16), .clear], center: .center, startRadius: 0, endRadius: 160 * k))
                 .frame(width: 318 * k, height: 318 * k)
+                .onAppear { breathing = true }
+                .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: breathing)
 
             // dial body
             Circle()
                 .fill(RadialGradient(colors: [theme.dialA, theme.dialB], center: .init(x: 0.5, y: 0.28), startRadius: 0, endRadius: 150 * k))
-                .overlay(Circle().stroke(theme.ink.opacity(0.18), lineWidth: 1))
+                .overlay(Circle().stroke(theme.borderColor, lineWidth: 1))
                 .shadow(color: .black.opacity(0.45), radius: 30, y: 20)
 
-            // recolour wash — tints the dial face itself with the current accent
-            // (a friend's colour when pointing at them), echoing the aura outside it.
+            // glassmorphic rim — a frosted gradient ring pulling 2-3 dominant tones from
+            // the current accent (a friend's avatar colors when pointing at them).
             Circle()
-                .fill(RadialGradient(colors: [app.accent.opacity(0.22), .clear], center: .init(x: 0.5, y: 0.32), startRadius: 0, endRadius: 148 * k))
+                .strokeBorder(
+                    AngularGradient(colors: glassColors.map { $0.opacity(0.18) } + [glassColors[0].opacity(0.18)], center: .center),
+                    lineWidth: 10 * k
+                )
+                .background(Circle().fill(.ultraThinMaterial).opacity(0.15))
                 .frame(width: 286 * k, height: 286 * k)
                 .blendMode(.plusLighter)
 
@@ -41,13 +49,13 @@ struct DialView: View {
             VStack {
                 Text("N").font(.nunito(13, .black)).tracking(2).foregroundStyle(theme.accent)
                 Spacer()
-                Text("S").font(.nunito(12, .bold)).foregroundStyle(theme.ink.opacity(0.66))
+                Text("S").font(.nunito(12, .bold)).foregroundStyle(theme.textSecondary)
             }
             .padding(.vertical, 30 * k)
             HStack {
-                Text("W").font(.nunito(12, .bold)).foregroundStyle(theme.ink.opacity(0.66))
+                Text("W").font(.nunito(12, .bold)).foregroundStyle(theme.textSecondary)
                 Spacer()
-                Text("E").font(.nunito(12, .bold)).foregroundStyle(theme.ink.opacity(0.66))
+                Text("E").font(.nunito(12, .bold)).foregroundStyle(theme.textSecondary)
             }
             .padding(.horizontal, 30 * k)
 
@@ -83,14 +91,14 @@ struct DialView: View {
                 Text(app.guiding ? "TO THE TURN" : "STRAIGHT LINE")
                     .font(.nunito(10, .bold))
                     .tracking(1.6)
-                    .foregroundStyle(theme.ink.opacity(0.8))
+                    .foregroundStyle(theme.textSecondary)
             }
             .offset(y: (app.skin == .wheel ? 54 : 172) * k)
             .allowsHitTesting(false)
         }
-        .animation(.easeOut(duration: 0.6), value: app.tiltDeg)
-        .animation(.easeOut(duration: 0.6), value: app.laneDeg)
-        .animation(.spring(response: 0.55, dampingFraction: 0.75), value: app.needleDeg)
+        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.tiltDeg)
+        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.laneDeg)
+        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.needleDeg)
         .animation(.easeOut(duration: 0.45), value: app.accent)
     }
 }
@@ -176,7 +184,7 @@ private struct WheelSkin: View {
             Circle()
                 .fill(RadialGradient(colors: [Color(hex: "3A342E"), Color(hex: "181513")], center: .init(x: 0.5, y: 0.32), startRadius: 0, endRadius: 40 * k))
                 .frame(width: 74 * k, height: 74 * k)
-                .overlay(Circle().stroke(theme.ink.opacity(0.14), lineWidth: 1))
+                .overlay(Circle().stroke(theme.borderColor, lineWidth: 1))
             Circle().fill(theme.accent).frame(width: 26 * k, height: 26 * k).shadow(color: theme.accent, radius: 10)
             RoundedRectangle(cornerRadius: 2 * k)
                 .fill(theme.accent)

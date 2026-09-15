@@ -25,6 +25,31 @@ extension Color {
         let L = 0.2126 * lin(comps[0]) + 0.7152 * lin(comps[1]) + 0.0722 * lin(comps[2])
         return L > 0.32 ? Color(hex: "141110") : .white
     }
+
+    private var hsba: (h: CGFloat, s: CGFloat, b: CGFloat, a: CGFloat) {
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(self).getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        return (h, s, b, a)
+    }
+
+    func adjustedBrightness(_ delta: Double) -> Color {
+        let c = hsba
+        return Color(hue: c.h, saturation: c.s, brightness: max(0, min(1, c.b + delta)), opacity: c.a)
+    }
+
+    func hueShifted(_ degrees: Double) -> Color {
+        let c = hsba
+        var newHue = c.h + CGFloat(degrees / 360)
+        newHue = newHue.truncatingRemainder(dividingBy: 1)
+        if newHue < 0 { newHue += 1 }
+        return Color(hue: newHue, saturation: c.s, brightness: c.b, opacity: c.a)
+    }
+
+    /// 2-3 related tones derived from this color, standing in for "dominant colors pulled
+    /// from the avatar" since our avatars are flat fills rather than real images.
+    var dominantTrio: [Color] {
+        [self, adjustedBrightness(0.16), hueShifted(-18).adjustedBrightness(-0.08)]
+    }
 }
 
 enum ThemeID: String, CaseIterable, Identifiable {
@@ -40,6 +65,11 @@ struct AppTheme: Identifiable {
     let swatches: [Color]
     let accent: Color
     let ink: Color
+    /// Secondary/muted text — distinct from `ink.opacity()` so light mode gets its own
+    /// proper grey rather than a washed-out tint of the dark ink color.
+    let textSecondary: Color
+    /// Hairline borders and inactive icon strokes.
+    let borderColor: Color
     let screen: Color
     let worldA: Color
     let worldB: Color
@@ -52,29 +82,33 @@ struct AppTheme: Identifiable {
 
     static let all: [AppTheme] = [
         AppTheme(id: .ember, name: "Ember", note: "Warm black, coral needle. The default.", light: false,
-                 swatches: [Color(hex: "0B0907"), Color(hex: "FF5A36"), Color(hex: "F5F1EA")],
-                 accent: Color(hex: "FF5A36"), ink: Color(hex: "F5F1EA"),
-                 screen: Color(hex: "0B0907"), worldA: Color(hex: "2A211B"), worldB: Color(hex: "0A0807"),
+                 swatches: [Color(hex: "0A0A0A"), Color(hex: "FF5A36"), Color(hex: "FFFFFF")],
+                 accent: Color(hex: "FF5A36"), ink: Color(hex: "FFFFFF"),
+                 textSecondary: Color(hex: "B0B0B0"), borderColor: .white.opacity(0.14),
+                 screen: Color(hex: "0A0A0A"), worldA: Color(hex: "2A211B"), worldB: Color(hex: "0A0807"),
                  dialA: Color(hex: "342216"), dialB: Color(hex: "0E0B09"),
                  glow: Color(hex: "080605"), needleRed: Color(hex: "FF3B2F"), needleGray: Color(hex: "7E7872"),
                  onAccent: .white),
         AppTheme(id: .tide, name: "Tide", note: "Deep water glass, mint markings.", light: false,
                  swatches: [Color(hex: "08131A"), Color(hex: "34D6A5"), Color(hex: "DCEFF5")],
                  accent: Color(hex: "34D6A5"), ink: Color(hex: "DBEEF6"),
+                 textSecondary: Color(hex: "8CA6B0"), borderColor: .white.opacity(0.14),
                  screen: Color(hex: "08131A"), worldA: Color(hex: "134A63"), worldB: Color(hex: "060E14"),
                  dialA: Color(hex: "144058"), dialB: Color(hex: "060E14"),
                  glow: Color(hex: "040C12"), needleRed: Color(hex: "FF6B6B"), needleGray: Color(hex: "5C7F91"),
                  onAccent: Color(hex: "06231B")),
-        AppTheme(id: .paper, name: "Paper", note: "Daylight. Printed dial, ink needle.", light: true,
-                 swatches: [Color(hex: "F2EBDD"), Color(hex: "1D1A16"), Color(hex: "C2452C")],
-                 accent: Color(hex: "C2452C"), ink: Color(hex: "1D1A16"),
-                 screen: Color(hex: "F2EBDD"), worldA: Color(hex: "D3C3A6"), worldB: Color(hex: "EDE3D0"),
-                 dialA: .white.opacity(0.55), dialB: Color(hex: "A39276").opacity(0.3),
-                 glow: Color(hex: "FFFCF4"), needleRed: Color(hex: "C2452C"), needleGray: Color(hex: "9A9083"),
+        AppTheme(id: .paper, name: "Paper", note: "Daylight. Warm cream, muted coral.", light: true,
+                 swatches: [Color(hex: "F8F5F1"), Color(hex: "1D1A16"), Color(hex: "E64D2E")],
+                 accent: Color(hex: "E64D2E"), ink: Color(hex: "1D1A16"),
+                 textSecondary: Color(hex: "7A7A7A"), borderColor: Color(hex: "D0D0D0"),
+                 screen: Color(hex: "F8F5F1"), worldA: Color(hex: "E3D9C8"), worldB: Color(hex: "EFE9DE"),
+                 dialA: .white.opacity(0.6), dialB: Color(hex: "A39276").opacity(0.25),
+                 glow: Color(hex: "FFFCF4"), needleRed: Color(hex: "E64D2E"), needleGray: Color(hex: "9A9083"),
                  onAccent: .white),
         AppTheme(id: .arcade, name: "Arcade", note: "High contrast, loud glow.", light: false,
                  swatches: [Color(hex: "10031F"), Color(hex: "FF2E88"), Color(hex: "FFE347")],
                  accent: Color(hex: "FF2E88"), ink: Color(hex: "FFEBF7"),
+                 textSecondary: Color(hex: "B8A8C8"), borderColor: .white.opacity(0.16),
                  screen: Color(hex: "10031F"), worldA: Color(hex: "4A0D6B"), worldB: Color(hex: "0A0116"),
                  dialA: Color(hex: "54106C"), dialB: Color(hex: "0C0218"),
                  glow: Color(hex: "0A0214"), needleRed: Color(hex: "FF2E88"), needleGray: Color(hex: "6A5AA8"),
@@ -182,6 +216,16 @@ enum AppScreen: String, CaseIterable, Identifiable {
         case .map: return "MAP"
         case .store: return "STORE"
         case .profile: return "YOU"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        // "compass.fill" isn't an actual SF Symbol; "safari.fill" is Apple's compass-rose glyph.
+        case .compass: return "safari.fill"
+        case .map: return "map.fill"
+        case .store: return "bag.fill"
+        case .profile: return "person.fill"
         }
     }
 }

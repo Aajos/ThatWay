@@ -54,7 +54,9 @@ private struct TabBar: View {
             ForEach(AppScreen.allCases) { s in
                 Button { app.selectTab(s) } label: {
                     VStack(spacing: 6) {
-                        TabGlyph(screen: s).stroke(theme.ink, lineWidth: 1.8).frame(width: 20, height: 20)
+                        Image(systemName: s.symbolName)
+                            .font(.system(size: 19, weight: .semibold))
+                            .foregroundStyle(app.screen == s ? theme.accent : theme.ink)
                         Text(s.label).font(.nunito(10, .extraBold)).tracking(0.6).foregroundStyle(theme.ink)
                     }
                     .opacity(app.screen == s ? 1 : 0.34)
@@ -72,24 +74,6 @@ private struct TabBar: View {
                 .ignoresSafeArea(edges: .bottom)
         )
         .opacity(app.avatarSheet || app.searchOpen ? 0 : 1)
-    }
-}
-
-/// A small shape per tab echoing the design's per-tab corner radii
-/// (circle for Compass, square for Map, asymmetric for Store/You).
-private struct TabGlyph: Shape {
-    let screen: AppScreen
-
-    func path(in rect: CGRect) -> Path {
-        switch screen {
-        case .compass:
-            return Circle().path(in: rect)
-        case .map:
-            return RoundedRectangle(cornerRadius: 4).path(in: rect)
-        case .store:
-            return UnevenRoundedRectangle(topLeadingRadius: 4, bottomLeadingRadius: 12, bottomTrailingRadius: 4, topTrailingRadius: 12).path(in: rect)
-        case .profile:
-            return UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 8, bottomTrailingRadius: 8, topTrailingRadius: 10).path(in: rect)
-        }
+        .sensoryFeedback(.selection, trigger: app.screen)
     }
 }

@@ -56,7 +56,8 @@ final class AppModel: ObservableObject {
     let tiltStrength: Double = 0.7
     static let togW: CGFloat = 132
     static let togH: CGFloat = 62
-    static let exclusionRadius: CGFloat = 110
+    static let exclusionRadius: CGFloat = 100
+    static let cardExclusionRadius: CGFloat = 60
 
     init() {
         timer = Timer.publish(every: 0.09, on: .main, in: .common)
@@ -119,6 +120,13 @@ final class AppModel: ObservableObject {
 
     var friendMode: Bool { destKind == .friend && destColor != nil }
     var accent: Color { friendMode ? (destColor ?? currentTheme.accent) : currentTheme.accent }
+
+    /// The 2-3 tones the dial's glass rim gradient pulls from — the selected friend's
+    /// colors when pointing at one, otherwise the theme's own accent pairing.
+    var dialGlassColors: [Color] {
+        friendMode ? (destColor ?? currentTheme.accent).dominantTrio
+            : [currentTheme.accent, Color(hex: "34D6A5"), currentTheme.accent.hueShifted(24)]
+    }
 
     var currentAvatar: AvatarOption { AvatarOption.byId(avatar) }
     var currentSkin: Skin { Skin.byId(skin) }
@@ -211,24 +219,30 @@ final class AppModel: ObservableObject {
         avatarSheet = false
     }
 
-    /// Clamp the floating toggle inside the screen and push it outside the dial's exclusion circle,
-    /// mirroring the design's `place(x, y)` logic.
-    func placeToggle(_ x: CGFloat, _ y: CGFloat, in size: CGSize, dialCenter: CGPoint) -> CGPoint {
+    /// Clamp the floating toggle inside the screen (20px edge padding) and, if it strays
+    /// within 100px of the compass dial or 60px of the destination card, shove it sideways
+    /// clear of whichever it's crowding.
+    func placeToggle(_ x: CGFloat, _ y: CGFloat, in size: CGSize, dialCenter: CGPoint, cardFrame: CGRect?) -> CGPoint {
+        let edgePadding: CGFloat = 20
         func clamp(_ px: CGFloat, _ py: CGFloat) -> CGPoint {
             CGPoint(
-                x: max(10, min(size.width - Self.togW - 10, px)),
-                y: max(64, min(size.height - Self.togH - 24, py))
+                x: max(edgePadding, min(size.width - Self.togW - edgePadding, px)),
+                y: max(edgePadding, min(size.height - Self.togH - edgePadding, py))
             )
         }
+        func pushHorizontally(_ p: CGPoint, awayFrom target: CGPoint, radius: CGFloat) -> CGPoint {
+            let center = CGPoint(x: p.x + Self.togW / 2, y: p.y + Self.togH / 2)
+            let dist = (pow(center.x - target.x, 2) + pow(center.y - target.y, 2)).squareRoot()
+            guard dist < radius else { return p }
+            let direction: CGFloat = center.x >= target.x ? 1 : -1
+            let shift = (radius - dist) + 1
+            return clamp(p.x + direction * shift, p.y)
+        }
+
         var p = clamp(x, y)
-        for _ in 0..<3 {
-            let cx = p.x + Self.togW / 2, cy = p.y + Self.togH / 2
-            var dx = cx - dialCenter.x, dy = cy - dialCenter.y
-            var d = (dx * dx + dy * dy).squareRoot()
-            if d >= Self.exclusionRadius { break }
-            if d < 1 { dx = 0; dy = -1; d = 1 }
-            let k = Self.exclusionRadius / d
-            p = clamp(dialCenter.x + dx * k - Self.togW / 2, dialCenter.y + dy * k - Self.togH / 2)
+        p = pushHorizontally(p, awayFrom: dialCenter, radius: Self.exclusionRadius)
+        if let cardFrame {
+            p = pushHorizontally(p, awayFrom: CGPoint(x: cardFrame.midX, y: cardFrame.midY), radius: Self.cardExclusionRadius)
         }
         return p
     }

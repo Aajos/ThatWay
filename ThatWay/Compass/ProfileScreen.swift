@@ -37,11 +37,10 @@ struct ProfileScreen: View {
                         .fill(app.currentAvatar.bg)
                         .frame(width: 64, height: 64)
                         .overlay(Text(app.currentAvatar.glyph).font(.system(size: 22, weight: .black)).foregroundStyle(Color(hex: "241A14")))
-                    ZStack {
-                        Circle().fill(theme.accent).frame(width: 24, height: 24)
-                            .overlay(Circle().stroke(theme.screen, lineWidth: 2))
-                        Text("+").font(.system(size: 13, weight: .black)).foregroundStyle(theme.onAccent)
-                    }
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22, weight: .black))
+                        .foregroundStyle(theme.onAccent, theme.accent)
+                        .background(Circle().fill(theme.screen).padding(2))
                 }
             }
             .buttonStyle(.plain)
@@ -140,7 +139,11 @@ struct ProfileScreen: View {
     @ViewBuilder
     private func settingsSection(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("SETTINGS").font(.system(size: 10, weight: .heavy)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
+            HStack(spacing: 6) {
+                Image(systemName: "gear").font(.system(size: 11, weight: .heavy))
+                Text("SETTINGS").font(.system(size: 10, weight: .heavy)).tracking(1.8)
+            }
+            .foregroundStyle(theme.ink.opacity(0.68))
             VStack(spacing: 0) {
                 settingsRow("Compass skin", value: app.currentSkin.name,
                             options: Skin.all.filter { app.ownedSkins.contains($0.id) }.map(\.name), theme: theme) { v in

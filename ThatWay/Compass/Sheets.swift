@@ -80,8 +80,8 @@ struct AvatarSheet: View {
                 }
 
                 HStack(spacing: 10) {
-                    photoOption(title: "Take a photo", subtitle: "Camera", theme: theme)
-                    photoOption(title: "Choose a photo", subtitle: "From your library", theme: theme)
+                    photoOption(icon: "camera", title: "Take a photo", subtitle: "Camera", theme: theme)
+                    photoOption(icon: "photo.on.rectangle", title: "Choose a photo", subtitle: "From your library", theme: theme)
                 }
 
                 Text("AVATARS").font(.system(size: 10, weight: .heavy)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
@@ -119,8 +119,9 @@ struct AvatarSheet: View {
     }
 
     @ViewBuilder
-    private func photoOption(title: String, subtitle: String, theme: AppTheme) -> some View {
+    private func photoOption(icon: String, title: String, subtitle: String, theme: AppTheme) -> some View {
         VStack(spacing: 5) {
+            Image(systemName: icon).font(.system(size: 18, weight: .semibold)).foregroundStyle(theme.accent)
             Text(title).font(.system(size: 13, weight: .heavy)).foregroundStyle(theme.ink)
             Text(subtitle).font(.system(size: 11, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.66))
         }
