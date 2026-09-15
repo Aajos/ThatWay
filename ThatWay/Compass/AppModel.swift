@@ -38,13 +38,14 @@ final class AppModel: ObservableObject {
     @Published var simulatedPosition: CLLocationCoordinate2D = AppModel.mockUserLocation
     let routingManager = RoutingManager()
 
-    static let mockUserLocation = CLLocationCoordinate2D(latitude: -33.8688, longitude: 151.2093) // Sydney CBD
+    static let mockUserLocation = CLLocationCoordinate2D(latitude: -33.8568, longitude: 151.2153) // Circular Quay
     static let mockDestinations: [String: CLLocationCoordinate2D] = [
-        "Sunrise Bakery": CLLocationCoordinate2D(latitude: -33.8568, longitude: 151.2153),  // near the Opera House
+        "Sunrise Bakery": CLLocationCoordinate2D(latitude: -33.8587, longitude: 151.2140),  // near the Opera House
         "Home": CLLocationCoordinate2D(latitude: -33.8908, longitude: 151.2743),            // Bondi Beach
         "Baker Street Lot": CLLocationCoordinate2D(latitude: -33.8737, longitude: 151.1998), // Darling Harbour
         "The Office": CLLocationCoordinate2D(latitude: -33.8523, longitude: 151.2108),       // Circular Quay
         "Riya's place": CLLocationCoordinate2D(latitude: -33.8600, longitude: 151.2200),     // Woolloomooloo
+        "Barangaroo": CLLocationCoordinate2D(latitude: -33.8599, longitude: 151.2008),       // test destination
     ]
 
     // Simulation
@@ -115,13 +116,13 @@ final class AppModel: ObservableObject {
     /// tick — an easing walk rather than a fixed speed, so it always makes visible progress
     /// whether the next turn is 50m or 900m away, and settles smoothly as it arrives.
     private func advanceSimulatedPosition() {
-        guard let target = routingManager.currentStep?.coordinate else { return }
+        guard let target = routingManager.currentStep?.endCoordinate else { return }
         let fraction = 0.12
         simulatedPosition = CLLocationCoordinate2D(
             latitude: simulatedPosition.latitude + (target.latitude - simulatedPosition.latitude) * fraction,
             longitude: simulatedPosition.longitude + (target.longitude - simulatedPosition.longitude) * fraction
         )
-        routingManager.updateProgress(userLocation: simulatedPosition)
+        routingManager.updateStepIfNeeded(userLocation: simulatedPosition)
     }
 
     // MARK: - Derived state
@@ -140,9 +141,9 @@ final class AppModel: ObservableObject {
     /// simulated mock turns, which still cover friend-pointing and the no-route fallback).
     var hasRealRoute: Bool { guiding && routingManager.hasRoute }
 
-    /// Straight-line distance from the mock traveller to the current maneuver point.
+    /// Straight-line distance from the mock traveller to the current step's endpoint.
     var distanceToManeuver: Double {
-        guard let coordinate = routingManager.currentStep?.coordinate else { return 0 }
+        guard let coordinate = routingManager.currentStep?.endCoordinate else { return 0 }
         return CompassManager.distance(from: simulatedPosition, to: coordinate)
     }
 
@@ -185,10 +186,9 @@ final class AppModel: ObservableObject {
     var needleDeg: Double {
         // Idle: no destination at all — rest dead on north rather than the ambient sway.
         if isIdle { return 0 }
-        // Point the needle at the real bearing to the next maneuver (guidance) or the
-        // destination (point mode) whenever we have real coordinates for either.
-        if hasRealRoute, let coordinate = routingManager.currentStep?.coordinate {
-            let bearing = CompassManager.bearing(from: simulatedPosition, to: coordinate)
+        // Point the needle along the current step's own direction of travel (guidance) or
+        // the real bearing to the destination (point mode) whenever we have real coordinates.
+        if hasRealRoute, let bearing = routingManager.currentStep?.bearing {
             return CompassManager.relativeBearing(heading: 0, bearing: bearing) + sway * 0.15
         }
         if !guiding, let destinationCoordinate {
@@ -265,7 +265,7 @@ final class AppModel: ObservableObject {
         speed = 52
         simulatedPosition = Self.mockUserLocation
         if let destinationCoordinate {
-            Task { await routingManager.fetchRoute(from: Self.mockUserLocation, to: destinationCoordinate) }
+            Task { await routingManager.getRoute(from: Self.mockUserLocation, to: destinationCoordinate) }
         } else {
             routingManager.clear()
         }

@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import CoreLocation
 
 struct MapScreen: View {
     @EnvironmentObject var app: AppModel
@@ -113,7 +114,13 @@ struct MapScreen: View {
     /// tap (zoom, rotate, tilt, recentre) glides smoothly rather than snapping.
     @ViewBuilder
     private func mapContent(theme: AppTheme) -> some View {
-        MapField(theme: theme, routeColor: app.guiding ? app.routeColor : nil, pulsing: pulsing)
+        MapField(
+            theme: theme,
+            routeColor: app.guiding ? app.routeColor : nil,
+            pulsing: pulsing,
+            routePolyline: app.hasRealRoute ? app.routingManager.routePolyline : [],
+            routeOrigin: AppModel.mockUserLocation
+        )
             .frame(width: 1200, height: 1200)
             .scaleEffect(app.mapZoom * pinchDelta)
             .rotationEffect(app.mapRot == 0 && rotateDelta == .zero ? .zero : .degrees(app.mapRot) + rotateDelta)
@@ -163,6 +170,12 @@ private struct MapField: View {
     /// route polyline; nil in Point mode, where the road is just a neutral accent hint.
     let routeColor: Color?
     let pulsing: Bool
+    /// The real OSRM route geometry once a route is loaded — drawn as an actual traced
+    /// path instead of the generic diagonal road hint.
+    let routePolyline: [CLLocationCoordinate2D]
+    /// The real-world coordinate that maps to this canvas's centre (599,599, matching the
+    /// "you are here" dot), so the traced path lines up with where the dot actually sits.
+    let routeOrigin: CLLocationCoordinate2D
 
     var body: some View {
         ZStack {
@@ -175,14 +188,27 @@ private struct MapField: View {
             Rectangle().fill(theme.ink.opacity(0.065)).frame(width: 9).offset(x: 600 - 600)
             Rectangle().fill(theme.ink.opacity(0.075)).frame(width: 12).offset(x: 820 - 600)
 
-            // route overlay — a plain accent hint in Point mode, the live route colour
-            // (and a fuller glow) once guidance is under way.
-            Rectangle()
-                .fill((routeColor ?? theme.accent).opacity(routeColor != nil ? 0.55 : 0.16))
-                .frame(width: 900, height: routeColor != nil ? 14 : 10)
-                .shadow(color: (routeColor ?? .clear).opacity(0.6), radius: routeColor != nil ? 10 : 0)
-                .rotationEffect(.degrees(34))
-                .offset(x: 570 - 600, y: 505 - 600)
+            if routePolyline.count > 1 {
+                // The real, geographically-traced route — projected from lat/lon into this
+                // canvas's local coordinate space around `routeOrigin`.
+                Path { path in
+                    let points = routePolyline.map { Self.project($0, origin: routeOrigin) }
+                    path.move(to: points[0])
+                    for point in points.dropFirst() { path.addLine(to: point) }
+                }
+                .stroke(Color.blue, style: StrokeStyle(lineWidth: 9, lineCap: .round, lineJoin: .round))
+                .shadow(color: Color.blue.opacity(0.6), radius: 10)
+                .frame(width: 1200, height: 1200)
+            } else {
+                // route overlay — a plain accent hint in Point mode, the live route colour
+                // (and a fuller glow) once guidance is under way but no real route is loaded yet.
+                Rectangle()
+                    .fill((routeColor ?? theme.accent).opacity(routeColor != nil ? 0.55 : 0.16))
+                    .frame(width: 900, height: routeColor != nil ? 14 : 10)
+                    .shadow(color: (routeColor ?? .clear).opacity(0.6), radius: routeColor != nil ? 10 : 0)
+                    .rotationEffect(.degrees(34))
+                    .offset(x: 570 - 600, y: 505 - 600)
+            }
 
             // you-are-here — pulses continuously so it reads clearly on a live map.
             ZStack {
@@ -204,6 +230,18 @@ private struct MapField: View {
                 .offset(x: f.mapPos.x * 1200 - 600, y: f.mapPos.y * 1200 - 600)
             }
         }
+    }
+
+    /// Projects a real lat/lon onto this 1200×1200 canvas as a flat local-tangent-plane
+    /// approximation around `origin` (fine at city scale) — `origin` lands on the canvas
+    /// centre (600,600), matching the "you are here" dot.
+    private static func project(_ coordinate: CLLocationCoordinate2D, origin: CLLocationCoordinate2D) -> CGPoint {
+        let metersPerDegreeLat = 111_320.0
+        let metersPerDegreeLon = 111_320.0 * cos(origin.latitude * .pi / 180)
+        let dx = (coordinate.longitude - origin.longitude) * metersPerDegreeLon
+        let dy = (coordinate.latitude - origin.latitude) * metersPerDegreeLat
+        let metersToPoints = 0.4
+        return CGPoint(x: 600 + dx * metersToPoints, y: 600 - dy * metersToPoints)
     }
 }
 
