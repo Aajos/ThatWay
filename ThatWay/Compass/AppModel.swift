@@ -123,6 +123,10 @@ final class AppModel: ObservableObject {
 
     var currentTheme: AppTheme { AppTheme.byId(theme) }
     var guiding: Bool { mode == .guidance }
+
+    /// Idle: not guiding, and no place or friend selected to point at. The dial goes
+    /// north-up and flat, with the cardinal markers emphasized, so it's unmistakably at rest.
+    var isIdle: Bool { !guiding && destKind == .none }
     var step: NavStep { NavStep.all[stepIdx] }
     var nextStep: NavStep { NavStep.all[(stepIdx + 1) % NavStep.all.count] }
     var sway: Double { sin(Double(t) / 11) * 9 }
@@ -174,6 +178,8 @@ final class AppModel: ObservableObject {
     }
 
     var needleDeg: Double {
+        // Idle: no destination at all — rest dead on north rather than the ambient sway.
+        if isIdle { return 0 }
         // Point the needle at the real bearing to the next maneuver (guidance) or the
         // destination (point mode) whenever we have real coordinates for either.
         if hasRealRoute, let coordinate = routingManager.currentStep?.coordinate {
@@ -201,7 +207,8 @@ final class AppModel: ObservableObject {
     }
 
     var dialScale: Double { guiding ? CompassGeometry.scaleGuide : CompassGeometry.scalePoint }
-    var tiltDeg: Double { far * 54 * tiltStrength }
+    /// Fully flat at rest in idle mode — no lean at all, so the dial visibly settles.
+    var tiltDeg: Double { isIdle ? 0 : far * 54 * tiltStrength }
     var laneDeg: Double {
         if hasRealRoute {
             switch turnDir {
@@ -286,6 +293,38 @@ final class AppModel: ObservableObject {
         routingManager.clear()
         mode = .point
         dist = 860
+    }
+
+    /// Resets pan/zoom/tilt and spins the map back to north by the shortest path, no
+    /// matter how many full turns the rotate buttons have accumulated. `mapRot` is a plain
+    /// running total (repeated ±30° taps can push it well past ±360°), and the view's
+    /// `.animation(value: mapRot)` always interpolates linearly from the last rendered
+    /// value — so snapping straight to 0 would visibly unwind every extra revolution. Instead
+    /// this collapses the current angle to its shortest-path equivalent in one unanimated
+    /// frame, then animates from THAT to 0 on the next runloop tick.
+    func recenterMap() {
+        mapX = 0
+        mapY = 0
+        mapZoom = 1
+        mapTilt = 0
+        var normalized = mapRot.truncatingRemainder(dividingBy: 360)
+        if normalized > 180 { normalized -= 360 }
+        if normalized <= -180 { normalized += 360 }
+        var noAnimation = Transaction()
+        noAnimation.disablesAnimations = true
+        withTransaction(noAnimation) { mapRot = normalized }
+        DispatchQueue.main.async { [weak self] in self?.mapRot = 0 }
+    }
+
+    /// Drops whatever place or friend is selected and returns the compass to idle:
+    /// north-up, flat, cardinal markers emphasized.
+    func clearDestination() {
+        destKind = .none
+        dest = ""
+        destColor = nil
+        destInitials = ""
+        destinationCoordinate = nil
+        routingManager.clear()
     }
 
     func pickPlace(_ name: String) {

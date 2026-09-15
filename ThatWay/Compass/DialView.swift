@@ -18,82 +18,100 @@ struct DialView: View {
 
         ZStack {
             // aura glow — breathes continuously, tinted by the dominant dial-glass colors.
+            // Left outside the hard circular clip below so its soft radial falloff can bleed
+            // a little past the disc's edge; a RadialGradient has no hard border to go ragged.
             Circle()
                 .fill(RadialGradient(colors: [glassColors[0].opacity(breathing ? 0.32 : 0.16), .clear], center: .center, startRadius: 0, endRadius: 160 * k))
                 .frame(width: 318 * k, height: 318 * k)
                 .onAppear { breathing = true }
                 .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: breathing)
 
-            // dial body — recolours to the selected friend's own colour when pointing at
-            // them (with their initials centred on the face); otherwise the default
-            // theme-coloured (coral, in Ember) tint.
-            Circle()
-                .fill(
-                    app.friendMode
-                        ? AnyShapeStyle(RadialGradient(colors: [app.accent, app.accent.adjustedBrightness(-0.32)], center: .init(x: 0.5, y: 0.28), startRadius: 0, endRadius: 150 * k))
-                        : AnyShapeStyle(RadialGradient(colors: [theme.dialA, theme.dialB], center: .init(x: 0.5, y: 0.28), startRadius: 0, endRadius: 150 * k))
-                )
-                .overlay(Circle().stroke(theme.borderColor, lineWidth: 1))
-                .shadow(color: .black.opacity(0.45), radius: 30, y: 20)
-                .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.destColor)
-
-            // glassmorphic rim — a frosted gradient ring pulling 2-3 dominant tones from
-            // the current accent (a friend's avatar colors when pointing at them).
-            Circle()
-                .strokeBorder(
-                    AngularGradient(colors: glassColors.map { $0.opacity(0.18) } + [glassColors[0].opacity(0.18)], center: .center),
-                    lineWidth: 10 * k
-                )
-                .background(Circle().fill(.ultraThinMaterial).opacity(0.15))
-                .frame(width: 286 * k, height: 286 * k)
-                .blendMode(.plusLighter)
-
-            // ticks
-            TickRing(color: theme.ink)
-                .padding(14 * k)
-
-            // cardinal letters
-            VStack {
-                Text("N").font(.nunito(13, .black)).tracking(2).foregroundStyle(theme.accent)
-                Spacer()
-                Text("S").font(.nunito(12, .bold)).foregroundStyle(theme.textSecondary)
-            }
-            .padding(.vertical, 30 * k)
-            HStack {
-                Text("W").font(.nunito(12, .bold)).foregroundStyle(theme.textSecondary)
-                Spacer()
-                Text("E").font(.nunito(12, .bold)).foregroundStyle(theme.textSecondary)
-            }
-            .padding(.horizontal, 30 * k)
-
-            // needle
+            // Everything that makes up the dial's actual face is clipped to one exact circle
+            // BEFORE the 3D tilt/lean below is applied, so under perspective it always warps
+            // as a single clean ellipse — never a mismatched patchwork of differently-sized
+            // circles or straight edges poking out past the rim.
             ZStack {
+                // dial body — recolours to the selected friend's own colour when pointing at
+                // them (with their initials centred on the face); otherwise the default
+                // theme-coloured (coral, in Ember) tint.
                 Circle()
-                    .fill(RadialGradient(colors: [theme.glow.opacity(0.85), theme.glow.opacity(0.5), .clear], center: .center, startRadius: 0, endRadius: 68 * k))
-                    .frame(width: 136 * k, height: 136 * k)
-
-                switch app.skin {
-                case .needle: NeedleSkin(theme: theme, k: k)
-                case .wheel: WheelSkin(theme: theme, k: k)
-                case .clock: ClockSkin(theme: theme, k: k)
-                default: NeedleSkin(theme: theme, k: k)
-                }
-            }
-            .rotationEffect(.degrees(app.needleDeg))
-
-            if app.friendMode {
-                Text(app.destInitials)
-                    .font(.nunito(40 * k, .semibold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.35), radius: 6)
-                    .transition(.opacity)
+                    .fill(
+                        app.friendMode
+                            ? AnyShapeStyle(RadialGradient(colors: [app.accent, app.accent.adjustedBrightness(-0.32)], center: .init(x: 0.5, y: 0.28), startRadius: 0, endRadius: 150 * k))
+                            : AnyShapeStyle(RadialGradient(colors: [theme.dialA, theme.dialB], center: .init(x: 0.5, y: 0.28), startRadius: 0, endRadius: 150 * k))
+                    )
                     .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.destColor)
-            }
 
-            // glass sheen
-            Circle()
-                .fill(LinearGradient(colors: [.white.opacity(0.18), .white.opacity(0.05), .clear], startPoint: .top, endPoint: .bottom))
-                .allowsHitTesting(false)
+                // glassmorphic rim — a frosted gradient ring pulling 2-3 dominant tones from
+                // the current accent (a friend's avatar colors when pointing at them).
+                Circle()
+                    .strokeBorder(
+                        AngularGradient(colors: glassColors.map { $0.opacity(0.18) } + [glassColors[0].opacity(0.18)], center: .center),
+                        lineWidth: 10 * k
+                    )
+                    .background(Circle().fill(.ultraThinMaterial).opacity(0.15))
+                    .blendMode(.plusLighter)
+
+                // ticks
+                TickRing(color: theme.ink)
+                    .padding(14 * k)
+
+                // cardinal letters — idle mode emphasizes all four so the dial visibly reads
+                // as "resting, north-up" rather than mid-navigation.
+                VStack {
+                    Text("N").font(.nunito(app.isIdle ? 17 : 13, .black)).tracking(2).foregroundStyle(theme.accent)
+                        .shadow(color: theme.accent.opacity(app.isIdle ? 0.55 : 0), radius: 8)
+                    Spacer()
+                    Text("S").font(.nunito(app.isIdle ? 15 : 12, app.isIdle ? .black : .bold))
+                        .foregroundStyle(app.isIdle ? theme.accent : theme.textSecondary)
+                        .shadow(color: theme.accent.opacity(app.isIdle ? 0.4 : 0), radius: 6)
+                }
+                .padding(.vertical, 30 * k)
+                HStack {
+                    Text("W").font(.nunito(app.isIdle ? 15 : 12, app.isIdle ? .black : .bold))
+                        .foregroundStyle(app.isIdle ? theme.accent : theme.textSecondary)
+                        .shadow(color: theme.accent.opacity(app.isIdle ? 0.4 : 0), radius: 6)
+                    Spacer()
+                    Text("E").font(.nunito(app.isIdle ? 15 : 12, app.isIdle ? .black : .bold))
+                        .foregroundStyle(app.isIdle ? theme.accent : theme.textSecondary)
+                        .shadow(color: theme.accent.opacity(app.isIdle ? 0.4 : 0), radius: 6)
+                }
+                .padding(.horizontal, 30 * k)
+                .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.isIdle)
+
+                // needle
+                ZStack {
+                    Circle()
+                        .fill(RadialGradient(colors: [theme.glow.opacity(0.85), theme.glow.opacity(0.5), .clear], center: .center, startRadius: 0, endRadius: 68 * k))
+                        .frame(width: 136 * k, height: 136 * k)
+
+                    switch app.skin {
+                    case .needle: NeedleSkin(theme: theme, k: k)
+                    case .wheel: WheelSkin(theme: theme, k: k)
+                    case .clock: ClockSkin(theme: theme, k: k)
+                    default: NeedleSkin(theme: theme, k: k)
+                    }
+                }
+                .rotationEffect(.degrees(app.needleDeg))
+
+                if app.friendMode {
+                    Text(app.destInitials)
+                        .font(.nunito(40 * k, .semibold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.35), radius: 6)
+                        .transition(.opacity)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.destColor)
+                }
+
+                // glass sheen
+                Circle()
+                    .fill(LinearGradient(colors: [.white.opacity(0.18), .white.opacity(0.05), .clear], startPoint: .top, endPoint: .bottom))
+                    .allowsHitTesting(false)
+            }
+            .frame(width: 286 * k, height: 286 * k)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(theme.borderColor, lineWidth: 1))
+            .shadow(color: .black.opacity(0.45), radius: 30, y: 20)
         }
         .frame(width: 286 * k, height: 286 * k)
         .rotation3DEffect(.degrees(app.tiltDeg), axis: (x: 1, y: 0, z: 0), perspective: 0.4)
@@ -101,13 +119,23 @@ struct DialView: View {
         .scaleEffect(app.dialScale)
         .overlay(alignment: .top) {
             VStack(spacing: 7) {
-                Text(app.fmt(app.activeDist))
-                    .font(.nunito(34, .black))
-                    .foregroundStyle(theme.ink)
-                Text(app.guiding ? "TO THE TURN" : "STRAIGHT LINE")
-                    .font(.nunito(10, .bold))
-                    .tracking(1.6)
-                    .foregroundStyle(theme.textSecondary)
+                if app.isIdle {
+                    Text("IDLE")
+                        .font(.nunito(28, .black))
+                        .foregroundStyle(theme.ink)
+                    Text("FACING NORTH")
+                        .font(.nunito(10, .bold))
+                        .tracking(1.6)
+                        .foregroundStyle(theme.textSecondary)
+                } else {
+                    Text(app.fmt(app.activeDist))
+                        .font(.nunito(34, .black))
+                        .foregroundStyle(theme.ink)
+                    Text(app.guiding ? "TO THE TURN" : "STRAIGHT LINE")
+                        .font(.nunito(10, .bold))
+                        .tracking(1.6)
+                        .foregroundStyle(theme.textSecondary)
+                }
             }
             .offset(y: (app.skin == .wheel ? 54 : 172) * k)
             .allowsHitTesting(false)

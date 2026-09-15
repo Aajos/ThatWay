@@ -243,7 +243,7 @@ enum StoreTab: String, CaseIterable, Identifiable {
 }
 
 enum NavMode { case point, guidance }
-enum DestKind { case place, friend }
+enum DestKind { case none, place, friend }
 enum Visibility: String, CaseIterable, Identifiable {
     case friends = "Friends", close = "Close ones", nobody = "Nobody"
     var id: String { rawValue }

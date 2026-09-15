@@ -55,22 +55,28 @@ struct CompassScreen: View {
                 // except the search bar itself blurs when its results are showing, so it stays
                 // the one clearly "live" thing on screen.
                 VStack(spacing: 0) {
-                    activityPill(theme: theme)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, Spacing.container * k)
-                        .padding(.top, Spacing.tight * k)
-                        .blur(radius: blurRest)
-
-                    if !app.guiding {
-                        searchBar(theme: theme)
-                            .padding(.horizontal, Spacing.container * k)
-                            .padding(.top, Spacing.element * k)
-
-                        friendsRow(k: k, theme: theme)
-                            .frame(height: 80 * k)
-                            .padding(.top, Spacing.element * k)
+                    // Wrapped together and nudged up as one unit so the activity pill, search
+                    // bar, and friends row all shift in lockstep rather than drifting apart.
+                    VStack(spacing: 0) {
+                        activityPill(theme: theme)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, Spacing.container * k)
+                            .padding(.top, Spacing.tight * k)
                             .blur(radius: blurRest)
+
+                        if !app.guiding {
+                            searchBar(theme: theme)
+                                .padding(.horizontal, Spacing.container * k)
+                                .padding(.top, Spacing.element * k)
+
+                            friendsRow(k: k, theme: theme)
+                                .frame(height: 80 * k)
+                                .padding(.top, Spacing.element * k)
+                                .blur(radius: blurRest)
+                                .zIndex(1)
+                        }
                     }
+                    .offset(y: -10)
 
                     if app.guiding {
                         RouteLineView(color: app.routeColor)
@@ -233,9 +239,16 @@ struct CompassScreen: View {
     @ViewBuilder
     private func friendsRow(k: CGFloat, theme: AppTheme) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Spacing.element) {
+            HStack(alignment: .top, spacing: Spacing.element) {
                 ForEach(Friend.all) { f in
-                    Button { app.goToFriend(f) } label: {
+                    let selected = app.destKind == .friend && app.destColor == f.color
+                    Button {
+                        if selected {
+                            app.clearDestination()
+                        } else {
+                            app.goToFriend(f)
+                        }
+                    } label: {
                         VStack(spacing: 6) {
                             ZStack {
                                 Circle()
@@ -248,9 +261,13 @@ struct CompassScreen: View {
                                     .foregroundStyle(Color(hex: "241A14"))
                             }
                             .overlay(
-                                Circle().stroke(f.color, lineWidth: app.destColor == f.color ? 2 : 0)
-                                    .shadow(color: f.color, radius: app.destColor == f.color ? 8 : 0)
+                                Circle().stroke(f.color, lineWidth: selected ? 2 : 0)
+                                    .shadow(color: f.color, radius: selected ? 8 : 0)
                             )
+                            // Selected avatars zoom up well beyond their row and must paint
+                            // over the search bar above, not get clipped or buried under it.
+                            .scaleEffect(selected ? 1.45 : 1)
+                            .zIndex(selected ? 1 : 0)
                             Text(f.name)
                                 .font(.nunito(11, .semibold))
                                 .foregroundStyle(theme.textSecondary)
@@ -259,37 +276,48 @@ struct CompassScreen: View {
                         .frame(width: 56)
                     }
                     .buttonStyle(.plain)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.65), value: selected)
                 }
             }
             .padding(.horizontal, Spacing.container * k)
         }
+        .scrollClipDisabled()
         .sensoryFeedback(.impact(weight: .medium), trigger: app.destColor)
     }
 
     @ViewBuilder
     private func bottomCard(theme: AppTheme, k: CGFloat) -> some View {
         if !app.guiding {
-            HStack(spacing: Spacing.element) {
-                Circle().fill(app.accent).frame(width: 10, height: 10).shadow(color: app.accent, radius: 6)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(app.dest).font(.nunito(16, .extraBold)).foregroundStyle(theme.ink).lineLimit(1)
-                    Text(app.friendMode ? "Pointing at a friend" : app.destinationCoordinate != nil ? "Real bearing · tap ROUTE" : "Straight-line pointing")
-                        .font(.nunito(13, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(1)
-                }
-                Spacer()
-                Button { app.startGuidance() } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrowshape.turn.up.right").font(.system(size: 12, weight: .bold))
-                        Text("ROUTE").font(.nunito(12, .black)).tracking(0.6)
+            if app.isIdle {
+                idleCard(theme: theme)
+            } else {
+                HStack(spacing: Spacing.element) {
+                    Circle().fill(app.accent).frame(width: 10, height: 10).shadow(color: app.accent, radius: 6)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(app.dest).font(.nunito(16, .extraBold)).foregroundStyle(theme.ink).lineLimit(1)
+                        Text(app.friendMode ? "Pointing at a friend" : app.destinationCoordinate != nil ? "Real bearing · tap ROUTE" : "Straight-line pointing")
+                            .font(.nunito(13, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(1)
                     }
-                    .foregroundStyle(app.accent.onInk)
-                    .padding(.horizontal, Spacing.element + 3).padding(.vertical, Spacing.tight + 2)
-                    .background(RoundedRectangle(cornerRadius: 15).fill(app.accent))
+                    Spacer()
+                    Button { app.clearDestination() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(theme.textSecondary.opacity(0.55))
+                    }
+                    Button { app.startGuidance() } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrowshape.turn.up.right").font(.system(size: 12, weight: .bold))
+                            Text("ROUTE").font(.nunito(12, .black)).tracking(0.6)
+                        }
+                        .foregroundStyle(app.accent.onInk)
+                        .padding(.horizontal, Spacing.element + 3).padding(.vertical, Spacing.tight + 2)
+                        .background(RoundedRectangle(cornerRadius: 15).fill(app.accent))
+                    }
                 }
+                .padding(.horizontal, Spacing.container + 2).padding(.vertical, Spacing.element + 4)
+                .background(RoundedRectangle(cornerRadius: 22).fill(theme.ink.opacity(0.07)))
+                .overlay(RoundedRectangle(cornerRadius: 22).stroke(theme.borderColor))
             }
-            .padding(.horizontal, Spacing.container + 2).padding(.vertical, Spacing.element + 4)
-            .background(RoundedRectangle(cornerRadius: 22).fill(theme.ink.opacity(0.07)))
-            .overlay(RoundedRectangle(cornerRadius: 22).stroke(theme.borderColor))
         } else {
             // The turn card: a real OSRM instruction when a route is loaded (with a lane hint
             // swapped for live distance-to-turn), the simulated mock turn otherwise.
@@ -315,6 +343,23 @@ struct CompassScreen: View {
             .background(RoundedRectangle(cornerRadius: 22).fill(theme.ink.opacity(0.07)))
             .overlay(RoundedRectangle(cornerRadius: 22).stroke(theme.borderColor))
         }
+    }
+
+    /// Shown in idle mode — no place or friend selected, dial resting north-up.
+    @ViewBuilder
+    private func idleCard(theme: AppTheme) -> some View {
+        HStack(spacing: Spacing.element) {
+            Image(systemName: "location.north.line")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(theme.textSecondary)
+            Text("Search or pick a friend to start pointing")
+                .font(.nunito(13, .semibold))
+                .foregroundStyle(theme.textSecondary)
+            Spacer()
+        }
+        .padding(.horizontal, Spacing.container + 2).padding(.vertical, Spacing.element + 4)
+        .background(RoundedRectangle(cornerRadius: 22).fill(theme.ink.opacity(0.07)))
+        .overlay(RoundedRectangle(cornerRadius: 22).stroke(theme.borderColor))
     }
 }
 

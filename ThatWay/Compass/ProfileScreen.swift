@@ -195,7 +195,7 @@ struct ProfileScreen: View {
         Button { app.goDonate() } label: {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Free forever, no ads").font(.system(size: 15, weight: .heavy)).foregroundStyle(theme.accent)
-                Text("If the compass made a commute better, you can throw a few dollars at it.")
+                Text("If the compass made your commute better, consider leaving a review in the app store or donating some spare change to help us run the servers :)")
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.76))
                 Text("LEAVE A TIP")
                     .font(.system(size: 12, weight: .black)).tracking(0.6)

@@ -166,7 +166,7 @@ struct StoreScreen: View {
                 .overlay(RoundedRectangle(cornerRadius: 18).stroke(theme.ink.opacity(0.1)))
             }
 
-            Text("All prices in AUD. Tips are one-off and unlock nothing — the app is the same either way.")
+            Text("All prices in AUD. Tips can be one off or recurring- as you choose. Enjoy the app? Consider leaving a review on the app store!")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(theme.ink.opacity(0.6))
                 .frame(maxWidth: .infinity, alignment: .leading)

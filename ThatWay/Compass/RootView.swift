@@ -47,7 +47,7 @@ private struct TabBar: View {
 
     var body: some View {
         let theme = app.currentTheme
-        HStack(spacing: 6) {
+        HStack(spacing: 18) {
             ForEach(AppScreen.allCases) { s in
                 Button { app.selectTab(s) } label: {
                     VStack(spacing: 6) {
@@ -71,6 +71,7 @@ private struct TabBar: View {
                 .ignoresSafeArea(edges: .bottom)
         )
         .opacity(app.avatarSheet || app.searchOpen ? 0 : 1)
+        .offset(y: 20)
         .sensoryFeedback(.selection, trigger: app.screen)
     }
 }
