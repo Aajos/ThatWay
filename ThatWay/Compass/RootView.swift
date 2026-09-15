@@ -33,13 +33,9 @@ struct RootView: View {
             if app.avatarSheet {
                 AvatarSheet().transition(.move(edge: .bottom))
             }
-            if app.searchOpen {
-                SearchSheet().transition(.move(edge: .bottom))
-            }
         }
         .environmentObject(app)
         .animation(.easeInOut(duration: 0.25), value: app.avatarSheet)
-        .animation(.easeInOut(duration: 0.25), value: app.searchOpen)
         .animation(.easeInOut(duration: 0.5), value: app.theme)
         .preferredColorScheme(app.currentTheme.light ? .light : .dark)
     }

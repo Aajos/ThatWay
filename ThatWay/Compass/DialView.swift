@@ -24,11 +24,18 @@ struct DialView: View {
                 .onAppear { breathing = true }
                 .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: breathing)
 
-            // dial body
+            // dial body — recolours to the selected friend's own colour when pointing at
+            // them (with their initials centred on the face); otherwise the default
+            // theme-coloured (coral, in Ember) tint.
             Circle()
-                .fill(RadialGradient(colors: [theme.dialA, theme.dialB], center: .init(x: 0.5, y: 0.28), startRadius: 0, endRadius: 150 * k))
+                .fill(
+                    app.friendMode
+                        ? AnyShapeStyle(RadialGradient(colors: [app.accent, app.accent.adjustedBrightness(-0.32)], center: .init(x: 0.5, y: 0.28), startRadius: 0, endRadius: 150 * k))
+                        : AnyShapeStyle(RadialGradient(colors: [theme.dialA, theme.dialB], center: .init(x: 0.5, y: 0.28), startRadius: 0, endRadius: 150 * k))
+                )
                 .overlay(Circle().stroke(theme.borderColor, lineWidth: 1))
                 .shadow(color: .black.opacity(0.45), radius: 30, y: 20)
+                .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.destColor)
 
             // glassmorphic rim — a frosted gradient ring pulling 2-3 dominant tones from
             // the current accent (a friend's avatar colors when pointing at them).
@@ -73,6 +80,15 @@ struct DialView: View {
                 }
             }
             .rotationEffect(.degrees(app.needleDeg))
+
+            if app.friendMode {
+                Text(app.destInitials)
+                    .font(.nunito(40 * k, .semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.35), radius: 6)
+                    .transition(.opacity)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.destColor)
+            }
 
             // glass sheen
             Circle()

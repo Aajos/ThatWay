@@ -22,9 +22,12 @@ final class AppModel: ObservableObject {
     @Published var avatar: AvatarID = .initials
     @Published var avatarSheet = false
     @Published var searchOpen = false
+    @Published var searchQuery = ""
     @Published var dest = "Sunrise Bakery"
     @Published var destKind: DestKind = .place
     @Published var destColor: Color?
+    @Published var destInitials = ""
+    @Published var recentSearches = ["Sunrise Bakery", "Home", "Baker Street Lot", "The Office", "Riya's place"]
 
     // Simulation
     @Published var t = 0
@@ -56,7 +59,7 @@ final class AppModel: ObservableObject {
     let tiltStrength: Double = 0.7
     static let togW: CGFloat = 132
     static let togH: CGFloat = 62
-    static let exclusionRadius: CGFloat = 100
+    static let exclusionRadius: CGFloat = 140
     static let cardExclusionRadius: CGFloat = 60
 
     init() {
@@ -176,17 +179,25 @@ final class AppModel: ObservableObject {
         dest = f.name
         destKind = .friend
         destColor = f.color
+        destInitials = f.initials
         mode = .point
         dist = 860
     }
 
     func pickPlace(_ name: String) {
-        dest = name
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        dest = trimmed
         destKind = .place
         destColor = nil
+        destInitials = ""
         searchOpen = false
+        searchQuery = ""
         mode = .point
         dist = 1240
+        recentSearches.removeAll { $0 == trimmed }
+        recentSearches.insert(trimmed, at: 0)
+        if recentSearches.count > 5 { recentSearches.removeLast() }
     }
 
     func pickSkin(_ id: SkinID) {
@@ -219,30 +230,63 @@ final class AppModel: ObservableObject {
         avatarSheet = false
     }
 
-    /// Clamp the floating toggle inside the screen (20px edge padding) and, if it strays
-    /// within 100px of the compass dial or 60px of the destination card, shove it sideways
-    /// clear of whichever it's crowding.
+    /// How much room the floating tab bar needs at the bottom, so the toggle never slides
+    /// under it and reads as "vanished."
+    static let tabBarClearance: CGFloat = 90
+
+    /// Clamp the floating toggle inside the screen (20px edge padding, and clear of the tab
+    /// bar at the bottom). If it strays within 140pt of the compass dial's centre, shove it
+    /// sideways clear of the dial; if it strays within 60pt of the destination card, lift it
+    /// straight up clear of the card. Both pushes are solved geometrically for the exact
+    /// horizontal/vertical distance needed — not just "however far it currently is short by"
+    /// — so a toggle sitting directly above or below the target still clears it in one move.
     func placeToggle(_ x: CGFloat, _ y: CGFloat, in size: CGSize, dialCenter: CGPoint, cardFrame: CGRect?) -> CGPoint {
         let edgePadding: CGFloat = 20
         func clamp(_ px: CGFloat, _ py: CGFloat) -> CGPoint {
             CGPoint(
                 x: max(edgePadding, min(size.width - Self.togW - edgePadding, px)),
-                y: max(edgePadding, min(size.height - Self.togH - edgePadding, py))
+                y: max(edgePadding, min(size.height - Self.togH - edgePadding - Self.tabBarClearance, py))
             )
         }
         func pushHorizontally(_ p: CGPoint, awayFrom target: CGPoint, radius: CGFloat) -> CGPoint {
             let center = CGPoint(x: p.x + Self.togW / 2, y: p.y + Self.togH / 2)
-            let dist = (pow(center.x - target.x, 2) + pow(center.y - target.y, 2)).squareRoot()
-            guard dist < radius else { return p }
-            let direction: CGFloat = center.x >= target.x ? 1 : -1
-            let shift = (radius - dist) + 1
-            return clamp(p.x + direction * shift, p.y)
+            let dy = center.y - target.y
+            guard abs(dy) < radius else { return p }
+            let requiredDx = (radius * radius - dy * dy).squareRoot() + 1
+            let currentDx = center.x - target.x
+            guard abs(currentDx) < requiredDx else { return p }
+            let direction: CGFloat = currentDx >= 0 ? 1 : -1
+            let newCenterX = target.x + direction * requiredDx
+            var result = clamp(newCenterX - Self.togW / 2, p.y)
+
+            // A narrow screen can make the ideal horizontal-only escape wider than the
+            // screen itself — edge-clamping would then silently drop the toggle back inside
+            // the exclusion circle. If that happens, finish clearing it vertically too.
+            let resultCenter = CGPoint(x: result.x + Self.togW / 2, y: result.y + Self.togH / 2)
+            let resultDist = (pow(resultCenter.x - target.x, 2) + pow(resultCenter.y - target.y, 2)).squareRoot()
+            if resultDist < radius {
+                let verticalDirection: CGFloat = dy >= 0 ? 1 : -1
+                let maxDx = abs(resultCenter.x - target.x)
+                let neededDy = (radius * radius - maxDx * maxDx).squareRoot() + 1
+                let newCenterY = target.y + verticalDirection * neededDy
+                result = clamp(result.x, newCenterY - Self.togH / 2)
+            }
+            return result
+        }
+        func pushUp(_ p: CGPoint, awayFrom rect: CGRect, margin: CGFloat) -> CGPoint {
+            let center = CGPoint(x: p.x + Self.togW / 2, y: p.y + Self.togH / 2)
+            let dx = center.x - min(max(center.x, rect.minX), rect.maxX)
+            guard abs(dx) < margin else { return p }
+            let requiredDy = (margin * margin - dx * dx).squareRoot() + 1
+            let targetY = rect.minY - requiredDy
+            guard center.y > targetY else { return p }
+            return clamp(p.x, targetY - Self.togH / 2)
         }
 
         var p = clamp(x, y)
         p = pushHorizontally(p, awayFrom: dialCenter, radius: Self.exclusionRadius)
         if let cardFrame {
-            p = pushHorizontally(p, awayFrom: CGPoint(x: cardFrame.midX, y: cardFrame.midY), radius: Self.cardExclusionRadius)
+            p = pushUp(p, awayFrom: cardFrame, margin: Self.cardExclusionRadius)
         }
         return p
     }

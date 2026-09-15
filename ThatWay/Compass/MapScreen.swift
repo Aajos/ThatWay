@@ -13,28 +13,23 @@ struct MapScreen: View {
     @GestureState private var panOffset: CGSize = .zero
     @GestureState private var pinchDelta: CGFloat = 1
     @GestureState private var rotateDelta: Angle = .zero
+    @State private var pulsing = false
 
     var body: some View {
         let theme = app.currentTheme
 
         VStack(spacing: 0) {
-            HStack(alignment: .lastTextBaseline) {
-                Text("Map").font(.system(size: 24, weight: .black))
-                Spacer()
-                Text("no labels · no routing")
-                    .font(.system(size: 11, weight: .semibold))
-                    .tracking(1.1)
-                    .foregroundStyle(theme.ink.opacity(0.6))
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 10)
-            .padding(.bottom, 12)
+            Text("Map").font(.system(size: 24, weight: .black))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, 10)
+                .padding(.bottom, 12)
 
             GeometryReader { geo in
                 ZStack {
                     RoundedRectangle(cornerRadius: 26).fill(theme.ink.opacity(0.03))
 
-                    MapField(theme: theme)
+                    MapField(theme: theme, routeColor: app.guiding ? app.routeColor : nil, pulsing: pulsing)
                         .frame(width: 1200, height: 1200)
                         .scaleEffect((app.mapZoom * pinchDelta))
                         .rotationEffect(app.mapRot == 0 && rotateDelta == .zero ? .zero : .degrees(app.mapRot) + rotateDelta)
@@ -51,7 +46,8 @@ struct MapScreen: View {
                     .rotationEffect(.degrees(app.mapRot))
                     .position(x: 30, y: 26)
 
-                    // controls
+                    // controls — always live; the map stays fully interactive whether or not
+                    // you're guiding.
                     VStack(spacing: 8) {
                         ctrl("+") { app.mapZoom = min(3, app.mapZoom * 1.25) }
                         ctrl("−") { app.mapZoom = max(0.55, app.mapZoom / 1.25) }
@@ -68,29 +64,10 @@ struct MapScreen: View {
                         .foregroundStyle(theme.ink.opacity(0.56))
                         .position(x: geo.size.width / 2, y: geo.size.height - 12)
                         .allowsHitTesting(false)
-
-                    if app.guiding {
-                        VStack(spacing: 12) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 14).stroke(theme.ink.opacity(0.2))
-                                    .frame(width: 44, height: 44)
-                                Text("✕").font(.system(size: 18, weight: .heavy)).foregroundStyle(theme.ink.opacity(0.76))
-                            }
-                            Text("Locked while guiding").font(.system(size: 16, weight: .heavy))
-                            Text("The grid comes back the moment you arrive. Eyes up — the compass has you.")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(theme.ink.opacity(0.72))
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 44)
-                        }
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .background(theme.screen.opacity(0.92))
-                    }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 26))
                 .overlay(RoundedRectangle(cornerRadius: 26).stroke(theme.ink.opacity(0.12)))
                 .contentShape(Rectangle())
-                .allowsHitTesting(!app.guiding)
                 .gesture(
                     DragGesture()
                         .updating($panOffset) { value, state, _ in state = value.translation }
@@ -114,8 +91,10 @@ struct MapScreen: View {
             .padding(.bottom, 94)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, 62)
+        .padding(.top, 8)
         .background(theme.screen)
+        .onAppear { pulsing = true }
+        .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: pulsing)
     }
 
     @ViewBuilder
@@ -133,6 +112,11 @@ struct MapScreen: View {
 
 private struct MapField: View {
     let theme: AppTheme
+    /// Non-nil (and tinted to the current activity) while guiding, standing in for a real
+    /// route polyline; nil in Point mode, where the road is just a neutral accent hint.
+    let routeColor: Color?
+    let pulsing: Bool
+
     var body: some View {
         ZStack {
             GridLines(color: theme.ink.opacity(0.06))
@@ -144,18 +128,22 @@ private struct MapField: View {
             Rectangle().fill(theme.ink.opacity(0.065)).frame(width: 9).offset(x: 600 - 600)
             Rectangle().fill(theme.ink.opacity(0.075)).frame(width: 12).offset(x: 820 - 600)
 
+            // route overlay — a plain accent hint in Point mode, the live route colour
+            // (and a fuller glow) once guidance is under way.
             Rectangle()
-                .fill(theme.accent.opacity(0.16))
-                .frame(width: 900, height: 10)
+                .fill((routeColor ?? theme.accent).opacity(routeColor != nil ? 0.55 : 0.16))
+                .frame(width: 900, height: routeColor != nil ? 14 : 10)
+                .shadow(color: (routeColor ?? .clear).opacity(0.6), radius: routeColor != nil ? 10 : 0)
                 .rotationEffect(.degrees(34))
                 .offset(x: 570 - 600, y: 505 - 600)
 
-            // you-are-here
+            // you-are-here — pulses continuously so it reads clearly on a live map.
             ZStack {
-                Circle().fill(theme.accent.opacity(0.45)).frame(width: 36, height: 36)
-                Circle().fill(theme.accent).frame(width: 18, height: 18)
+                Circle().fill((routeColor ?? theme.accent).opacity(pulsing ? 0.12 : 0.45))
+                    .frame(width: pulsing ? 54 : 36, height: pulsing ? 54 : 36)
+                Circle().fill(routeColor ?? theme.accent).frame(width: 18, height: 18)
                     .overlay(Circle().stroke(theme.screen, lineWidth: 3))
-                    .shadow(color: theme.accent, radius: 10)
+                    .shadow(color: routeColor ?? theme.accent, radius: 10)
             }
             .offset(x: 599 - 600, y: 599 - 600)
 

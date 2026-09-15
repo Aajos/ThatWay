@@ -2,67 +2,11 @@
 //  Sheets.swift
 //  ThatWay
 //
-//  Full-screen search and avatar-picker overlays.
+//  Full-screen avatar-picker overlay. (Search now lives directly on CompassScreen —
+//  a persistent search bar plus a results-only panel — rather than a separate sheet.)
 //
 
 import SwiftUI
-
-struct SearchSheet: View {
-    @EnvironmentObject var app: AppModel
-
-    private let results: [(name: String, sub: String, kind: String, dist: String)] = [
-        ("Sunrise Bakery", "Open until 9", "✦", "1.2 km"),
-        ("Bakerman & Co.", "Closes soon", "✦", "2.4 km"),
-        ("Baker Street Lot", "Parking", "P", "3.1 km"),
-        ("Home", "Saved", "⌂", "6.8 km"),
-    ]
-
-    var body: some View {
-        let theme = app.currentTheme
-        VStack(spacing: 16) {
-            HStack(spacing: 10) {
-                Circle().strokeBorder(theme.accent, lineWidth: 1.5).frame(width: 13, height: 13)
-                Text("bak|").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.ink)
-                Spacer()
-                Button("Cancel") { app.searchOpen = false }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(theme.ink.opacity(0.72))
-            }
-            .padding(.horizontal, 16)
-            .frame(height: 46)
-            .background(Capsule().fill(theme.ink.opacity(0.08)))
-            .overlay(Capsule().stroke(theme.accent.opacity(0.5)))
-
-            VStack(spacing: 0) {
-                ForEach(results, id: \.name) { r in
-                    Button { app.pickPlace(r.name) } label: {
-                        HStack(spacing: 14) {
-                            Text(r.kind)
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(theme.ink.opacity(0.76))
-                                .frame(width: 34, height: 34)
-                                .background(RoundedRectangle(cornerRadius: 11).fill(theme.ink.opacity(0.08)))
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(r.name).font(.system(size: 15, weight: .heavy)).foregroundStyle(theme.ink)
-                                Text(r.sub).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.66))
-                            }
-                            Spacer()
-                            Text(r.dist).font(.system(size: 12, weight: .bold)).foregroundStyle(theme.ink.opacity(0.66))
-                        }
-                        .padding(.vertical, 15).padding(.horizontal, 8)
-                        .overlay(Divider().background(theme.ink.opacity(0.08)), alignment: .bottom)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 62)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(theme.screen)
-    }
-}
 
 struct AvatarSheet: View {
     @EnvironmentObject var app: AppModel

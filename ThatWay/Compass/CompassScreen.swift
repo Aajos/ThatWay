@@ -25,6 +25,7 @@ struct CompassScreen: View {
     @EnvironmentObject var app: AppModel
     @State private var dialFrame: CGRect?
     @State private var cardFrame: CGRect?
+    @FocusState private var searchFocused: Bool
 
     /// Reserve room below the content for RootView's floating tab bar so the
     /// destination card never sits under it.
@@ -38,6 +39,7 @@ struct CompassScreen: View {
             let dialSize = min(286 * k, geo.size.width - 96, geo.size.height * 0.36)
             let dialCenter = dialFrame.map { CGPoint(x: $0.midX, y: $0.midY) }
                 ?? CGPoint(x: geo.size.width / 2, y: geo.size.height * 0.5)
+            let blurRest = app.searchOpen ? 3.0 : 0.0
 
             ZStack {
                 RadialGradient(colors: [theme.worldA, theme.worldB], center: .init(x: 0.5, y: 0.54), startRadius: 0, endRadius: 420 * k)
@@ -45,12 +47,15 @@ struct CompassScreen: View {
 
                 // Search bar pinned to the top (safe-area inset handled by the VStack itself
                 // respecting the safe area), friends row fixed below it, compass centered in
-                // the remaining space, destination card anchored above the tab bar.
+                // the remaining space, destination card anchored above the tab bar. Everything
+                // except the search bar itself blurs when its results are showing, so it stays
+                // the one clearly "live" thing on screen.
                 VStack(spacing: 0) {
                     activityPill(theme: theme)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.leading, Spacing.container * k)
                         .padding(.top, Spacing.tight * k)
+                        .blur(radius: blurRest)
 
                     if !app.guiding {
                         searchBar(theme: theme)
@@ -60,6 +65,7 @@ struct CompassScreen: View {
                         friendsRow(k: k, theme: theme)
                             .frame(height: 80 * k)
                             .padding(.top, Spacing.element * k)
+                            .blur(radius: blurRest)
                     }
 
                     if app.guiding {
@@ -71,12 +77,16 @@ struct CompassScreen: View {
                     }
 
                     dialCluster(theme: theme, k: k, dialSize: dialSize)
+                        // Guidance mode nudges the dial up so it never crowds the turn card below.
+                        .offset(y: app.guiding ? -35 * k : 0)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.guiding)
                         .background(
                             GeometryReader { dialGeo in
                                 Color.clear.preference(key: FramePreferenceKey.self, value: dialGeo.frame(in: .named("compassScreen")))
                             }
                         )
                         .onPreferenceChange(FramePreferenceKey.self) { dialFrame = $0 }
+                        .blur(radius: blurRest)
 
                     Spacer(minLength: Spacing.element * k)
 
@@ -88,34 +98,46 @@ struct CompassScreen: View {
                             }
                         )
                         .onPreferenceChange(CardFramePreferenceKey.self) { cardFrame = $0 }
+                        .blur(radius: blurRest)
 
                     Spacer(minLength: tabBarClearance * k)
                 }
 
                 ModeToggle(k: k, dialCenter: dialCenter, bounds: geo.size, cardFrame: cardFrame)
                     .environmentObject(app)
+                    .blur(radius: blurRest)
+                    .allowsHitTesting(!app.searchOpen)
+
+                if app.searchOpen {
+                    Color.black.opacity(0.001)
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture { closeSearch() }
+
+                    SearchResultsPanel(k: k, onClose: closeSearch)
+                        .environmentObject(app)
+                        .padding(.top, 100 * k)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .coordinateSpace(name: "compassScreen")
+            .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.searchOpen)
         }
     }
 
-    /// The dial, its faint tilt guide lines, and the friend-colour backdrop blob — all
-    /// positioned relative to this one cluster's own centre, so they can never drift out
-    /// of alignment with each other regardless of what sits above them on a given device.
+    private func closeSearch() {
+        app.searchOpen = false
+        searchFocused = false
+    }
+
+    /// The dial and its faint tilt guide lines — positioned relative to this one cluster's
+    /// own centre, so they can never drift out of alignment with each other regardless of
+    /// what sits above them on a given device. The friend-colour treatment lives entirely
+    /// on the dial face itself now (see `DialView`) rather than a separate backdrop.
     @ViewBuilder
     private func dialCluster(theme: AppTheme, k: CGFloat, dialSize: CGFloat) -> some View {
         ZStack {
-            if app.friendMode {
-                Circle()
-                    .fill(RadialGradient(colors: [app.accent, app.accent.opacity(0.55)], center: .center, startRadius: 0, endRadius: 160 * k))
-                    .frame(width: 320 * k, height: 320 * k)
-                    .overlay(
-                        Text(app.dest.prefix(2).uppercased())
-                            .font(.nunito(92 * k, .black))
-                            .foregroundStyle(.black.opacity(0.3))
-                    )
-            }
-
             tiltGuideLines(theme: theme, dialSize: dialSize)
 
             DialView(k: k)
@@ -170,23 +192,37 @@ struct CompassScreen: View {
 
     @ViewBuilder
     private func searchBar(theme: AppTheme) -> some View {
-        Button {
-            app.searchOpen = true
-        } label: {
-            HStack(spacing: Spacing.tight + 2) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.textSecondary)
-                Text("Where are we off to?")
-                    .font(.nunito(15, .semibold))
-                    .foregroundStyle(theme.textSecondary)
-                Spacer()
+        HStack(spacing: Spacing.tight + 2) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(app.searchOpen ? theme.accent : theme.textSecondary)
+
+            TextField("Where are we off to?", text: $app.searchQuery)
+                .focused($searchFocused)
+                .font(.nunito(15, .semibold))
+                .foregroundStyle(theme.ink)
+                .submitLabel(.search)
+                .onSubmit { app.pickPlace(app.searchQuery) }
+
+            if app.searchOpen {
+                Button("Cancel") { closeSearch() }
+                    .font(.nunito(13, .semibold))
+                    .foregroundStyle(theme.accent)
+                    .transition(.opacity)
             }
-            .padding(.horizontal, Spacing.container)
-            .frame(height: 46)
-            .background(Capsule().fill(theme.ink.opacity(0.06)))
-            .overlay(Capsule().stroke(theme.borderColor))
         }
+        .padding(.horizontal, Spacing.container)
+        .frame(height: 46)
+        .background(Capsule().fill(theme.ink.opacity(0.06)))
+        .overlay(Capsule().stroke(app.searchOpen ? theme.accent.opacity(0.65) : theme.borderColor, lineWidth: app.searchOpen ? 1.5 : 1))
+        // The "pop out of the screen" moment when results appear, plus a soft back-glow
+        // that keeps this the one thing that reads as active while everything else blurs.
+        .shadow(color: theme.accent.opacity(app.searchOpen ? 0.5 : 0), radius: app.searchOpen ? 16 : 0)
+        .scaleEffect(app.searchOpen ? 1.03 : 1)
+        .contentShape(Capsule())
+        .onTapGesture { app.searchOpen = true; searchFocused = true }
+        .onChange(of: searchFocused) { _, focused in if focused { app.searchOpen = true } }
+        .animation(.spring(response: 0.45, dampingFraction: 0.62), value: app.searchOpen)
         .sensoryFeedback(.impact(weight: .light), trigger: app.searchOpen)
     }
 
@@ -309,33 +345,120 @@ private struct TurnGlyph: View {
 
 /// The "road ahead" indicator shown in guidance mode: a colour-coded vertical line
 /// (blue for driving, green for walking) running from just below the header down to
-/// the dial, fading in at the top for depth, with chevrons marking the direction of travel.
+/// the dial, fading in at the top for depth, with chevrons marking the direction of
+/// travel. Doubles as a visual countdown to the turn: `progress` is 1 when far from the
+/// turn (full height) and 0 right at it (compresses toward the dial, then disappears).
 private struct RouteLineView: View {
     let color: Color
+    @State private var dashPhase: CGFloat = 0
 
     var body: some View {
         GeometryReader { geo in
-            ZStack {
+            ZStack(alignment: .top) {
+                // Full-height glow line — always present at full length while guiding; it
+                // never shrinks or vanishes mid-route.
                 LinearGradient(
-                    stops: [.init(color: .clear, location: 0), .init(color: color.opacity(0.85), location: 0.22), .init(color: color, location: 1)],
+                    stops: [.init(color: .clear, location: 0), .init(color: color.opacity(0.85), location: 0.14), .init(color: color, location: 1)],
                     startPoint: .top, endPoint: .bottom
                 )
                 .frame(width: 4)
                 .clipShape(Capsule())
                 .shadow(color: color.opacity(0.5), radius: 6)
-                .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                .frame(maxWidth: .infinity)
 
-                VStack(spacing: 0) {
-                    ForEach(0..<3, id: \.self) { i in
-                        Spacer()
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(color)
-                            .opacity(0.3 + Double(i) * 0.25)
-                    }
-                    Spacer()
+                // A continuously-marching dashed overlay reads as traffic flowing down the
+                // line toward you, rather than the line itself counting down.
+                Path { path in
+                    path.move(to: CGPoint(x: geo.size.width / 2, y: 14))
+                    path.addLine(to: CGPoint(x: geo.size.width / 2, y: geo.size.height))
                 }
+                .stroke(Color.white.opacity(0.85), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [8, 16], dashPhase: dashPhase))
+
+                // Destination marker capping the top of the line.
+                ZStack {
+                    Circle().fill(color.opacity(0.28)).frame(width: 24, height: 24)
+                    Circle().fill(color).frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(.white, lineWidth: 1.5))
+                }
+                .frame(maxWidth: .infinity)
+                .shadow(color: color.opacity(0.6), radius: 8)
             }
         }
+        .onAppear {
+            withAnimation(.linear(duration: 1.0).repeatForever(autoreverses: false)) {
+                dashPhase = -48
+            }
+        }
+    }
+}
+
+/// Results and recent-search suggestions only — the search bar itself lives above this
+/// panel and stays interactive, so there's no second, redundant text field in here.
+private struct SearchResultsPanel: View {
+    @EnvironmentObject var app: AppModel
+    let k: CGFloat
+    let onClose: () -> Void
+
+    private let placeKinds: [String: (sub: String, kind: String, dist: String)] = [
+        "Sunrise Bakery": ("Open until 9", "✦", "1.2 km"),
+        "Home": ("Saved", "⌂", "6.8 km"),
+        "Baker Street Lot": ("Parking", "P", "3.1 km"),
+    ]
+
+    private var results: [String] {
+        guard !app.searchQuery.isEmpty else { return app.recentSearches }
+        return app.recentSearches.filter { $0.localizedCaseInsensitiveContains(app.searchQuery) }
+    }
+
+    var body: some View {
+        let theme = app.currentTheme
+        VStack(alignment: .leading, spacing: Spacing.element) {
+            Text(app.searchQuery.isEmpty ? "RECENT" : "RESULTS")
+                .font(.system(size: 10, weight: .heavy)).tracking(1.6)
+                .foregroundStyle(theme.textSecondary)
+                .padding(.top, Spacing.container)
+
+            if results.isEmpty {
+                Text("No matches for \u{201C}\(app.searchQuery)\u{201D}")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.textSecondary)
+                    .padding(.vertical, Spacing.element)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(results, id: \.self) { name in
+                        let info = placeKinds[name] ?? ("Recent", "◷", "—")
+                        Button {
+                            app.pickPlace(name)
+                            onClose()
+                        } label: {
+                            HStack(spacing: Spacing.element) {
+                                Text(info.kind)
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(theme.ink.opacity(0.76))
+                                    .frame(width: 34, height: 34)
+                                    .background(RoundedRectangle(cornerRadius: 11).fill(theme.ink.opacity(0.08)))
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(name).font(.system(size: 15, weight: .heavy)).foregroundStyle(theme.ink)
+                                    Text(info.sub).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.textSecondary)
+                                }
+                                Spacer()
+                                Text(info.dist).font(.system(size: 12, weight: .bold)).foregroundStyle(theme.textSecondary)
+                            }
+                            .padding(.vertical, Spacing.tight + 3).padding(.horizontal, Spacing.tight)
+                            .overlay(Divider().background(theme.borderColor), alignment: .bottom)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Spacing.container)
+        .frame(maxWidth: .infinity, alignment: .top)
+        .background(
+            theme.screen.opacity(0.98)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .shadow(color: .black.opacity(0.35), radius: 24, y: -8)
+        )
     }
 }

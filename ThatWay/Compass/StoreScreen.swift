@@ -49,7 +49,7 @@ struct StoreScreen: View {
             .padding(.bottom, 94)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, 62)
+        .padding(.top, 8)
         .background(theme.screen)
     }
 
