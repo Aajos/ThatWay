@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import CoreLocation
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -28,6 +29,23 @@ final class AppModel: ObservableObject {
     @Published var destColor: Color?
     @Published var destInitials = ""
     @Published var recentSearches = ["Sunrise Bakery", "Home", "Baker Street Lot", "The Office", "Riya's place"]
+
+    // Real routing (OSRM). Friends stay on the simulated system below — only searched
+    // places get a real coordinate and a real route — so testing this needs no GPS: the
+    // "traveller" is a mock fixed point in Sydney, and guidance mode walks it along the
+    // fetched route by interpolating toward each maneuver in turn.
+    @Published var destinationCoordinate: CLLocationCoordinate2D? = AppModel.mockDestinations["Sunrise Bakery"]
+    @Published var simulatedPosition: CLLocationCoordinate2D = AppModel.mockUserLocation
+    let routingManager = RoutingManager()
+
+    static let mockUserLocation = CLLocationCoordinate2D(latitude: -33.8688, longitude: 151.2093) // Sydney CBD
+    static let mockDestinations: [String: CLLocationCoordinate2D] = [
+        "Sunrise Bakery": CLLocationCoordinate2D(latitude: -33.8568, longitude: 151.2153),  // near the Opera House
+        "Home": CLLocationCoordinate2D(latitude: -33.8908, longitude: 151.2743),            // Bondi Beach
+        "Baker Street Lot": CLLocationCoordinate2D(latitude: -33.8737, longitude: 151.1998), // Darling Harbour
+        "The Office": CLLocationCoordinate2D(latitude: -33.8523, longitude: 151.2108),       // Circular Quay
+        "Riya's place": CLLocationCoordinate2D(latitude: -33.8600, longitude: 151.2200),     // Woolloomooloo
+    ]
 
     // Simulation
     @Published var t = 0
@@ -75,13 +93,30 @@ final class AppModel: ObservableObject {
             if dist < 40 { dist = 1240 }
             speed = 4.6 + sin(Double(t) / 30) * 0.9
         } else {
-            stepDist -= 9
-            if stepDist <= 10 {
-                stepIdx = (stepIdx + 1) % NavStep.all.count
-                stepDist = NavStep.all[stepIdx].dist
+            if routingManager.hasRoute {
+                advanceSimulatedPosition()
+            } else {
+                stepDist -= 9
+                if stepDist <= 10 {
+                    stepIdx = (stepIdx + 1) % NavStep.all.count
+                    stepDist = NavStep.all[stepIdx].dist
+                }
             }
             speed = 52 + sin(Double(t) / 45) * 26
         }
+    }
+
+    /// Moves the mock traveller a fraction of the way toward the current maneuver each
+    /// tick — an easing walk rather than a fixed speed, so it always makes visible progress
+    /// whether the next turn is 50m or 900m away, and settles smoothly as it arrives.
+    private func advanceSimulatedPosition() {
+        guard let target = routingManager.currentStep?.coordinate else { return }
+        let fraction = 0.12
+        simulatedPosition = CLLocationCoordinate2D(
+            latitude: simulatedPosition.latitude + (target.latitude - simulatedPosition.latitude) * fraction,
+            longitude: simulatedPosition.longitude + (target.longitude - simulatedPosition.longitude) * fraction
+        )
+        routingManager.updateProgress(userLocation: simulatedPosition)
     }
 
     // MARK: - Derived state
@@ -90,11 +125,66 @@ final class AppModel: ObservableObject {
     var guiding: Bool { mode == .guidance }
     var step: NavStep { NavStep.all[stepIdx] }
     var nextStep: NavStep { NavStep.all[(stepIdx + 1) % NavStep.all.count] }
-    var activeDist: Double { guiding ? stepDist : dist }
-    var far: Double { max(0, min(1, activeDist / (guiding ? 500 : 1200))) }
     var sway: Double { sin(Double(t) / 11) * 9 }
 
+    /// True once a real OSRM route is actively driving guidance mode (as opposed to the
+    /// simulated mock turns, which still cover friend-pointing and the no-route fallback).
+    var hasRealRoute: Bool { guiding && routingManager.hasRoute }
+
+    /// Straight-line distance from the mock traveller to the current maneuver point.
+    var distanceToManeuver: Double {
+        guard let coordinate = routingManager.currentStep?.coordinate else { return 0 }
+        return CompassManager.distance(from: simulatedPosition, to: coordinate)
+    }
+
+    var activeDist: Double {
+        if guiding {
+            return hasRealRoute ? distanceToManeuver : stepDist
+        }
+        if let destinationCoordinate {
+            return CompassManager.distance(from: simulatedPosition, to: destinationCoordinate)
+        }
+        return dist
+    }
+
+    var far: Double {
+        if hasRealRoute, let metres = routingManager.currentStep?.distance {
+            return max(0, min(1, distanceToManeuver / max(metres, 1)))
+        }
+        return max(0, min(1, activeDist / (guiding ? 500 : 1200)))
+    }
+
+    /// The turn card's headline: the real OSRM instruction once a route is loaded,
+    /// otherwise the simulated mock turn (or an arrival/loading/error message).
+    var turnCopy: String {
+        if routingManager.isLoading { return "Finding your route…" }
+        if let error = routingManager.errorMessage { return error }
+        if hasRealRoute { return routingManager.currentStep?.instruction ?? "You've arrived" }
+        return step.copy
+    }
+
+    var turnSubtitle: String {
+        if hasRealRoute { return "\(fmt(distanceToManeuver)) to go" }
+        return step.lane
+    }
+
+    var turnDir: TurnDir {
+        if hasRealRoute { return routingManager.currentStep?.turnDirection ?? .straight }
+        return step.dir
+    }
+
     var needleDeg: Double {
+        // Point the needle at the real bearing to the next maneuver (guidance) or the
+        // destination (point mode) whenever we have real coordinates for either.
+        if hasRealRoute, let coordinate = routingManager.currentStep?.coordinate {
+            let bearing = CompassManager.bearing(from: simulatedPosition, to: coordinate)
+            return CompassManager.relativeBearing(heading: 0, bearing: bearing) + sway * 0.15
+        }
+        if !guiding, let destinationCoordinate {
+            let bearing = CompassManager.bearing(from: simulatedPosition, to: destinationCoordinate)
+            return CompassManager.relativeBearing(heading: 0, bearing: bearing) + sway * 0.3
+        }
+
         let p = 1 - far
         let sTurn: Double = step.dir == .left ? -1 : step.dir == .right ? 1 : 0
         let anticipate = p * p * (3 - 2 * p)
@@ -112,7 +202,16 @@ final class AppModel: ObservableObject {
 
     var dialScale: Double { guiding ? CompassGeometry.scaleGuide : CompassGeometry.scalePoint }
     var tiltDeg: Double { far * 54 * tiltStrength }
-    var laneDeg: Double { guiding ? CompassGeometry.laneDeg(for: step.side) : 0 }
+    var laneDeg: Double {
+        if hasRealRoute {
+            switch turnDir {
+            case .left: return -10
+            case .right: return 10
+            case .straight: return 0
+            }
+        }
+        return guiding ? CompassGeometry.laneDeg(for: step.side) : 0
+    }
 
     var auto: String { speed < 7 ? "WALKING" : speed < 15 ? "RUNNING" : "DRIVING" }
     var activity: String { opts.activity == "Automatic" ? auto : opts.activity.uppercased() }
@@ -141,14 +240,9 @@ final class AppModel: ObservableObject {
 
     func flipMode() {
         if mode == .point {
-            mode = .guidance
-            stepIdx = 0
-            stepDist = NavStep.all[0].dist
-            speed = 52
+            startGuidance()
         } else {
-            mode = .point
-            dist = 1240
-            speed = 5
+            endGuidance()
         }
     }
 
@@ -157,12 +251,20 @@ final class AppModel: ObservableObject {
         stepIdx = 0
         stepDist = NavStep.all[0].dist
         speed = 52
+        simulatedPosition = Self.mockUserLocation
+        if let destinationCoordinate {
+            Task { await routingManager.fetchRoute(from: Self.mockUserLocation, to: destinationCoordinate) }
+        } else {
+            routingManager.clear()
+        }
     }
 
     func endGuidance() {
         mode = .point
         dist = 1240
         speed = 5
+        simulatedPosition = Self.mockUserLocation
+        routingManager.clear()
     }
 
     func setTheme(_ id: ThemeID) {
@@ -180,6 +282,8 @@ final class AppModel: ObservableObject {
         destKind = .friend
         destColor = f.color
         destInitials = f.initials
+        destinationCoordinate = nil // friends live on the stylised in-app map, not real coordinates
+        routingManager.clear()
         mode = .point
         dist = 860
     }
@@ -195,6 +299,9 @@ final class AppModel: ObservableObject {
         searchQuery = ""
         mode = .point
         dist = 1240
+        destinationCoordinate = Self.mockDestinations[trimmed]
+        simulatedPosition = Self.mockUserLocation
+        routingManager.clear()
         recentSearches.removeAll { $0 == trimmed }
         recentSearches.insert(trimmed, at: 0)
         if recentSearches.count > 5 { recentSearches.removeLast() }

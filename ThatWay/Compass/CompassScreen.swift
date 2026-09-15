@@ -23,6 +23,10 @@ private enum Spacing {
 
 struct CompassScreen: View {
     @EnvironmentObject var app: AppModel
+    // Not read directly (AppModel's computed properties reach into it instead) — declaring
+    // it here is what makes SwiftUI re-render this screen when a route arrives or advances,
+    // since a nested ObservableObject's own publishes don't bubble through AppModel's.
+    @EnvironmentObject var routing: RoutingManager
     @State private var dialFrame: CGRect?
     @State private var cardFrame: CGRect?
     @FocusState private var searchFocused: Bool
@@ -269,8 +273,8 @@ struct CompassScreen: View {
                 Circle().fill(app.accent).frame(width: 10, height: 10).shadow(color: app.accent, radius: 6)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(app.dest).font(.nunito(16, .extraBold)).foregroundStyle(theme.ink).lineLimit(1)
-                    Text(app.friendMode ? "Pointing at a friend" : "Straight-line pointing")
-                        .font(.nunito(13, .semibold)).foregroundStyle(theme.textSecondary)
+                    Text(app.friendMode ? "Pointing at a friend" : app.destinationCoordinate != nil ? "Real bearing · tap ROUTE" : "Straight-line pointing")
+                        .font(.nunito(13, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(1)
                 }
                 Spacer()
                 Button { app.startGuidance() } label: {
@@ -287,15 +291,16 @@ struct CompassScreen: View {
             .background(RoundedRectangle(cornerRadius: 22).fill(theme.ink.opacity(0.07)))
             .overlay(RoundedRectangle(cornerRadius: 22).stroke(theme.borderColor))
         } else {
-            // Simplified guidance card for now: just the current turn, an arrow, and a way out.
+            // The turn card: a real OSRM instruction when a route is loaded (with a lane hint
+            // swapped for live distance-to-turn), the simulated mock turn otherwise.
             HStack(spacing: Spacing.container) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 15).fill(theme.accent.opacity(0.16)).frame(width: 46, height: 46)
-                    TurnGlyph(dir: app.step.dir, color: theme.accent)
+                    TurnGlyph(dir: app.turnDir, color: theme.accent)
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(app.step.copy).font(.nunito(16, .extraBold)).foregroundStyle(theme.ink)
-                    Text(app.step.lane).font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary)
+                    Text(app.turnCopy).font(.nunito(16, .extraBold)).foregroundStyle(theme.ink).lineLimit(2)
+                    Text(app.turnSubtitle).font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary)
                 }
                 Spacer()
                 Button { app.endGuidance() } label: {
