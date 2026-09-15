@@ -16,6 +16,7 @@ struct ProfileScreen: View {
                 header(theme: theme)
                 visibilitySection(theme: theme)
                 achievementsSection(theme: theme)
+                accessibilitySection(theme: theme)
                 settingsSection(theme: theme)
                 donateBanner(theme: theme)
             }
@@ -36,7 +37,7 @@ struct ProfileScreen: View {
                     Circle()
                         .fill(app.currentAvatar.bg)
                         .frame(width: 64, height: 64)
-                        .overlay(Text(app.currentAvatar.glyph).font(.system(size: 22, weight: .black)).foregroundStyle(Color(hex: "241A14")))
+                        .overlay(Text(app.currentAvatar.glyph).font(.nunito(22, .black)).foregroundStyle(Color(hex: "241A14")))
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 22, weight: .black))
                         .foregroundStyle(theme.onAccent, theme.accent)
@@ -46,11 +47,11 @@ struct ProfileScreen: View {
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("You").font(.system(size: 20, weight: .black))
-                Text(visLine).font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.68))
+                Text("You").font(.nunito(20, .black))
+                Text(visLine).font(.nunito(13, .semibold)).foregroundStyle(theme.ink.opacity(0.68))
                 Button { app.avatarSheet = true } label: {
                     Text("EDIT PICTURE & AVATARS")
-                        .font(.system(size: 11, weight: .heavy)).tracking(0.6)
+                        .font(.nunito(11, .extraBold)).tracking(0.6)
                         .foregroundStyle(theme.accent)
                 }
                 .padding(.top, 4)
@@ -69,12 +70,12 @@ struct ProfileScreen: View {
     @ViewBuilder
     private func visibilitySection(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("VISIBLE TO").font(.system(size: 10, weight: .heavy)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
+            Text("VISIBLE TO").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
             HStack(spacing: 6) {
                 ForEach(Visibility.allCases) { v in
                     Button { app.vis = v } label: {
                         Text(v.rawValue)
-                            .font(.system(size: 13, weight: .heavy))
+                            .font(.nunito(13, .extraBold))
                             .foregroundStyle(theme.ink)
                             .opacity(app.vis == v ? 1 : 0.45)
                             .frame(maxWidth: .infinity)
@@ -90,15 +91,15 @@ struct ProfileScreen: View {
             if app.vis == .close {
                 VStack(spacing: 12) {
                     HStack {
-                        Text("Close ones within").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.7))
+                        Text("Close ones within").font(.nunito(12, .semibold)).foregroundStyle(theme.ink.opacity(0.7))
                         Spacer()
-                        Text("\(Int(app.closeKm)) km").font(.system(size: 15, weight: .black)).foregroundStyle(theme.accent)
+                        Text("\(Int(app.closeKm)) km").font(.nunito(15, .black)).foregroundStyle(theme.accent)
                     }
                     Slider(value: $app.closeKm, in: 2...20, step: 1).tint(theme.accent)
                     HStack {
-                        Text("2 km").font(.system(size: 10, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.6))
+                        Text("2 km").font(.nunito(10, .semibold)).foregroundStyle(theme.ink.opacity(0.6))
                         Spacer()
-                        Text("20 km").font(.system(size: 10, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.6))
+                        Text("20 km").font(.nunito(10, .semibold)).foregroundStyle(theme.ink.opacity(0.6))
                     }
                 }
                 .padding(14)
@@ -111,7 +112,7 @@ struct ProfileScreen: View {
     @ViewBuilder
     private func achievementsSection(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("ACHIEVEMENTS").font(.system(size: 10, weight: .heavy)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
+            Text("ACHIEVEMENTS").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
             HStack(spacing: 10) {
                 badge("✦", "First 10 km", 1, theme: theme)
                 badge("◔", "Dawn run", 1, theme: theme)
@@ -126,8 +127,8 @@ struct ProfileScreen: View {
             Circle()
                 .strokeBorder(theme.accent, lineWidth: 2)
                 .frame(width: 34, height: 34)
-                .overlay(Text(glyph).font(.system(size: 14, weight: .heavy)).foregroundStyle(theme.accent))
-            Text(name).font(.system(size: 10, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.78)).multilineTextAlignment(.center)
+                .overlay(Text(glyph).font(.nunito(14, .extraBold)).foregroundStyle(theme.accent))
+            Text(name).font(.nunito(10, .semibold)).foregroundStyle(theme.ink.opacity(0.78)).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14).padding(.horizontal, 10)
@@ -137,26 +138,49 @@ struct ProfileScreen: View {
     }
 
     @ViewBuilder
+    private func accessibilitySection(theme: AppTheme) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("ACCESSIBILITY").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Text size").font(.nunito(15, .semibold)).foregroundStyle(theme.ink)
+                    Spacer()
+                    Text(app.extraTextSize == 0 ? "Default" : "+\(Int(app.extraTextSize)) pt")
+                        .font(.nunito(13, .bold))
+                        .foregroundStyle(theme.accent)
+                }
+                Slider(value: $app.extraTextSize, in: 0...20, step: 1).tint(theme.accent)
+                Text("Larger text is added everywhere in the app — turn/dashboard readouts, cards, and labels.")
+                    .font(.nunito(11, .semibold))
+                    .foregroundStyle(theme.ink.opacity(0.6))
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 18).fill(theme.ink.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(theme.ink.opacity(0.09)))
+        }
+    }
+
+    @ViewBuilder
     private func settingsSection(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "gear").font(.system(size: 11, weight: .heavy))
-                Text("SETTINGS").font(.system(size: 10, weight: .heavy)).tracking(1.8)
+                Text("SETTINGS").font(.nunito(10, .extraBold)).tracking(1.8)
             }
             .foregroundStyle(theme.ink.opacity(0.68))
             VStack(spacing: 0) {
-                settingsRow("Compass skin", value: app.currentSkin.name,
+                SettingsRow("Compass skin", value: app.currentSkin.name,
                             options: Skin.all.filter { app.ownedSkins.contains($0.id) }.map(\.name), theme: theme) { v in
                     if let id = Skin.all.first(where: { $0.name == v })?.id { app.skin = id }
                 }
-                settingsRow("Theme", value: theme.name, options: AppTheme.all.map(\.name), theme: theme) { v in
+                SettingsRow("Theme", value: theme.name, options: AppTheme.all.map(\.name), theme: theme) { v in
                     if let id = AppTheme.all.first(where: { $0.name == v })?.id { app.setTheme(id) }
                 }
-                settingsRow("Voice of directions", value: app.opts.voice, options: ["Friendly", "Terse", "Cheeky"], theme: theme) { app.opts.voice = $0 }
-                settingsRow("Activity detection", value: app.opts.activity, options: ["Automatic", "Walking", "Running", "Driving"], theme: theme) { app.opts.activity = $0 }
-                settingsRow("Haptics on turns", value: app.opts.haptics, options: ["Off", "Light", "Strong"], theme: theme) { app.opts.haptics = $0 }
-                settingsRow("Share destination", value: app.opts.share, options: ["Off", "Friends only", "Everyone"], theme: theme) { app.opts.share = $0 }
-                settingsRow("Units", value: app.opts.units, options: ["Kilometres", "Miles"], theme: theme, isLast: true) { app.opts.units = $0 }
+                SettingsRow("Voice of directions", value: app.opts.voice, options: ["Friendly", "Terse", "Cheeky"], theme: theme) { app.opts.voice = $0 }
+                SettingsRow("Activity detection", value: app.opts.activity, options: ["Automatic", "Walking", "Running", "Driving"], theme: theme) { app.opts.activity = $0 }
+                SettingsRow("Haptics on turns", value: app.opts.haptics, options: ["Off", "Light", "Strong"], theme: theme) { app.opts.haptics = $0 }
+                SettingsRow("Share destination", value: app.opts.share, options: ["Off", "Friends only", "Everyone"], theme: theme) { app.opts.share = $0 }
+                SettingsRow("Units", value: app.opts.units, options: ["Kilometres", "Miles"], theme: theme, isLast: true) { app.opts.units = $0 }
             }
             .background(RoundedRectangle(cornerRadius: 20).fill(theme.ink.opacity(0.05)))
             .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.ink.opacity(0.09)))
@@ -164,10 +188,54 @@ struct ProfileScreen: View {
     }
 
     @ViewBuilder
-    private func settingsRow(_ label: String, value: String, options: [String], theme: AppTheme, isLast: Bool = false, onChange: @escaping (String) -> Void) -> some View {
+    private func donateBanner(theme: AppTheme) -> some View {
+        Button { app.goDonate() } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Free forever, no ads").font(.nunito(15, .extraBold)).foregroundStyle(theme.accent)
+                Text("If the compass made your commute better, consider leaving a review in the app store or donating some spare change to help us run the servers :)")
+                    .font(.nunito(13, .semibold)).foregroundStyle(theme.ink.opacity(0.76))
+                Text("LEAVE A TIP")
+                    .font(.nunito(12, .black)).tracking(0.6)
+                    .foregroundStyle(theme.onAccent)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(RoundedRectangle(cornerRadius: 13).fill(theme.accent))
+                    .padding(.top, 8)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+            .background(RoundedRectangle(cornerRadius: 20).fill(theme.accent.opacity(0.12)))
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.accent.opacity(0.32)))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// A settings row with a native `Menu` dropdown. `Menu` items render through UIKit's own
+/// menu chrome rather than anything SwiftUI draws directly, so they ignore custom fonts —
+/// but that chrome uses `UIFont.preferredFont(forTextStyle:)` internally, which means it
+/// already tracks the system's real Dynamic Type accessibility setting on its own, with
+/// no extra plumbing needed here.
+private struct SettingsRow: View {
+    let label: String
+    let value: String
+    let options: [String]
+    let theme: AppTheme
+    var isLast: Bool = false
+    let onChange: (String) -> Void
+
+    init(_ label: String, value: String, options: [String], theme: AppTheme, isLast: Bool = false, onChange: @escaping (String) -> Void) {
+        self.label = label
+        self.value = value
+        self.options = options
+        self.theme = theme
+        self.isLast = isLast
+        self.onChange = onChange
+    }
+
+    var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.ink)
+                Text(label).font(.nunito(15, .semibold)).foregroundStyle(theme.ink)
                 Spacer()
                 Menu {
                     ForEach(options, id: \.self) { opt in
@@ -175,7 +243,7 @@ struct ProfileScreen: View {
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        Text(value).font(.system(size: 13, weight: .bold)).foregroundStyle(theme.ink)
+                        Text(value).font(.nunito(13, .bold)).foregroundStyle(theme.ink)
                         Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(theme.ink.opacity(0.5))
                     }
                     .padding(.horizontal, 12).padding(.vertical, 9)
@@ -188,27 +256,5 @@ struct ProfileScreen: View {
                 Divider().background(theme.ink.opacity(0.07)).padding(.leading, 16)
             }
         }
-    }
-
-    @ViewBuilder
-    private func donateBanner(theme: AppTheme) -> some View {
-        Button { app.goDonate() } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Free forever, no ads").font(.system(size: 15, weight: .heavy)).foregroundStyle(theme.accent)
-                Text("If the compass made your commute better, consider leaving a review in the app store or donating some spare change to help us run the servers :)")
-                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.76))
-                Text("LEAVE A TIP")
-                    .font(.system(size: 12, weight: .black)).tracking(0.6)
-                    .foregroundStyle(theme.onAccent)
-                    .padding(.horizontal, 16).padding(.vertical, 10)
-                    .background(RoundedRectangle(cornerRadius: 13).fill(theme.accent))
-                    .padding(.top, 8)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(18)
-            .background(RoundedRectangle(cornerRadius: 20).fill(theme.accent.opacity(0.12)))
-            .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.accent.opacity(0.32)))
-        }
-        .buttonStyle(.plain)
     }
 }

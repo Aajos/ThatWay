@@ -32,14 +32,14 @@ struct MapScreen: View {
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
             }
-            .blur(radius: 12)
-            .opacity(0.92)
+            .blur(radius: 6)
+            .opacity(0.95)
             .mask(edgeFadeMask)
             .ignoresSafeArea()
             .allowsHitTesting(false)
 
             VStack(spacing: 0) {
-                Text("Map").font(.system(size: 24, weight: .black))
+                Text("Map").font(.nunito(24, .black))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20)
                     .padding(.top, 2)
@@ -56,7 +56,7 @@ struct MapScreen: View {
                         // north indicator
                         VStack(spacing: 3) {
                             Triangle().fill(theme.accent).frame(width: 12, height: 12)
-                            Text("N").font(.system(size: 10, weight: .black)).tracking(1.4).foregroundStyle(theme.ink.opacity(0.72))
+                            Text("N").font(.nunito(10, .black)).tracking(1.4).foregroundStyle(theme.ink.opacity(0.72))
                         }
                         .rotationEffect(.degrees(app.mapRot))
                         .position(x: 30, y: 26)
@@ -95,9 +95,9 @@ struct MapScreen: View {
                             .onEnded { value in app.mapRot += value.degrees }
                     )
                 }
-                .padding(.top, -10)
+                .padding(.top, 4)
                 .padding(.horizontal, 16)
-                .padding(.bottom, 70)
+                .padding(.bottom, 55)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -198,8 +198,8 @@ private struct MapField: View {
                 VStack(spacing: 4) {
                     Circle().fill(f.color).frame(width: 34, height: 34)
                         .overlay(Circle().stroke(theme.screen, lineWidth: 2))
-                        .overlay(Text(f.initials).font(.system(size: 12, weight: .heavy)).foregroundStyle(Color(hex: "241A14")))
-                    Text(f.name).font(.system(size: 10, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.72))
+                        .overlay(Text(f.initials).font(.nunito(12, .extraBold)).foregroundStyle(Color(hex: "241A14")))
+                    Text(f.name).font(.nunito(10, .semibold)).foregroundStyle(theme.ink.opacity(0.72))
                 }
                 .offset(x: f.mapPos.x * 1200 - 600, y: f.mapPos.y * 1200 - 600)
             }

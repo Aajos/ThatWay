@@ -16,10 +16,10 @@ struct AvatarSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text("Your picture").font(.system(size: 20, weight: .black))
+                    Text("Your picture").font(.nunito(20, .black))
                     Spacer()
                     Button("Done") { app.avatarSheet = false }
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.nunito(13, .semibold))
                         .foregroundStyle(theme.ink.opacity(0.72))
                 }
 
@@ -28,7 +28,7 @@ struct AvatarSheet: View {
                     photoOption(icon: "photo.on.rectangle", title: "Choose a photo", subtitle: "From your library", theme: theme)
                 }
 
-                Text("AVATARS").font(.system(size: 10, weight: .heavy)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
+                Text("AVATARS").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                     ForEach(AvatarOption.all) { a in
@@ -37,11 +37,11 @@ struct AvatarSheet: View {
                         Button { app.pickAvatar(a.id) } label: {
                             VStack(spacing: 9) {
                                 Circle().fill(a.bg).frame(width: 52, height: 52)
-                                    .overlay(Text(a.glyph).font(.system(size: 18, weight: .black)).foregroundStyle(Color(hex: "241A14")))
+                                    .overlay(Text(a.glyph).font(.nunito(18, .black)).foregroundStyle(Color(hex: "241A14")))
                                 VStack(spacing: 4) {
-                                    Text(a.name).font(.system(size: 11, weight: .bold)).foregroundStyle(theme.ink)
+                                    Text(a.name).font(.nunito(11, .bold)).foregroundStyle(theme.ink)
                                     Text(inUse ? "IN USE" : owned ? (a.price > 0 ? "OWNED" : "FREE") : app.aud(a.price))
-                                        .font(.system(size: 10, weight: .heavy))
+                                        .font(.nunito(10, .extraBold))
                                         .foregroundStyle(inUse ? theme.accent : owned ? theme.ink.opacity(0.42) : theme.accent)
                                 }
                             }
@@ -66,8 +66,8 @@ struct AvatarSheet: View {
     private func photoOption(icon: String, title: String, subtitle: String, theme: AppTheme) -> some View {
         VStack(spacing: 5) {
             Image(systemName: icon).font(.system(size: 18, weight: .semibold)).foregroundStyle(theme.accent)
-            Text(title).font(.system(size: 13, weight: .heavy)).foregroundStyle(theme.ink)
-            Text(subtitle).font(.system(size: 11, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.66))
+            Text(title).font(.nunito(13, .extraBold)).foregroundStyle(theme.ink)
+            Text(subtitle).font(.nunito(11, .semibold)).foregroundStyle(theme.ink.opacity(0.66))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)

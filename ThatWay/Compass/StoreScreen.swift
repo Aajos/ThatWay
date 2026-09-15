@@ -13,8 +13,8 @@ struct StoreScreen: View {
 
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Store").font(.system(size: 24, weight: .black))
-                Text(blurb).font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.68))
+                Text("Store").font(.nunito(24, .black))
+                Text(blurb).font(.nunito(13, .semibold)).foregroundStyle(theme.ink.opacity(0.68))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20)
@@ -26,7 +26,7 @@ struct StoreScreen: View {
                         app.storeTab = tab
                     } label: {
                         Text(tab.label)
-                            .font(.system(size: 13, weight: .heavy))
+                            .font(.nunito(13, .extraBold))
                             .foregroundStyle(theme.ink)
                             .opacity(app.storeTab == tab ? 1 : 0.5)
                             .frame(maxWidth: .infinity)
@@ -73,12 +73,12 @@ struct StoreScreen: View {
                             }
                         }
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(th.name).font(.system(size: 15, weight: .heavy)).foregroundStyle(theme.ink)
-                            Text(th.note).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.68))
+                            Text(th.name).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink)
+                            Text(th.note).font(.nunito(12, .semibold)).foregroundStyle(theme.ink.opacity(0.68))
                         }
                         Spacer()
                         Text(app.theme == th.id ? "ACTIVE" : "FREE")
-                            .font(.system(size: 11, weight: .heavy)).tracking(0.7)
+                            .font(.nunito(11, .extraBold)).tracking(0.7)
                             .foregroundStyle(app.theme == th.id ? theme.accent : theme.ink.opacity(0.45))
                     }
                     .padding(16)
@@ -104,12 +104,12 @@ struct StoreScreen: View {
                                 .fill(RadialGradient(colors: [theme.dialA, theme.dialB], center: .init(x: 0.5, y: 0.3), startRadius: 0, endRadius: 44))
                                 .overlay(Circle().stroke(theme.ink.opacity(0.12)))
                             if sk.hasArt, let glyph = sk.glyph {
-                                Text(glyph).font(.system(size: 30, weight: .heavy)).foregroundStyle(theme.accent)
+                                Text(glyph).font(.nunito(30, .extraBold)).foregroundStyle(theme.accent)
                             } else {
                                 ZStack {
                                     DiagonalHatch(color: theme.ink.opacity(0.08))
                                     Text("3D asset\nplaceholder")
-                                        .font(.system(size: 9, design: .monospaced))
+                                        .font(.system(.caption2, design: .monospaced))
                                         .foregroundStyle(theme.ink.opacity(0.68))
                                         .multilineTextAlignment(.center)
                                 }
@@ -119,9 +119,9 @@ struct StoreScreen: View {
                         .frame(width: 88, height: 88)
 
                         VStack(spacing: 6) {
-                            Text(sk.name).font(.system(size: 14, weight: .heavy)).foregroundStyle(theme.ink)
+                            Text(sk.name).font(.nunito(14, .extraBold)).foregroundStyle(theme.ink)
                             Text(equipped ? "EQUIPPED" : owned ? (sk.price > 0 ? "OWNED" : "FREE") : app.aud(sk.price))
-                                .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                                .font(.nunito(11, .extraBold)).tracking(0.5)
                                 .foregroundStyle(equipped ? theme.accent : owned ? theme.ink.opacity(0.45) : theme.accent)
                         }
                     }
@@ -140,9 +140,9 @@ struct StoreScreen: View {
     private func donateList(theme: AppTheme) -> some View {
         VStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Navigation is free, forever, no ads").font(.system(size: 15, weight: .heavy)).foregroundStyle(theme.accent)
+                Text("Navigation is free, forever, no ads").font(.nunito(15, .extraBold)).foregroundStyle(theme.accent)
                 Text("Every theme is free too. Tips and a few paid skins cover map tiles and the server bill.")
-                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.76))
+                    .font(.nunito(13, .semibold)).foregroundStyle(theme.ink.opacity(0.76))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(18)
@@ -152,12 +152,12 @@ struct StoreScreen: View {
             ForEach(tips, id: \.amount) { tip in
                 HStack(spacing: 14) {
                     Text(tip.amount)
-                        .font(.system(size: 14, weight: .heavy)).foregroundStyle(theme.accent)
+                        .font(.nunito(14, .extraBold)).foregroundStyle(theme.accent)
                         .frame(width: 54, height: 44)
                         .background(RoundedRectangle(cornerRadius: 14).fill(theme.accent.opacity(0.16)))
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(tip.name).font(.system(size: 14, weight: .heavy)).foregroundStyle(theme.ink)
-                        Text(tip.note).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.68))
+                        Text(tip.name).font(.nunito(14, .extraBold)).foregroundStyle(theme.ink)
+                        Text(tip.note).font(.nunito(12, .semibold)).foregroundStyle(theme.ink.opacity(0.68))
                     }
                     Spacer()
                 }
@@ -167,7 +167,7 @@ struct StoreScreen: View {
             }
 
             Text("All prices in AUD. Tips can be one off or recurring- as you choose. Enjoy the app? Consider leaving a review on the app store!")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.nunito(11, .semibold))
                 .foregroundStyle(theme.ink.opacity(0.6))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

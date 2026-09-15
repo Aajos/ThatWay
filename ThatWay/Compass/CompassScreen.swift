@@ -32,15 +32,24 @@ struct CompassScreen: View {
     @FocusState private var searchFocused: Bool
 
     /// Reserve room below the content for RootView's floating tab bar so the
-    /// destination card never sits under it.
-    private let tabBarClearance: CGFloat = 90
+    /// destination card never sits under it — trimmed down so the card sits closer to
+    /// the (now lower, more spread-out) tab bar instead of floating far above it.
+    private let tabBarClearance: CGFloat = 60
+
+    /// How much lower the dial (and its tilt guide lines, and the route line above it)
+    /// sit while guiding, versus resting centred in Point mode.
+    private let guidingDialDrop: CGFloat = 40
 
     var body: some View {
         GeometryReader { geo in
             let k = geo.size.width / 402
             let theme = app.currentTheme
+            // The compass itself (and the guide lines behind it) run ~17.5% larger than
+            // the rest of the screen's chrome, via their own scale factor — everything
+            // else on screen keeps using the plain `k`.
+            let dialK = k * 1.175
             // Shrinks gracefully on narrower/shorter phones instead of overflowing.
-            let dialSize = min(286 * k, geo.size.width - 96, geo.size.height * 0.36)
+            let dialSize = min(286 * dialK, geo.size.width - 96, geo.size.height * 0.36)
             let dialCenter = dialFrame.map { CGPoint(x: $0.midX, y: $0.midY) }
                 ?? CGPoint(x: geo.size.width / 2, y: geo.size.height * 0.5)
             let blurRest = app.searchOpen ? 3.0 : 0.0
@@ -82,13 +91,20 @@ struct CompassScreen: View {
                         RouteLineView(color: app.routeColor)
                             .frame(maxHeight: .infinity)
                             .padding(.top, Spacing.element * k)
+                            // Follows the dial down so the line still runs right up to it
+                            // instead of leaving a gap, and reaches further to show more
+                            // of the road ahead.
+                            .offset(y: guidingDialDrop * k * 0.6)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.guiding)
                     } else {
                         Spacer(minLength: Spacing.element * k)
                     }
 
-                    dialCluster(theme: theme, k: k, dialSize: dialSize)
-                        // Guidance mode nudges the dial up so it never crowds the turn card below.
-                        .offset(y: app.guiding ? -35 * k : 0)
+                    dialCluster(theme: theme, k: dialK, dialSize: dialSize)
+                        // Guidance mode settles the dial lower, out of the way of the
+                        // route line above it, with the turn card now sitting closer to
+                        // the tab bar to leave room for the drop.
+                        .offset(y: app.guiding ? guidingDialDrop * k : 0)
                         .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.guiding)
                         .background(
                             GeometryReader { dialGeo in
@@ -98,7 +114,11 @@ struct CompassScreen: View {
                         .onPreferenceChange(FramePreferenceKey.self) { dialFrame = $0 }
                         .blur(radius: blurRest)
 
-                    Spacer(minLength: Spacing.element * k)
+                    // Offset alone only moves the dial visually — it reserves no extra
+                    // room, so without this the dropped dial would overlap the turn card
+                    // right below it. Growing this spacer by the same drop keeps the gap
+                    // between them exactly what it was in Point mode.
+                    Spacer(minLength: (Spacing.element + (app.guiding ? guidingDialDrop : 0)) * k)
 
                     bottomCard(theme: theme, k: k)
                         .padding(.horizontal, Spacing.container * k)
@@ -133,6 +153,11 @@ struct CompassScreen: View {
             }
             .coordinateSpace(name: "compassScreen")
             .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.searchOpen)
+            // The search field's own focus would otherwise trigger the system's default
+            // keyboard-avoidance and shove this whole screen (compass included) upward —
+            // the custom results panel already handles showing results, so nothing here
+            // actually needs to shift when the keyboard appears.
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         }
     }
 
@@ -266,7 +291,9 @@ struct CompassScreen: View {
                             )
                             // Selected avatars zoom up well beyond their row and must paint
                             // over the search bar above, not get clipped or buried under it.
-                            .scaleEffect(selected ? 1.45 : 1)
+                            // Anchored to the bottom so all the growth goes upward — it must
+                            // never push down into the name label sitting right below it.
+                            .scaleEffect(selected ? 1.45 : 1, anchor: .bottom)
                             .zIndex(selected ? 1 : 0)
                             Text(f.name)
                                 .font(.nunito(11, .semibold))
@@ -464,13 +491,13 @@ private struct SearchResultsPanel: View {
         let theme = app.currentTheme
         VStack(alignment: .leading, spacing: Spacing.element) {
             Text(app.searchQuery.isEmpty ? "RECENT" : "RESULTS")
-                .font(.system(size: 10, weight: .heavy)).tracking(1.6)
+                .font(.nunito(10, .extraBold)).tracking(1.6)
                 .foregroundStyle(theme.textSecondary)
                 .padding(.top, Spacing.container)
 
             if results.isEmpty {
                 Text("No matches for \u{201C}\(app.searchQuery)\u{201D}")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.nunito(13, .semibold))
                     .foregroundStyle(theme.textSecondary)
                     .padding(.vertical, Spacing.element)
             } else {
@@ -483,16 +510,16 @@ private struct SearchResultsPanel: View {
                         } label: {
                             HStack(spacing: Spacing.element) {
                                 Text(info.kind)
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(.nunito(13, .bold))
                                     .foregroundStyle(theme.ink.opacity(0.76))
                                     .frame(width: 34, height: 34)
                                     .background(RoundedRectangle(cornerRadius: 11).fill(theme.ink.opacity(0.08)))
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(name).font(.system(size: 15, weight: .heavy)).foregroundStyle(theme.ink)
-                                    Text(info.sub).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.textSecondary)
+                                    Text(name).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink)
+                                    Text(info.sub).font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary)
                                 }
                                 Spacer()
-                                Text(info.dist).font(.system(size: 12, weight: .bold)).foregroundStyle(theme.textSecondary)
+                                Text(info.dist).font(.nunito(12, .bold)).foregroundStyle(theme.textSecondary)
                             }
                             .padding(.vertical, Spacing.tight + 3).padding(.horizontal, Spacing.tight)
                             .overlay(Divider().background(theme.borderColor), alignment: .bottom)

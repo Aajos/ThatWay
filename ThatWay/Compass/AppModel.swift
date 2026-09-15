@@ -58,6 +58,11 @@ final class AppModel: ObservableObject {
     @Published var vis: Visibility = .friends
     @Published var closeKm: Double = 8
 
+    // Accessibility — added to every Nunito font size app-wide (see NunitoFont.swift).
+    @Published var extraTextSize: Double = 0 {
+        didSet { Nunito.extraSize = extraTextSize }
+    }
+
     // Floating mode toggle
     @Published var togX: CGFloat = 244
     @Published var togY: CGFloat = 84
