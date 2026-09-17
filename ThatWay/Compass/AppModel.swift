@@ -8,6 +8,7 @@
 import SwiftUI
 import Combine
 import CoreLocation
+import MapKit
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -30,13 +31,15 @@ final class AppModel: ObservableObject {
     @Published var destInitials = ""
     @Published var recentSearches = ["Sunrise Bakery", "Home", "Baker Street Lot", "The Office", "Riya's place"]
 
-    // Real routing (OSRM). Friends stay on the simulated system below — only searched
-    // places get a real coordinate and a real route — so testing this needs no GPS: the
-    // "traveller" is a mock fixed point in Sydney, and guidance mode walks it along the
-    // fetched route by interpolating toward each maneuver in turn.
+    // Real routing (OSRM) and real location (CoreLocation via LocationManager). Friends
+    // stay on the simulated system below. `simulatedPosition` is now only a fallback
+    // walker — used in place of a real GPS fix when running in the Simulator without a
+    // simulated location, or before permission is granted — everything that needs "where
+    // the user is" should read `currentPosition`, which prefers the real fix.
     @Published var destinationCoordinate: CLLocationCoordinate2D? = AppModel.mockDestinations["Sunrise Bakery"]
     @Published var simulatedPosition: CLLocationCoordinate2D = AppModel.mockUserLocation
     let routingManager = RoutingManager()
+    let locationManager = LocationManager()
 
     static let mockUserLocation = CLLocationCoordinate2D(latitude: -33.8568, longitude: 151.2153) // Circular Quay
     static let mockDestinations: [String: CLLocationCoordinate2D] = [
@@ -48,12 +51,9 @@ final class AppModel: ObservableObject {
         "Barangaroo": CLLocationCoordinate2D(latitude: -33.8599, longitude: 151.2008),       // test destination
     ]
 
-    // Simulation
+    // Idle ambient animation tick — purely cosmetic (drives `sway`, a subtle needle
+    // wobble at rest); never used to fake a position, speed, or distance reading.
     @Published var t = 0
-    @Published var dist: Double = 1240
-    @Published var stepIdx = 0
-    @Published var stepDist: Double = 420
-    @Published var speed: Double = 5
 
     // Profile
     @Published var vis: Visibility = .friends
@@ -69,13 +69,6 @@ final class AppModel: ObservableObject {
     @Published var togY: CGFloat = 84
     @Published var dragging = false
 
-    // Map
-    @Published var mapX: CGFloat = 0
-    @Published var mapY: CGFloat = 0
-    @Published var mapZoom: CGFloat = 1
-    @Published var mapRot: Double = 0
-    @Published var mapTilt: Double = 0
-
     @Published var opts = NavOptions()
 
     private var timer: AnyCancellable?
@@ -90,39 +83,70 @@ final class AppModel: ObservableObject {
         timer = Timer.publish(every: 0.09, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.tick() }
+        locationManager.requestPermission()
+        // The default demo destination is set directly above rather than through
+        // `pickPlace`, so it needs its own kick to fetch a preview route on launch.
+        fetchRoute(to: destinationCoordinate)
     }
 
     func tick() {
         t += 1
-        if mode == .point {
-            dist -= 7
-            if dist < 40 { dist = 1240 }
-            speed = 4.6 + sin(Double(t) / 30) * 0.9
-        } else {
-            if routingManager.hasRoute {
-                advanceSimulatedPosition()
-            } else {
-                stepDist -= 9
-                if stepDist <= 10 {
-                    stepIdx = (stepIdx + 1) % NavStep.all.count
-                    stepDist = NavStep.all[stepIdx].dist
-                }
-            }
-            speed = 52 + sin(Double(t) / 45) * 26
+        if guiding, routingManager.hasRoute {
+            advanceSimulatedPosition()
         }
     }
 
-    /// Moves the mock traveller a fraction of the way toward the current maneuver each
-    /// tick — an easing walk rather than a fixed speed, so it always makes visible progress
-    /// whether the next turn is 50m or 900m away, and settles smoothly as it arrives.
+    /// How far the simulated traveller has walked along the current route's real geometry
+    /// (`routingManager.routePolyline`), in metres. Reset whenever guidance (re)starts.
+    private var routeProgressMeters: Double = 0
+
+    /// A fixed walking pace (m/s) for the fallback traveller below — used only to move it
+    /// along real route geometry when there's no real GPS fix at all. It never feeds the
+    /// UI's displayed speed or activity badge, which always read the real
+    /// `locationManager.speed` (zero when there's no fix), so nothing shown on screen is
+    /// ever a forged reading.
+    private static let fallbackWalkSpeed: Double = 1.4
+
+    /// Advances guidance progress each tick. With a real GPS fix, the phone's own motion
+    /// is authoritative — this just re-checks the real position against the route. Without
+    /// one (Simulator with no simulated location, or permission not yet granted), it falls
+    /// back to walking a traveller along the route's real geometry at a fixed pace, purely
+    /// so there's real geometry to look at while developing without a device.
     private func advanceSimulatedPosition() {
-        guard let target = routingManager.currentStep?.endCoordinate else { return }
-        let fraction = 0.12
-        simulatedPosition = CLLocationCoordinate2D(
-            latitude: simulatedPosition.latitude + (target.latitude - simulatedPosition.latitude) * fraction,
-            longitude: simulatedPosition.longitude + (target.longitude - simulatedPosition.longitude) * fraction
-        )
-        routingManager.updateStepIfNeeded(userLocation: simulatedPosition)
+        guard !hasRealLocation else {
+            routingManager.updateProgress(userLocation: currentPosition)
+            rerouteIfOffRoute()
+            return
+        }
+        let polyline = routingManager.routePolyline
+        guard !polyline.isEmpty else { return }
+        let tickInterval = 0.09
+        routeProgressMeters += Self.fallbackWalkSpeed * tickInterval
+        if let point = CompassManager.pointAlong(polyline, distance: routeProgressMeters) {
+            simulatedPosition = point
+        }
+        routingManager.updateProgress(userLocation: simulatedPosition)
+        rerouteIfOffRoute()
+    }
+
+    private var lastRerouteAt: Date?
+    /// Minimum time between reroute fetches. Without this, a persistent off-route reading
+    /// (e.g. a route origin that OSRM snapped to a road some distance from the raw
+    /// coordinate, which no amount of re-fetching fixes) would refire every single tick and
+    /// hammer the routing API in a tight loop.
+    private let rerouteCooldown: TimeInterval = 8
+
+    /// If the traveller has drifted off the planned route (a wrong turn, or a real GPS fix
+    /// that's left the road), fetch a fresh route from wherever they actually are now,
+    /// rather than leaving them staring at a line that no longer matches where they're
+    /// going. Guarded on `isLoading` (no piling up while a fetch is in flight) and a cooldown
+    /// (no refetching every tick if the reading stays off-route regardless).
+    private func rerouteIfOffRoute() {
+        guard routingManager.isOffRoute, !routingManager.isLoading, let destinationCoordinate else { return }
+        if let last = lastRerouteAt, Date().timeIntervalSince(last) < rerouteCooldown { return }
+        lastRerouteAt = Date()
+        print("[AppModel] Off route — fetching a fresh route from the current position")
+        fetchRoute(to: destinationCoordinate)
     }
 
     // MARK: - Derived state
@@ -130,107 +154,112 @@ final class AppModel: ObservableObject {
     var currentTheme: AppTheme { AppTheme.byId(theme) }
     var guiding: Bool { mode == .guidance }
 
+    /// Where the user actually is: the real GPS fix once one's available, else the
+    /// fallback mock walker. Everything that needs "where am I" should read this, not
+    /// `simulatedPosition` directly.
+    var currentPosition: CLLocationCoordinate2D { locationManager.coordinate ?? simulatedPosition }
+    var hasRealLocation: Bool { locationManager.coordinate != nil }
+    /// The device's real compass heading once it's reliable, else 0 (screen-up as a
+    /// stand-in "north") — matches the old fixed behaviour until a real heading arrives.
+    var currentHeading: CLLocationDirection { locationManager.hasReliableHeading ? locationManager.heading : 0 }
+
     /// Idle: not guiding, and no place or friend selected to point at. The dial goes
     /// north-up and flat, with the cardinal markers emphasized, so it's unmistakably at rest.
     var isIdle: Bool { !guiding && destKind == .none }
-    var step: NavStep { NavStep.all[stepIdx] }
-    var nextStep: NavStep { NavStep.all[(stepIdx + 1) % NavStep.all.count] }
+    /// A subtle idle-only needle wobble — cosmetic "alive" motion, not a stand-in for any
+    /// real position, speed, or direction reading.
     var sway: Double { sin(Double(t) / 11) * 9 }
 
-    /// True once a real OSRM route is actively driving guidance mode (as opposed to the
-    /// simulated mock turns, which still cover friend-pointing and the no-route fallback).
-    var hasRealRoute: Bool { guiding && routingManager.hasRoute }
+    /// True once a real OSRM route has been fetched for the current destination — driving
+    /// the turn card and needle with actual turn-by-turn data instead of a straight line.
+    var hasRealRoute: Bool { routingManager.hasRoute }
 
-    /// Straight-line distance from the mock traveller to the current step's endpoint.
+    /// Straight-line distance from the user's current position to the step's endpoint.
     var distanceToManeuver: Double {
         guard let coordinate = routingManager.currentStep?.endCoordinate else { return 0 }
-        return CompassManager.distance(from: simulatedPosition, to: coordinate)
+        return CompassManager.distance(from: currentPosition, to: coordinate)
     }
 
+    /// Real distance to whatever's currently relevant: the next turn while a route is
+    /// loaded and guiding, otherwise a straight line to the destination. Zero when there's
+    /// nothing selected — never a simulated countdown.
     var activeDist: Double {
-        if guiding {
-            return hasRealRoute ? distanceToManeuver : stepDist
-        }
-        if let destinationCoordinate {
-            return CompassManager.distance(from: simulatedPosition, to: destinationCoordinate)
-        }
-        return dist
+        if guiding, hasRealRoute { return distanceToManeuver }
+        if let destinationCoordinate { return CompassManager.distance(from: currentPosition, to: destinationCoordinate) }
+        return 0
     }
 
     var far: Double {
-        if hasRealRoute, let metres = routingManager.currentStep?.distance {
+        if guiding, hasRealRoute, let metres = routingManager.currentStep?.distance {
             return max(0, min(1, distanceToManeuver / max(metres, 1)))
         }
         return max(0, min(1, activeDist / (guiding ? 500 : 1200)))
     }
 
     /// The turn card's headline: the real OSRM instruction once a route is loaded,
-    /// otherwise the simulated mock turn (or an arrival/loading/error message).
+    /// otherwise a loading/error message, or a plain "head toward X" while the route
+    /// is still being fetched.
     var turnCopy: String {
         if routingManager.isLoading { return "Finding your route…" }
         if let error = routingManager.errorMessage { return error }
-        if hasRealRoute { return routingManager.currentStep?.instruction ?? "You've arrived" }
-        return step.copy
+        if guiding, hasRealRoute { return routingManager.currentStep?.instruction ?? "You've arrived" }
+        return dest.isEmpty ? "Head toward your destination" : "Head toward \(dest)"
     }
 
     var turnSubtitle: String {
-        if hasRealRoute { return "\(fmt(distanceToManeuver)) to go" }
-        return step.lane
+        if guiding, hasRealRoute { return "\(fmt(distanceToManeuver)) to go" }
+        if let destinationCoordinate {
+            return "\(fmt(CompassManager.distance(from: currentPosition, to: destinationCoordinate))) straight-line"
+        }
+        return ""
     }
 
     var turnDir: TurnDir {
-        if hasRealRoute { return routingManager.currentStep?.turnDirection ?? .straight }
-        return step.dir
+        guard guiding, hasRealRoute else { return .straight }
+        return routingManager.currentStep?.turnDirection ?? .straight
     }
 
     var needleDeg: Double {
         // Idle: no destination at all — rest dead on north rather than the ambient sway.
         if isIdle { return 0 }
-        // Point the needle along the current step's own direction of travel (guidance) or
-        // the real bearing to the destination (point mode) whenever we have real coordinates.
-        if hasRealRoute, let bearing = routingManager.currentStep?.bearing {
-            return CompassManager.relativeBearing(heading: 0, bearing: bearing) + sway * 0.15
+        // Point the needle at the real bearing from wherever the traveller actually is
+        // right now toward the next turn (guidance with a loaded route) — converging on
+        // the real destination itself once the final step is reached — or toward the
+        // destination directly otherwise, whenever we have a real coordinate for it.
+        if guiding, hasRealRoute {
+            let target = routingManager.isFinished ? destinationCoordinate : routingManager.currentStep?.endCoordinate
+            if let target {
+                let bearing = CompassManager.bearing(from: currentPosition, to: target)
+                return CompassManager.relativeBearing(heading: currentHeading, bearing: bearing) + sway * 0.15
+            }
         }
-        if !guiding, let destinationCoordinate {
-            let bearing = CompassManager.bearing(from: simulatedPosition, to: destinationCoordinate)
-            return CompassManager.relativeBearing(heading: 0, bearing: bearing) + sway * 0.3
+        if let destinationCoordinate {
+            let bearing = CompassManager.bearing(from: currentPosition, to: destinationCoordinate)
+            return CompassManager.relativeBearing(heading: currentHeading, bearing: bearing) + sway * (guiding ? 0.15 : 0.3)
         }
-
-        let p = 1 - far
-        let sTurn: Double = step.dir == .left ? -1 : step.dir == .right ? 1 : 0
-        let anticipate = p * p * (3 - 2 * p)
-        let throughTurn = max(0, min(1, (p - 0.86) / 0.14))
-        let threadRot = -sTurn * 58 * throughTurn * throughTurn
-        return guiding ? sTurn * 58 * anticipate + threadRot + sway * 0.22 : sway
-    }
-
-    var threadRot: Double {
-        let p = 1 - far
-        let sTurn: Double = step.dir == .left ? -1 : step.dir == .right ? 1 : 0
-        let throughTurn = max(0, min(1, (p - 0.86) / 0.14))
-        return -sTurn * 58 * throughTurn * throughTurn
+        return sway
     }
 
     var dialScale: Double { guiding ? CompassGeometry.scaleGuide : CompassGeometry.scalePoint }
     /// Fully flat at rest in idle mode — no lean at all, so the dial visibly settles.
     var tiltDeg: Double { isIdle ? 0 : far * 54 * tiltStrength }
     var laneDeg: Double {
-        if hasRealRoute {
-            switch turnDir {
-            case .left: return -10
-            case .right: return 10
-            case .straight: return 0
-            }
+        guard guiding, hasRealRoute else { return 0 }
+        switch turnDir {
+        case .left: return -10
+        case .right: return 10
+        case .straight: return 0
         }
-        return guiding ? CompassGeometry.laneDeg(for: step.side) : 0
     }
 
-    var auto: String { speed < 7 ? "WALKING" : speed < 15 ? "RUNNING" : "DRIVING" }
+    /// Real speed over ground from CoreLocation, in km/h — zero whenever there's no real
+    /// GPS fix, never a simulated number.
+    var speedKmh: Double { max(0, locationManager.speed) * 3.6 }
+    /// `speedKmh` converted to the unit the user picked in Settings.
+    var displaySpeed: Double { opts.units == "Miles" ? speedKmh * 0.621371 : speedKmh }
+    var auto: String { speedKmh < 7 ? "WALKING" : speedKmh < 15 ? "RUNNING" : "DRIVING" }
     var activity: String { opts.activity == "Automatic" ? auto : opts.activity.uppercased() }
     var routeColor: Color { activity == "DRIVING" ? Color(hex: "3B82F6") : Color(hex: "2FCF9B") }
-    var routeM: Double {
-        (max(50, min(2000, 50 + ((speed - 40) / 80) * 1950)) / 10).rounded() * 10
-    }
 
     var friendMode: Bool { destKind == .friend && destColor != nil }
     var accent: Color { friendMode ? (destColor ?? currentTheme.accent) : currentTheme.accent }
@@ -258,25 +287,29 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Fetches (or clears) the real OSRM route for `destination` from wherever the user
+    /// actually is right now. Drives both the guidance turn card and the route-preview
+    /// line shown on the Map tab, so a route appears as soon as a destination exists —
+    /// not just once guidance formally starts.
+    private func fetchRoute(to destination: CLLocationCoordinate2D?) {
+        guard let destination else { routingManager.clear(); return }
+        let origin = currentPosition
+        Task { await routingManager.getRoute(from: origin, to: destination) }
+    }
+
     func startGuidance() {
         mode = .guidance
-        stepIdx = 0
-        stepDist = NavStep.all[0].dist
-        speed = 52
+        routeProgressMeters = 0
+        lastRerouteAt = nil
         simulatedPosition = Self.mockUserLocation
-        if let destinationCoordinate {
-            Task { await routingManager.getRoute(from: Self.mockUserLocation, to: destinationCoordinate) }
-        } else {
-            routingManager.clear()
-        }
+        fetchRoute(to: destinationCoordinate)
     }
 
     func endGuidance() {
         mode = .point
-        dist = 1240
-        speed = 5
-        simulatedPosition = Self.mockUserLocation
-        routingManager.clear()
+        routeProgressMeters = 0
+        // The route itself stays put — the destination is still selected, so the Map tab
+        // keeps showing the preview line until the user picks something new or clears it.
     }
 
     func setTheme(_ id: ThemeID) {
@@ -289,36 +322,20 @@ final class AppModel: ObservableObject {
         setTheme(currentTheme.light ? lastDark : .paper)
     }
 
+    /// A friend's real, locatable coordinate, derived from the user's current position —
+    /// see `Friend.coordinate(near:)`. Used for both the compass needle/routing and the
+    /// Map tab's annotation, so a friend behaves exactly like any other real destination.
+    func coordinate(for f: Friend) -> CLLocationCoordinate2D { f.coordinate(near: currentPosition) }
+
     func goToFriend(_ f: Friend) {
         dest = f.name
         destKind = .friend
         destColor = f.color
         destInitials = f.initials
-        destinationCoordinate = nil // friends live on the stylised in-app map, not real coordinates
-        routingManager.clear()
         mode = .point
-        dist = 860
-    }
-
-    /// Resets pan/zoom/tilt and spins the map back to north by the shortest path, no
-    /// matter how many full turns the rotate buttons have accumulated. `mapRot` is a plain
-    /// running total (repeated ±30° taps can push it well past ±360°), and the view's
-    /// `.animation(value: mapRot)` always interpolates linearly from the last rendered
-    /// value — so snapping straight to 0 would visibly unwind every extra revolution. Instead
-    /// this collapses the current angle to its shortest-path equivalent in one unanimated
-    /// frame, then animates from THAT to 0 on the next runloop tick.
-    func recenterMap() {
-        mapX = 0
-        mapY = 0
-        mapZoom = 1
-        mapTilt = 0
-        var normalized = mapRot.truncatingRemainder(dividingBy: 360)
-        if normalized > 180 { normalized -= 360 }
-        if normalized <= -180 { normalized += 360 }
-        var noAnimation = Transaction()
-        noAnimation.disablesAnimations = true
-        withTransaction(noAnimation) { mapRot = normalized }
-        DispatchQueue.main.async { [weak self] in self?.mapRot = 0 }
+        let coordinate = coordinate(for: f)
+        destinationCoordinate = coordinate
+        fetchRoute(to: coordinate)
     }
 
     /// Drops whatever place or friend is selected and returns the compass to idle:
@@ -342,13 +359,87 @@ final class AppModel: ObservableObject {
         searchOpen = false
         searchQuery = ""
         mode = .point
-        dist = 1240
-        destinationCoordinate = Self.mockDestinations[trimmed]
-        simulatedPosition = Self.mockUserLocation
-        routingManager.clear()
         recentSearches.removeAll { $0 == trimmed }
         recentSearches.insert(trimmed, at: 0)
         if recentSearches.count > 5 { recentSearches.removeLast() }
+
+        // Show the mock coordinate immediately if this name happens to be one of the test
+        // destinations (instant feedback, no network round-trip needed), then replace it
+        // with a real geocoded result once that resolves. Falls back to staying on the
+        // mock value (or nil, if there wasn't one) if the real search fails or is offline.
+        destinationCoordinate = Self.mockDestinations[trimmed]
+        fetchRoute(to: destinationCoordinate)
+        let origin = currentPosition
+        Task { [weak self] in
+            guard let self, let real = await PlaceSearch.firstResult(for: trimmed, near: origin) else { return }
+            guard self.dest == trimmed else { return } // a newer search superseded this one
+            self.destinationCoordinate = real
+            self.fetchRoute(to: real)
+        }
+    }
+
+    /// Selects a destination straight from a real search result — already has a real
+    /// coordinate, so no geocoding round-trip is needed before showing it.
+    func pickPlace(mapItem: MKMapItem) {
+        let name = mapItem.name ?? "Selected place"
+        dest = name
+        destKind = .place
+        destColor = nil
+        destInitials = ""
+        searchOpen = false
+        searchQuery = ""
+        mode = .point
+        recentSearches.removeAll { $0 == name }
+        recentSearches.insert(name, at: 0)
+        if recentSearches.count > 5 { recentSearches.removeLast() }
+
+        let coordinate = mapItem.placemark.coordinate
+        destinationCoordinate = coordinate
+        fetchRoute(to: coordinate)
+    }
+
+    /// A notable named spot tapped on the Map tab — either one of our own real nearby-place
+    /// markers or a built-in Apple Maps point of interest — waiting on the user to confirm
+    /// whether they actually want to be routed there.
+    struct MapSelectionPrompt: Identifiable {
+        let id = UUID()
+        let name: String
+        let coordinate: CLLocationCoordinate2D
+    }
+    @Published var mapSelectionPrompt: MapSelectionPrompt?
+
+    /// Called when the user taps a notable named location on the Map tab. Autofills the
+    /// search bar with its name, switches to the Compass screen, and surfaces a prompt
+    /// asking whether to route there — rather than silently starting guidance on a tap that
+    /// might have been exploratory.
+    func selectMapFeature(name: String, coordinate: CLLocationCoordinate2D) {
+        searchQuery = name
+        screen = .compass
+        mapSelectionPrompt = MapSelectionPrompt(name: name, coordinate: coordinate)
+    }
+
+    /// The user confirmed the "route there?" prompt — selects the tapped location as the
+    /// destination and jumps straight into guidance, exactly like tapping ROUTE would.
+    func confirmMapSelectionRouting() {
+        guard let prompt = mapSelectionPrompt else { return }
+        dest = prompt.name
+        destKind = .place
+        destColor = nil
+        destInitials = ""
+        searchOpen = false
+        searchQuery = ""
+        destinationCoordinate = prompt.coordinate
+        recentSearches.removeAll { $0 == prompt.name }
+        recentSearches.insert(prompt.name, at: 0)
+        if recentSearches.count > 5 { recentSearches.removeLast() }
+        mapSelectionPrompt = nil
+        startGuidance()
+    }
+
+    /// The user declined the prompt — the search bar keeps showing the autofilled name, but
+    /// nothing further happens.
+    func dismissMapSelectionPrompt() {
+        mapSelectionPrompt = nil
     }
 
     func pickSkin(_ id: SkinID) {

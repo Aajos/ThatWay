@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import CoreLocation
 
 extension Color {
     init(hex: String) {
@@ -132,25 +133,25 @@ struct Friend: Identifiable {
         Friend(id: "mi", name: "Mira", initials: "MI", color: Color(hex: "C7B8FF"), mapPos: CGPoint(x: 420 / 1200, y: 820 / 1200)),
         Friend(id: "ka", name: "Kabir", initials: "KA", color: Color(hex: "FF9E7A"), mapPos: CGPoint(x: 640 / 1200, y: 900 / 1200)),
     ]
+
+    /// A real, locatable coordinate for this fictional friend — a small fixed offset
+    /// (within roughly a 900m square) from `origin`, derived from their normalized
+    /// on-canvas position. They're fictional people, but this gives them a genuine
+    /// coordinate so pointing/routing to them uses the same real bearing, distance, and
+    /// OSRM math as any other destination, instead of a separate simulated path.
+    func coordinate(near origin: CLLocationCoordinate2D) -> CLLocationCoordinate2D {
+        let metersPerDegreeLat = 111_320.0
+        let metersPerDegreeLon = 111_320.0 * cos(origin.latitude * .pi / 180)
+        let dx = (mapPos.x - 0.5) * 900
+        let dy = (0.5 - mapPos.y) * 900
+        return CLLocationCoordinate2D(
+            latitude: origin.latitude + dy / metersPerDegreeLat,
+            longitude: origin.longitude + dx / metersPerDegreeLon
+        )
+    }
 }
 
 enum TurnDir { case left, right, straight }
-enum LaneSide: String { case any, leftish, left, rightish, right }
-
-struct NavStep {
-    let dir: TurnDir
-    let dist: Double
-    let copy: String
-    let lane: String
-    let side: LaneSide
-
-    static let all: [NavStep] = [
-        NavStep(dir: .left, dist: 420, copy: "Hang a left after the bakery", lane: "Keep to the left two lanes", side: .leftish),
-        NavStep(dir: .straight, dist: 900, copy: "Straight on for a good while", lane: "You can relax here", side: .any),
-        NavStep(dir: .right, dist: 260, copy: "Bear right at the fork", lane: "Get into the rightmost lane", side: .right),
-        NavStep(dir: .left, dist: 180, copy: "Little left, then you're there", lane: "Far left lane, watch for cyclists", side: .left),
-    ]
-}
 
 enum SkinID: String, CaseIterable, Identifiable {
     case needle, wheel, clock, hand, vane, moon
@@ -261,22 +262,6 @@ struct NavOptions {
 enum CompassGeometry {
     static let scalePoint: Double = 0.9
     static let scaleGuide: Double = 1.06
-    static let laneIn: Double = 100
-    static let laneOut: Double = 125
-    static let r0: Double = 143
-
-    static func laneDeg(for side: LaneSide) -> Double {
-        let r = r0 * scaleGuide
-        let inner = acos(laneIn / r) * 180 / .pi
-        let outer = acos(laneOut / r) * 180 / .pi
-        switch side {
-        case .any: return 0
-        case .leftish: return -outer
-        case .left: return -inner
-        case .rightish: return outer
-        case .right: return inner
-        }
-    }
 
     static func fmt(_ metres: Double) -> String {
         if metres >= 1000 {

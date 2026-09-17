@@ -35,6 +35,77 @@ enum CompassManager {
             .distance(from: CLLocation(latitude: destination.latitude, longitude: destination.longitude))
     }
 
+    /// Walks `distance` metres along a polyline (a sequence of connected segments) from
+    /// its start, returning the interpolated point that far along — used to move a
+    /// simulated traveller smoothly along real route geometry rather than cutting corners
+    /// straight toward the next waypoint. Clamps to the last point once `distance` exceeds
+    /// the polyline's total length.
+    static func pointAlong(_ polyline: [CLLocationCoordinate2D], distance: CLLocationDistance) -> CLLocationCoordinate2D? {
+        guard let first = polyline.first else { return nil }
+        guard polyline.count > 1 else { return first }
+        var remaining = max(0, distance)
+        for i in 0..<(polyline.count - 1) {
+            let segmentStart = polyline[i]
+            let segmentEnd = polyline[i + 1]
+            let segmentLength = Self.distance(from: segmentStart, to: segmentEnd)
+            if remaining <= segmentLength {
+                guard segmentLength > 0 else { return segmentStart }
+                let fraction = remaining / segmentLength
+                return CLLocationCoordinate2D(
+                    latitude: segmentStart.latitude + (segmentEnd.latitude - segmentStart.latitude) * fraction,
+                    longitude: segmentStart.longitude + (segmentEnd.longitude - segmentStart.longitude) * fraction
+                )
+            }
+            remaining -= segmentLength
+        }
+        return polyline.last
+    }
+
+    /// The closest point on a polyline to `location`, together with how far away it is and
+    /// which segment it falls on. Used to trim a route line down to "what's left ahead" as
+    /// the traveller moves, and to detect drifting off the planned route entirely.
+    struct NearestPointResult {
+        let point: CLLocationCoordinate2D
+        let distance: CLLocationDistance
+        /// Index of the segment's start point — the remaining path continues from
+        /// `polyline[segmentIndex + 1]` onward.
+        let segmentIndex: Int
+    }
+
+    static func nearestPoint(on polyline: [CLLocationCoordinate2D], to location: CLLocationCoordinate2D) -> NearestPointResult? {
+        guard let first = polyline.first else { return nil }
+        guard polyline.count > 1 else {
+            return NearestPointResult(point: first, distance: distance(from: location, to: first), segmentIndex: 0)
+        }
+        var best: NearestPointResult?
+        for i in 0..<(polyline.count - 1) {
+            let projected = projectPoint(location, ontoSegmentFrom: polyline[i], to: polyline[i + 1])
+            let d = distance(from: location, to: projected)
+            if best == nil || d < best!.distance {
+                best = NearestPointResult(point: projected, distance: d, segmentIndex: i)
+            }
+        }
+        return best
+    }
+
+    /// Projects `point` onto the segment from `a` to `b` (clamped to the segment), using a
+    /// local flat-earth approximation — accurate enough at the scale of one route segment —
+    /// then converts back to a real coordinate.
+    private static func projectPoint(_ point: CLLocationCoordinate2D, ontoSegmentFrom a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) -> CLLocationCoordinate2D {
+        let metersPerDegreeLat = 111_320.0
+        let metersPerDegreeLon = 111_320.0 * cos(a.latitude.radians)
+        let bx = (b.longitude - a.longitude) * metersPerDegreeLon
+        let by = (b.latitude - a.latitude) * metersPerDegreeLat
+        let px = (point.longitude - a.longitude) * metersPerDegreeLon
+        let py = (point.latitude - a.latitude) * metersPerDegreeLat
+        let lengthSquared = bx * bx + by * by
+        let t = lengthSquared > 0 ? max(0, min(1, (px * bx + py * by) / lengthSquared)) : 0
+        return CLLocationCoordinate2D(
+            latitude: a.latitude + (by * t) / metersPerDegreeLat,
+            longitude: a.longitude + (bx * t) / metersPerDegreeLon
+        )
+    }
+
     /// The angle to rotate a needle, relative to the top of the screen, so it points
     /// at `bearing` while the device is currently facing `heading`. Normalized to (-180, 180].
     static func relativeBearing(heading: CLLocationDirection, bearing: CLLocationDirection) -> Double {

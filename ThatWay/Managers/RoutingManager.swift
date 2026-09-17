@@ -23,7 +23,7 @@ struct RouteStep: Identifiable {
     let maneuverType: String
     let maneuverModifier: String?
     /// Where this step's own road segment begins and ends — used to compute `bearing`,
-    /// and (for `endCoordinate`) to detect arrival at the step via `updateStepIfNeeded`.
+    /// and (for `endCoordinate`) to detect arrival at the step via `updateProgress`.
     let startCoordinate: CLLocationCoordinate2D
     let endCoordinate: CLLocationCoordinate2D
     /// The heading to point the compass along for this step, computed from
@@ -50,9 +50,20 @@ final class RoutingManager: ObservableObject {
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
 
+    /// `routePolyline` trimmed back to start at the traveller's current position — so the
+    /// line on screen shows only the road still ahead, not the ground already covered.
+    @Published private(set) var remainingPolyline: [CLLocationCoordinate2D] = []
+    /// True once the traveller has drifted further from the route than `offRouteThreshold`
+    /// allows — a wrong turn or a real GPS position that's left the planned road — signaling
+    /// that whoever's driving this route forward should fetch a fresh one.
+    @Published private(set) var isOffRoute = false
+
     /// How close (metres) the traveller needs to get to a step's endpoint before
     /// guidance advances to the next instruction.
     private let arrivalRadius: CLLocationDistance = 50
+    /// How far (metres) the traveller can drift from the route line before it counts as
+    /// having left the route rather than just normal GPS noise.
+    private let offRouteThreshold: CLLocationDistance = 45
 
     var currentStep: RouteStep? { steps.indices.contains(currentStepIndex) ? steps[currentStepIndex] : nil }
     var nextStep: RouteStep? { steps.indices.contains(currentStepIndex + 1) ? steps[currentStepIndex + 1] : nil }
@@ -107,6 +118,8 @@ final class RoutingManager: ObservableObject {
             let parsed = Self.parse(osrmRoute)
             steps = parsed.steps
             routePolyline = parsed.polyline
+            remainingPolyline = parsed.polyline
+            isOffRoute = false
             totalDistance = parsed.totalDistance
             totalDuration = parsed.totalDuration
             currentStepIndex = 0
@@ -120,17 +133,31 @@ final class RoutingManager: ObservableObject {
     func clear() {
         steps = []
         routePolyline = []
+        remainingPolyline = []
+        isOffRoute = false
         totalDistance = 0
         totalDuration = 0
         currentStepIndex = 0
         errorMessage = nil
     }
 
-    /// Advances to the next step once the traveller gets within `arrivalRadius` of the
-    /// current step's endpoint.
-    func updateStepIfNeeded(userLocation: CLLocationCoordinate2D) {
-        guard let step = currentStep, !isFinished else { return }
-        if CompassManager.distance(from: userLocation, to: step.endCoordinate) <= arrivalRadius {
+    /// Called every tick with the traveller's real (or simulated) position. Advances to the
+    /// next step once they're within `arrivalRadius` of the current step's endpoint, trims
+    /// `remainingPolyline` down to the road still ahead of them, and flags `isOffRoute` when
+    /// they've drifted too far from the planned line for whoever owns navigation (AppModel)
+    /// to fetch a fresh route.
+    func updateProgress(userLocation: CLLocationCoordinate2D) {
+        guard !routePolyline.isEmpty else {
+            remainingPolyline = []
+            isOffRoute = false
+            return
+        }
+        if let nearest = CompassManager.nearestPoint(on: routePolyline, to: userLocation) {
+            isOffRoute = nearest.distance > offRouteThreshold
+            remainingPolyline = [nearest.point] + routePolyline.suffix(from: min(nearest.segmentIndex + 1, routePolyline.count))
+        }
+        if let step = currentStep, !isFinished,
+           CompassManager.distance(from: userLocation, to: step.endCoordinate) <= arrivalRadius {
             currentStepIndex += 1
             print("[RoutingManager] Arrived at step endpoint, advancing to step \(currentStepIndex)")
         }

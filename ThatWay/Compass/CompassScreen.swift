@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import MapKit
 
 /// Reports a view's actual on-screen frame so siblings (guide lines, the mode
 /// toggle's no-go zones) can key off where it really ended up, rather than a
@@ -159,6 +160,19 @@ struct CompassScreen: View {
             // actually needs to shift when the keyboard appears.
             .ignoresSafeArea(.keyboard, edges: .bottom)
         }
+        .alert(
+            "Route there?",
+            isPresented: Binding(
+                get: { app.mapSelectionPrompt != nil },
+                set: { if !$0 { app.dismissMapSelectionPrompt() } }
+            ),
+            presenting: app.mapSelectionPrompt
+        ) { _ in
+            Button("Route") { app.confirmMapSelectionRouting() }
+            Button("Not now", role: .cancel) { app.dismissMapSelectionPrompt() }
+        } message: { prompt in
+            Text("Get directions to \(prompt.name)?")
+        }
     }
 
     private func closeSearch() {
@@ -215,7 +229,7 @@ struct CompassScreen: View {
                 .font(.nunito(10, .extraBold))
                 .tracking(1.4)
                 .foregroundStyle(theme.ink.opacity(0.86))
-            Text("\(Int(app.speed.rounded())) \(app.opts.units == "Miles" ? "mph" : "km/h")")
+            Text("\(Int(app.displaySpeed.rounded())) \(app.opts.units == "Miles" ? "mph" : "km/h")")
                 .font(.nunito(10, .semibold))
                 .foregroundStyle(theme.textSecondary)
         }
@@ -469,23 +483,18 @@ private struct RouteLineView: View {
     }
 }
 
-/// Results and recent-search suggestions only — the search bar itself lives above this
-/// panel and stays interactive, so there's no second, redundant text field in here.
+/// Recent-search suggestions when the field is empty, or up to 10 real nearby-place
+/// matches (via `PlaceSearch`, ranked by actual distance from the user) once they start
+/// typing. The search bar itself lives above this panel and stays interactive, so there's
+/// no second, redundant text field in here.
 private struct SearchResultsPanel: View {
     @EnvironmentObject var app: AppModel
     let k: CGFloat
     let onClose: () -> Void
 
-    private let placeKinds: [String: (sub: String, kind: String, dist: String)] = [
-        "Sunrise Bakery": ("Open until 9", "✦", "1.2 km"),
-        "Home": ("Saved", "⌂", "6.8 km"),
-        "Baker Street Lot": ("Parking", "P", "3.1 km"),
-    ]
-
-    private var results: [String] {
-        guard !app.searchQuery.isEmpty else { return app.recentSearches }
-        return app.recentSearches.filter { $0.localizedCaseInsensitiveContains(app.searchQuery) }
-    }
+    @State private var liveResults: [MKMapItem] = []
+    @State private var isSearching = false
+    @State private var searchTask: Task<Void, Never>?
 
     var body: some View {
         let theme = app.currentTheme
@@ -495,36 +504,22 @@ private struct SearchResultsPanel: View {
                 .foregroundStyle(theme.textSecondary)
                 .padding(.top, Spacing.container)
 
-            if results.isEmpty {
+            if app.searchQuery.isEmpty {
+                recentList(theme: theme)
+            } else if isSearching && liveResults.isEmpty {
+                Text("Searching…")
+                    .font(.nunito(13, .semibold))
+                    .foregroundStyle(theme.textSecondary)
+                    .padding(.vertical, Spacing.element)
+            } else if liveResults.isEmpty {
                 Text("No matches for \u{201C}\(app.searchQuery)\u{201D}")
                     .font(.nunito(13, .semibold))
                     .foregroundStyle(theme.textSecondary)
                     .padding(.vertical, Spacing.element)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(results, id: \.self) { name in
-                        let info = placeKinds[name] ?? ("Recent", "◷", "—")
-                        Button {
-                            app.pickPlace(name)
-                            onClose()
-                        } label: {
-                            HStack(spacing: Spacing.element) {
-                                Text(info.kind)
-                                    .font(.nunito(13, .bold))
-                                    .foregroundStyle(theme.ink.opacity(0.76))
-                                    .frame(width: 34, height: 34)
-                                    .background(RoundedRectangle(cornerRadius: 11).fill(theme.ink.opacity(0.08)))
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(name).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink)
-                                    Text(info.sub).font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary)
-                                }
-                                Spacer()
-                                Text(info.dist).font(.nunito(12, .bold)).foregroundStyle(theme.textSecondary)
-                            }
-                            .padding(.vertical, Spacing.tight + 3).padding(.horizontal, Spacing.tight)
-                            .overlay(Divider().background(theme.borderColor), alignment: .bottom)
-                        }
-                        .buttonStyle(.plain)
+                    ForEach(liveResults, id: \.self) { item in
+                        resultRow(item, theme: theme)
                     }
                 }
             }
@@ -537,5 +532,96 @@ private struct SearchResultsPanel: View {
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .shadow(color: .black.opacity(0.35), radius: 24, y: -8)
         )
+        .onChange(of: app.searchQuery) { _, query in scheduleSearch(query) }
+        .onDisappear { searchTask?.cancel() }
+    }
+
+    @ViewBuilder
+    private func recentList(theme: AppTheme) -> some View {
+        if app.recentSearches.isEmpty {
+            Text("No recent searches yet")
+                .font(.nunito(13, .semibold))
+                .foregroundStyle(theme.textSecondary)
+                .padding(.vertical, Spacing.element)
+        } else {
+            VStack(spacing: 0) {
+                ForEach(app.recentSearches, id: \.self) { name in
+                    Button {
+                        app.pickPlace(name)
+                        onClose()
+                    } label: {
+                        HStack(spacing: Spacing.element) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(theme.ink.opacity(0.76))
+                                .frame(width: 34, height: 34)
+                                .background(RoundedRectangle(cornerRadius: 11).fill(theme.ink.opacity(0.08)))
+                            Text(name).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink)
+                            Spacer()
+                        }
+                        .padding(.vertical, Spacing.tight + 3).padding(.horizontal, Spacing.tight)
+                        .overlay(Divider().background(theme.borderColor), alignment: .bottom)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func resultRow(_ item: MKMapItem, theme: AppTheme) -> some View {
+        let name = item.name ?? "Unnamed place"
+        let metres = CompassManager.distance(from: app.currentPosition, to: item.placemark.coordinate)
+        Button {
+            app.pickPlace(mapItem: item)
+            onClose()
+        } label: {
+            HStack(spacing: Spacing.element) {
+                Image(systemName: "mappin.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(theme.ink.opacity(0.76))
+                    .frame(width: 34, height: 34)
+                    .background(RoundedRectangle(cornerRadius: 11).fill(theme.ink.opacity(0.08)))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(name).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink).lineLimit(1)
+                    if let subtitle = subtitle(for: item) {
+                        Text(subtitle).font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(1)
+                    }
+                }
+                Spacer()
+                Text(CompassManager.formattedDistance(metres))
+                    .font(.nunito(12, .bold)).foregroundStyle(theme.textSecondary)
+            }
+            .padding(.vertical, Spacing.tight + 3).padding(.horizontal, Spacing.tight)
+            .overlay(Divider().background(theme.borderColor), alignment: .bottom)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func subtitle(for item: MKMapItem) -> String? {
+        if let street = item.placemark.thoroughfare { return street }
+        return item.placemark.locality
+    }
+
+    /// Debounces as the user types so every keystroke doesn't fire its own network
+    /// request, then asks for the 10 nearest real matches for whatever they typed last.
+    private func scheduleSearch(_ query: String) {
+        searchTask?.cancel()
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            liveResults = []
+            isSearching = false
+            return
+        }
+        isSearching = true
+        let origin = app.currentPosition
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            let found = await PlaceSearch.search(for: trimmed, near: origin)
+            guard !Task.isCancelled else { return }
+            liveResults = found
+            isSearching = false
+        }
     }
 }

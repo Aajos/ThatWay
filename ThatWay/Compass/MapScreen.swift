@@ -2,277 +2,200 @@
 //  MapScreen.swift
 //  ThatWay
 //
-//  A deliberately label-free, routing-free map: drag to pan, pinch to zoom,
-//  rotate with two fingers, and a tilt toggle for a pseudo-3D look. The live map
-//  bleeds full-bleed behind the whole screen (blurred and faded toward the physical
-//  edges) so the interactive box in front never visibly "stops" at its own border.
+//  A real MapKit map: real tiles for the area around the user, their real location (via
+//  MapKit's own location handling), friends placed as real nearby coordinates, real
+//  points of interest, and — once a destination is selected — the actual fetched route
+//  traced live, trimmed back as the traveller moves and refreshed if they drift off it.
 //
 
 import SwiftUI
-import CoreLocation
+import MapKit
 
 struct MapScreen: View {
     @EnvironmentObject var app: AppModel
-    @GestureState private var panOffset: CGSize = .zero
-    @GestureState private var pinchDelta: CGFloat = 1
-    @GestureState private var rotateDelta: Angle = .zero
-    @State private var pulsing = false
+    @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var nearbyPlaces: [MKMapItem] = []
+    @State private var hasCenteredOnce = false
+    @State private var selection: MapSelection<MKMapItem>?
+    @State private var is3D = false
+    @State private var mapStyleIndex = 0
+
+    /// The route line to actually draw: the full preview before guidance starts, but
+    /// trimmed back to "what's left ahead" once guiding — so the line doesn't keep
+    /// re-drawing ground the traveller has already covered.
+    private var displayedPolyline: [CLLocationCoordinate2D] {
+        if app.guiding, !app.routingManager.remainingPolyline.isEmpty {
+            return app.routingManager.remainingPolyline
+        }
+        return app.routingManager.routePolyline
+    }
+
+    private var currentMapStyle: MapStyle {
+        switch mapStyleIndex {
+        case 1: return .hybrid
+        case 2: return .imagery
+        default: return .standard
+        }
+    }
 
     var body: some View {
         let theme = app.currentTheme
 
-        ZStack {
-            // Full-bleed underlay — the same live map, filling the entire screen edge to
-            // edge (including behind the header and the floating tab bar), blurred and
-            // faded toward the screen's extreme edges. Its transforms are driven by the
-            // exact same state as the boxed map below, so the two stay perfectly in sync
-            // as you pan, zoom, rotate, or tilt.
-            GeometryReader { geo in
-                mapContent(theme: theme)
-                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
-            }
-            .blur(radius: 6)
-            .opacity(0.95)
-            .mask(edgeFadeMask)
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
+        VStack(spacing: 0) {
+            Text("Map").font(.nunito(24, .black))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, 2)
+                .padding(.bottom, 6)
 
-            VStack(spacing: 0) {
-                Text("Map").font(.nunito(24, .black))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 2)
-                    .padding(.bottom, 6)
+            Map(position: $cameraPosition, selection: $selection) {
+                UserAnnotation()
 
-                GeometryReader { geo in
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 26).fill(theme.ink.opacity(0.03))
-
-                        mapContent(theme: theme)
-                            .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                            .clipped()
-
-                        // north indicator
-                        VStack(spacing: 3) {
-                            Triangle().fill(theme.accent).frame(width: 12, height: 12)
-                            Text("N").font(.nunito(10, .black)).tracking(1.4).foregroundStyle(theme.ink.opacity(0.72))
-                        }
-                        .rotationEffect(.degrees(app.mapRot))
-                        .position(x: 30, y: 26)
-
-                        // controls — always live; the map stays fully interactive whether or not
-                        // you're guiding. Centred low enough that the top button clears the box's
-                        // own rounded-corner clip instead of getting sheared off.
-                        VStack(spacing: 8) {
-                            ctrl("+") { app.mapZoom = min(3, app.mapZoom * 1.25) }
-                            ctrl("−") { app.mapZoom = max(0.55, app.mapZoom / 1.25) }
-                            ctrl("↺") { app.mapRot -= 30 }
-                            ctrl("↻") { app.mapRot += 30 }
-                            ctrl("◰") { app.mapTilt = app.mapTilt == 0 ? 42 : 0 }
-                            ctrl("◎") { app.recenterMap() }
-                        }
-                        .position(x: geo.size.width - 30, y: 150)
+                ForEach(Friend.all) { f in
+                    Annotation(f.name, coordinate: app.coordinate(for: f)) {
+                        friendMarker(f, theme: theme)
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 26))
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture()
-                            .updating($panOffset) { value, state, _ in state = value.translation }
-                            .onEnded { value in
-                                app.mapX += value.translation.width
-                                app.mapY += value.translation.height
-                            }
-                    )
-                    .simultaneousGesture(
-                        MagnificationGesture()
-                            .updating($pinchDelta) { value, state, _ in state = value }
-                            .onEnded { value in app.mapZoom = max(0.55, min(3, app.mapZoom * value)) }
-                    )
-                    .simultaneousGesture(
-                        RotationGesture()
-                            .updating($rotateDelta) { value, state, _ in state = value }
-                            .onEnded { value in app.mapRot += value.degrees }
-                    )
                 }
-                .padding(.top, 4)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 55)
+
+                // The real destination and route line appear as soon as a place or friend
+                // is selected — a preview before guidance even starts, exactly like the
+                // route line a real turn-by-turn app shows you before you hit "Go".
+                if let destinationCoordinate = app.destinationCoordinate {
+                    Marker(app.dest, coordinate: destinationCoordinate)
+                        .tint(.red)
+                }
+                if displayedPolyline.count > 1 {
+                    MapPolyline(coordinates: displayedPolyline)
+                        .stroke(app.routeColor, lineWidth: 6)
+                }
+
+                // Tagged so tapping one of our own real nearby-place markers reports back
+                // through `selection` exactly like tapping a built-in Apple Maps POI does.
+                ForEach(nearbyPlaces, id: \.self) { item in
+                    Marker(item: item).tint(.orange).tag(item)
+                }
             }
+            .mapStyle(currentMapStyle)
+            .mapControls {
+                MapUserLocationButton()
+                MapPitchToggle()
+                MapCompass()
+            }
+            .overlay(alignment: .bottomTrailing) {
+                mapActionCluster(theme: theme)
+                    .padding(12)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 26))
+            .overlay(RoundedRectangle(cornerRadius: 26).stroke(theme.ink.opacity(0.1)))
+            .padding(.horizontal, 16)
+            .padding(.bottom, 90)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.top, 8)
         .background(theme.screen)
-        .onAppear { pulsing = true }
-        .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: pulsing)
+        .onAppear {
+            centerOnUserIfNeeded()
+            Task {
+                nearbyPlaces = await PlaceSearch.nearbyPlaces(around: app.currentPosition, radius: 1500)
+            }
+        }
+        .onChange(of: app.hasRealLocation) { _, hasFix in
+            if hasFix { centerOnUserIfNeeded() }
+        }
+        .onChange(of: selection) { _, newValue in
+            handleSelection(newValue)
+        }
     }
 
-    /// The live map field with all of its interactive transforms applied, but not yet
-    /// positioned or clipped — shared by both the full-bleed underlay and the sharp boxed
-    /// layer so they're always pixel-for-pixel in sync. Spring-animated so every button
-    /// tap (zoom, rotate, tilt, recentre) glides smoothly rather than snapping.
+    /// Centres the camera on a real ~3km×3km block around the user the first time a
+    /// position (real fix, or the mock fallback) is available — after that, panning is
+    /// left entirely to the user; `MapUserLocationButton()` re-centres on request.
+    private func centerOnUserIfNeeded() {
+        guard !hasCenteredOnce else { return }
+        hasCenteredOnce = true
+        let region = MKCoordinateRegion(center: app.currentPosition, latitudinalMeters: 3000, longitudinalMeters: 3000)
+        withAnimation { cameraPosition = .region(region) }
+    }
+
+    /// A tap on either one of our own real nearby-place markers or a built-in Apple Maps
+    /// point of interest — either way, a real named place with a real coordinate, so it
+    /// gets routed through the same "autofill + ask to route" flow.
+    private func handleSelection(_ newValue: MapSelection<MKMapItem>?) {
+        guard let newValue else { return }
+        if let feature = newValue.feature, let name = feature.title {
+            app.selectMapFeature(name: name, coordinate: feature.coordinate)
+        } else if let item = newValue.value {
+            app.selectMapFeature(name: item.name ?? "Selected place", coordinate: item.placemark.coordinate)
+        }
+        selection = nil
+    }
+
+    /// Tilts the camera between flat (2D) and a 60° perspective (3D) in place, keeping
+    /// whatever centre/zoom/heading the user last set rather than resetting the view.
+    private func toggle3D() {
+        let camera = cameraPosition.camera
+            ?? MapCamera(centerCoordinate: app.currentPosition, distance: 1200, heading: 0, pitch: 0)
+        is3D.toggle()
+        withAnimation(.easeInOut(duration: 0.4)) {
+            cameraPosition = .camera(MapCamera(
+                centerCoordinate: camera.centerCoordinate,
+                distance: camera.distance,
+                heading: camera.heading,
+                pitch: is3D ? 60 : 0
+            ))
+        }
+    }
+
+    private func cycleMapStyle() {
+        mapStyleIndex = (mapStyleIndex + 1) % 3
+    }
+
+    private var mapStyleLabel: String {
+        switch mapStyleIndex {
+        case 1: return "HYBRID"
+        case 2: return "SATELLITE"
+        default: return "STANDARD"
+        }
+    }
+
+    /// A small custom cluster of map actions — 2D/3D perspective and map style — alongside
+    /// MapKit's own built-in controls (recenter, native pitch toggle, compass).
     @ViewBuilder
-    private func mapContent(theme: AppTheme) -> some View {
-        MapField(
-            theme: theme,
-            routeColor: app.guiding ? app.routeColor : nil,
-            pulsing: pulsing,
-            routePolyline: app.hasRealRoute ? app.routingManager.routePolyline : [],
-            routeOrigin: AppModel.mockUserLocation
-        )
-            .frame(width: 1200, height: 1200)
-            .scaleEffect(app.mapZoom * pinchDelta)
-            .rotationEffect(app.mapRot == 0 && rotateDelta == .zero ? .zero : .degrees(app.mapRot) + rotateDelta)
-            .rotation3DEffect(.degrees(app.mapTilt), axis: (x: 1, y: 0, z: 0), perspective: 0.5)
-            .offset(x: app.mapX + panOffset.width, y: app.mapY + panOffset.height)
-            .animation(.spring(response: 0.45, dampingFraction: 0.82), value: app.mapZoom)
-            .animation(.spring(response: 0.45, dampingFraction: 0.82), value: app.mapRot)
-            .animation(.spring(response: 0.45, dampingFraction: 0.82), value: app.mapTilt)
-            .animation(.spring(response: 0.45, dampingFraction: 0.82), value: app.mapX)
-            .animation(.spring(response: 0.45, dampingFraction: 0.82), value: app.mapY)
-    }
-
-    /// Fades the full-bleed underlay out toward the physical screen edges on every side,
-    /// so it reads as periphery rather than a hard-edged rectangle of its own.
-    private var edgeFadeMask: some View {
-        ZStack {
-            LinearGradient(
-                stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.04),
-                        .init(color: .black, location: 0.96), .init(color: .clear, location: 1)],
-                startPoint: .top, endPoint: .bottom
-            )
-            LinearGradient(
-                stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.03),
-                        .init(color: .black, location: 0.97), .init(color: .clear, location: 1)],
-                startPoint: .leading, endPoint: .trailing
-            )
-            .blendMode(.multiply)
+    private func mapActionCluster(theme: AppTheme) -> some View {
+        VStack(spacing: 10) {
+            mapActionButton(icon: "cube", label: is3D ? "2D" : "3D", theme: theme, action: toggle3D)
+            mapActionButton(icon: "globe.americas.fill", label: mapStyleLabel, theme: theme, action: cycleMapStyle)
         }
     }
 
     @ViewBuilder
-    private func ctrl(_ glyph: String, action: @escaping () -> Void) -> some View {
+    private func mapActionButton(icon: String, label: String, theme: AppTheme, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(glyph)
-                .font(.system(size: 15, weight: .heavy))
-                .foregroundStyle(app.currentTheme.ink.opacity(0.9))
-                .frame(width: 38, height: 38)
-                .background(RoundedRectangle(cornerRadius: 13).fill(app.currentTheme.screen))
-                .overlay(RoundedRectangle(cornerRadius: 13).stroke(app.currentTheme.ink.opacity(0.14)))
+            VStack(spacing: 2) {
+                Image(systemName: icon).font(.system(size: 15, weight: .semibold))
+                Text(label).font(.nunito(8, .extraBold)).tracking(0.4)
+            }
+            .foregroundStyle(theme.ink)
+            .frame(width: 50, height: 46)
+            .background(RoundedRectangle(cornerRadius: 14).fill(theme.screen.opacity(0.92)))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(theme.borderColor))
+            .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
         }
+        .buttonStyle(.plain)
     }
-}
 
-private struct MapField: View {
-    let theme: AppTheme
-    /// Non-nil (and tinted to the current activity) while guiding, standing in for a real
-    /// route polyline; nil in Point mode, where the road is just a neutral accent hint.
-    let routeColor: Color?
-    let pulsing: Bool
-    /// The real OSRM route geometry once a route is loaded — drawn as an actual traced
-    /// path instead of the generic diagonal road hint.
-    let routePolyline: [CLLocationCoordinate2D]
-    /// The real-world coordinate that maps to this canvas's centre (599,599, matching the
-    /// "you are here" dot), so the traced path lines up with where the dot actually sits.
-    let routeOrigin: CLLocationCoordinate2D
-
-    var body: some View {
-        ZStack {
-            GridLines(color: theme.ink.opacity(0.06))
-            // arterial roads
-            Rectangle().fill(theme.ink.opacity(0.09)).frame(height: 14).offset(y: 420 - 600)
-            Rectangle().fill(theme.ink.opacity(0.07)).frame(height: 9).offset(y: 660 - 600)
-            Rectangle().fill(theme.ink.opacity(0.08)).frame(height: 12).offset(y: 868 - 600)
-            Rectangle().fill(theme.ink.opacity(0.08)).frame(width: 12).offset(x: 380 - 600)
-            Rectangle().fill(theme.ink.opacity(0.065)).frame(width: 9).offset(x: 600 - 600)
-            Rectangle().fill(theme.ink.opacity(0.075)).frame(width: 12).offset(x: 820 - 600)
-
-            if routePolyline.count > 1 {
-                // The real, geographically-traced route — projected from lat/lon into this
-                // canvas's local coordinate space around `routeOrigin`.
-                Path { path in
-                    let points = routePolyline.map { Self.project($0, origin: routeOrigin) }
-                    path.move(to: points[0])
-                    for point in points.dropFirst() { path.addLine(to: point) }
-                }
-                .stroke(Color.blue, style: StrokeStyle(lineWidth: 9, lineCap: .round, lineJoin: .round))
-                .shadow(color: Color.blue.opacity(0.6), radius: 10)
-                .frame(width: 1200, height: 1200)
-            } else {
-                // route overlay — a plain accent hint in Point mode, the live route colour
-                // (and a fuller glow) once guidance is under way but no real route is loaded yet.
-                Rectangle()
-                    .fill((routeColor ?? theme.accent).opacity(routeColor != nil ? 0.55 : 0.16))
-                    .frame(width: 900, height: routeColor != nil ? 14 : 10)
-                    .shadow(color: (routeColor ?? .clear).opacity(0.6), radius: routeColor != nil ? 10 : 0)
-                    .rotationEffect(.degrees(34))
-                    .offset(x: 570 - 600, y: 505 - 600)
-            }
-
-            // you-are-here — pulses continuously so it reads clearly on a live map.
-            ZStack {
-                Circle().fill((routeColor ?? theme.accent).opacity(pulsing ? 0.12 : 0.45))
-                    .frame(width: pulsing ? 54 : 36, height: pulsing ? 54 : 36)
-                Circle().fill(routeColor ?? theme.accent).frame(width: 18, height: 18)
-                    .overlay(Circle().stroke(theme.screen, lineWidth: 3))
-                    .shadow(color: routeColor ?? theme.accent, radius: 10)
-            }
-            .offset(x: 599 - 600, y: 599 - 600)
-
-            ForEach(Friend.all) { f in
-                VStack(spacing: 4) {
-                    Circle().fill(f.color).frame(width: 34, height: 34)
-                        .overlay(Circle().stroke(theme.screen, lineWidth: 2))
-                        .overlay(Text(f.initials).font(.nunito(12, .extraBold)).foregroundStyle(Color(hex: "241A14")))
-                    Text(f.name).font(.nunito(10, .semibold)).foregroundStyle(theme.ink.opacity(0.72))
-                }
-                .offset(x: f.mapPos.x * 1200 - 600, y: f.mapPos.y * 1200 - 600)
-            }
+    @ViewBuilder
+    private func friendMarker(_ f: Friend, theme: AppTheme) -> some View {
+        VStack(spacing: 4) {
+            Circle().fill(f.color).frame(width: 34, height: 34)
+                .overlay(Circle().stroke(.white, lineWidth: 2))
+                .overlay(Text(f.initials).font(.nunito(12, .extraBold)).foregroundStyle(Color(hex: "241A14")))
+                .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+            Text(f.name)
+                .font(.nunito(10, .semibold))
+                .foregroundStyle(theme.ink)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(theme.screen.opacity(0.85), in: Capsule())
         }
-    }
-
-    /// Projects a real lat/lon onto this 1200×1200 canvas as a flat local-tangent-plane
-    /// approximation around `origin` (fine at city scale) — `origin` lands on the canvas
-    /// centre (600,600), matching the "you are here" dot.
-    private static func project(_ coordinate: CLLocationCoordinate2D, origin: CLLocationCoordinate2D) -> CGPoint {
-        let metersPerDegreeLat = 111_320.0
-        let metersPerDegreeLon = 111_320.0 * cos(origin.latitude * .pi / 180)
-        let dx = (coordinate.longitude - origin.longitude) * metersPerDegreeLon
-        let dy = (coordinate.latitude - origin.latitude) * metersPerDegreeLat
-        let metersToPoints = 0.4
-        return CGPoint(x: 600 + dx * metersToPoints, y: 600 - dy * metersToPoints)
-    }
-}
-
-private struct GridLines: View {
-    let color: Color
-    var body: some View {
-        Canvas { ctx, size in
-            let step: CGFloat = 34
-            var x: CGFloat = 0
-            while x <= size.width {
-                var p = Path(); p.move(to: CGPoint(x: x, y: 0)); p.addLine(to: CGPoint(x: x, y: size.height))
-                ctx.stroke(p, with: .color(color), lineWidth: 1)
-                x += step
-            }
-            var y: CGFloat = 0
-            while y <= size.height {
-                var p = Path(); p.move(to: CGPoint(x: 0, y: y)); p.addLine(to: CGPoint(x: size.width, y: y))
-                ctx.stroke(p, with: .color(color), lineWidth: 1)
-                y += step
-            }
-        }
-    }
-}
-
-private struct Triangle: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        p.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        p.closeSubpath()
-        return p
     }
 }
