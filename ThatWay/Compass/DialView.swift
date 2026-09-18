@@ -31,19 +31,12 @@ struct DialView: View {
             // as a single clean ellipse — never a mismatched patchwork of differently-sized
             // circles or straight edges poking out past the rim.
             ZStack {
-                // dial body — recolours to the selected friend's own colour when pointing at
-                // them (with their initials centred on the face); otherwise the default
-                // theme-coloured (coral, in Ember) tint.
+                // dial body — theme-coloured (coral, in Ember) tint.
                 Circle()
-                    .fill(
-                        app.friendMode
-                            ? AnyShapeStyle(RadialGradient(colors: [app.accent, app.accent.adjustedBrightness(-0.32)], center: .init(x: 0.5, y: 0.28), startRadius: 0, endRadius: 150 * k))
-                            : AnyShapeStyle(RadialGradient(colors: [theme.dialA, theme.dialB], center: .init(x: 0.5, y: 0.28), startRadius: 0, endRadius: 150 * k))
-                    )
-                    .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.destColor)
+                    .fill(RadialGradient(colors: [theme.dialA, theme.dialB], center: .init(x: 0.5, y: 0.28), startRadius: 0, endRadius: 150 * k))
 
                 // glassmorphic rim — a frosted gradient ring pulling 2-3 dominant tones from
-                // the current accent (a friend's avatar colors when pointing at them).
+                // the current accent.
                 Circle()
                     .strokeBorder(
                         AngularGradient(colors: glassColors.map { $0.opacity(0.18) } + [glassColors[0].opacity(0.18)], center: .center),
@@ -52,31 +45,38 @@ struct DialView: View {
                     .background(Circle().fill(.ultraThinMaterial).opacity(0.15))
                     .blendMode(.plusLighter)
 
-                // ticks
-                TickRing(color: theme.ink)
-                    .padding(14 * k)
+                // The tick ring and cardinal letters rotate together as one real compass
+                // bezel — "N" always ends up at true geographic north on screen as the
+                // phone turns, exactly like a physical compass's rotating dial. The needle
+                // (below) rotates independently to point at the destination.
+                ZStack {
+                    TickRing(color: theme.ink)
+                        .padding(14 * k)
 
-                // cardinal letters — idle mode emphasizes all four so the dial visibly reads
-                // as "resting, north-up" rather than mid-navigation.
-                VStack {
-                    Text("N").font(.nunito(app.isIdle ? 17 : 13, .black)).tracking(2).foregroundStyle(theme.accent)
-                        .shadow(color: theme.accent.opacity(app.isIdle ? 0.55 : 0), radius: 8)
-                    Spacer()
-                    Text("S").font(.nunito(app.isIdle ? 15 : 12, app.isIdle ? .black : .bold))
-                        .foregroundStyle(app.isIdle ? theme.accent : theme.textSecondary)
-                        .shadow(color: theme.accent.opacity(app.isIdle ? 0.4 : 0), radius: 6)
+                    // cardinal letters — idle mode emphasizes all four so the dial visibly reads
+                    // as "resting, north-up" rather than mid-navigation.
+                    VStack {
+                        Text("N").font(.nunito(app.isIdle ? 17 : 13, .black)).tracking(2).foregroundStyle(theme.accent)
+                            .shadow(color: theme.accent.opacity(app.isIdle ? 0.55 : 0), radius: 8)
+                        Spacer()
+                        Text("S").font(.nunito(app.isIdle ? 15 : 12, app.isIdle ? .black : .bold))
+                            .foregroundStyle(app.isIdle ? theme.accent : theme.textSecondary)
+                            .shadow(color: theme.accent.opacity(app.isIdle ? 0.4 : 0), radius: 6)
+                    }
+                    .padding(.vertical, 30 * k)
+                    HStack {
+                        Text("W").font(.nunito(app.isIdle ? 15 : 12, app.isIdle ? .black : .bold))
+                            .foregroundStyle(app.isIdle ? theme.accent : theme.textSecondary)
+                            .shadow(color: theme.accent.opacity(app.isIdle ? 0.4 : 0), radius: 6)
+                        Spacer()
+                        Text("E").font(.nunito(app.isIdle ? 15 : 12, app.isIdle ? .black : .bold))
+                            .foregroundStyle(app.isIdle ? theme.accent : theme.textSecondary)
+                            .shadow(color: theme.accent.opacity(app.isIdle ? 0.4 : 0), radius: 6)
+                    }
+                    .padding(.horizontal, 30 * k)
                 }
-                .padding(.vertical, 30 * k)
-                HStack {
-                    Text("W").font(.nunito(app.isIdle ? 15 : 12, app.isIdle ? .black : .bold))
-                        .foregroundStyle(app.isIdle ? theme.accent : theme.textSecondary)
-                        .shadow(color: theme.accent.opacity(app.isIdle ? 0.4 : 0), radius: 6)
-                    Spacer()
-                    Text("E").font(.nunito(app.isIdle ? 15 : 12, app.isIdle ? .black : .bold))
-                        .foregroundStyle(app.isIdle ? theme.accent : theme.textSecondary)
-                        .shadow(color: theme.accent.opacity(app.isIdle ? 0.4 : 0), radius: 6)
-                }
-                .padding(.horizontal, 30 * k)
+                .rotationEffect(.degrees(app.dialHeadingDeg))
+                .animation(.easeOut(duration: 0.2), value: app.dialHeadingDeg)
                 .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.isIdle)
 
                 // needle
@@ -94,15 +94,6 @@ struct DialView: View {
                 }
                 .rotationEffect(.degrees(app.needleDeg))
 
-                if app.friendMode {
-                    Text(app.destInitials)
-                        .font(.nunito(40 * k, .semibold))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.35), radius: 6)
-                        .transition(.opacity)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.destColor)
-                }
-
                 // glass sheen
                 Circle()
                     .fill(LinearGradient(colors: [.white.opacity(0.18), .white.opacity(0.05), .clear], startPoint: .top, endPoint: .bottom))
@@ -114,9 +105,10 @@ struct DialView: View {
             .shadow(color: .black.opacity(0.45), radius: 30, y: 20)
         }
         .frame(width: 286 * k, height: 286 * k)
-        .rotation3DEffect(.degrees(app.tiltDeg), axis: (x: 1, y: 0, z: 0), perspective: 0.4)
+        // Pivots on the dial's top edge (not its centre), so the top stays fixed on screen and the
+        // bottom swings out toward the viewer as it tilts.
+        .rotation3DEffect(.degrees(app.tiltDeg), axis: (x: 1, y: 0, z: 0), anchor: .top, perspective: 0.18)
         .rotation3DEffect(.degrees(app.laneDeg), axis: (x: 0, y: 1, z: 0), perspective: 0.4)
-        .scaleEffect(app.dialScale)
         .overlay(alignment: .top) {
             VStack(spacing: 7) {
                 if app.isIdle {
@@ -128,16 +120,19 @@ struct DialView: View {
                         .tracking(1.6)
                         .foregroundStyle(theme.textSecondary)
                 } else {
-                    Text(app.fmt(app.activeDist))
-                        .font(.nunito(34, .black))
-                        .foregroundStyle(theme.ink)
-                    Text(app.guiding ? "TO THE TURN" : "STRAIGHT LINE")
-                        .font(.nunito(10, .bold))
-                        .tracking(1.6)
-                        .foregroundStyle(theme.textSecondary)
+                    HStack(spacing: 8) {
+                        Text(app.fmt(app.activeDist))
+                            .font(.nunito(34, .black))
+                            .foregroundStyle(theme.ink)
+                        Image(systemName: app.dialArrowSymbol)
+                            .font(.system(size: 22, weight: .black))
+                            .foregroundStyle(theme.ink)
+                            .contentTransition(.symbolEffect(.replace))
+                            .animation(.easeInOut(duration: 0.25), value: app.dialArrowSymbol)
+                    }
                 }
             }
-            .offset(y: (app.skin == .wheel ? 54 : 172) * k)
+            .offset(y: (app.skin == .wheel ? 54 : 172) * k * cos(app.tiltDeg * .pi / 180))
             .allowsHitTesting(false)
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.tiltDeg)

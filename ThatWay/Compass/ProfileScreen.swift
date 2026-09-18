@@ -7,6 +7,9 @@ import SwiftUI
 
 struct ProfileScreen: View {
     @EnvironmentObject var app: AppModel
+    @State private var friendQuery = ""
+    @State private var friendRequestSentTo: String?
+    @FocusState private var friendFieldFocused: Bool
 
     var body: some View {
         let theme = app.currentTheme
@@ -14,9 +17,10 @@ struct ProfileScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header(theme: theme)
+                addFriendSection(theme: theme)
                 visibilitySection(theme: theme)
+                defaultNavModeSection(theme: theme)
                 achievementsSection(theme: theme)
-                accessibilitySection(theme: theme)
                 settingsSection(theme: theme)
                 donateBanner(theme: theme)
             }
@@ -27,6 +31,85 @@ struct ProfileScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.top, 8)
         .background(theme.screen)
+    }
+
+    /// Which mode a newly-picked destination drops straight into.
+    @ViewBuilder
+    private func defaultNavModeSection(theme: AppTheme) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("DEFAULT MODE").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
+            HStack(spacing: 10) {
+                navModeCard(.point, title: "Point", icon: "location.north.line", detail: "Saves battery", theme: theme)
+                navModeCard(.guidance, title: "Guidance", icon: "arrow.triangle.turn.up.right.diamond.fill", detail: "Live turns", theme: theme)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func navModeCard(_ mode: NavMode, title: String, icon: String, detail: String, theme: AppTheme) -> some View {
+        let selected = app.defaultNavMode == mode
+        Button { app.defaultNavMode = mode } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(selected ? theme.accent : theme.ink.opacity(0.5))
+                    .frame(width: 40, height: 40)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(selected ? theme.accent.opacity(0.16) : theme.ink.opacity(0.06)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink)
+                    Text(detail).font(.nunito(11, .semibold)).foregroundStyle(theme.ink.opacity(0.62)).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 16).fill(selected ? theme.accent.opacity(0.14) : theme.ink.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(selected ? theme.accent.opacity(0.5) : theme.ink.opacity(0.09), lineWidth: selected ? 1.5 : 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func addFriendSection(theme: AppTheme) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ADD A FRIEND").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
+            HStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.5))
+                    TextField("Username or email", text: $friendQuery)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .focused($friendFieldFocused)
+                        .font(.nunito(15, .semibold))
+                        .onSubmit(sendFriendRequest)
+                }
+                .padding(.horizontal, 14).frame(height: 46)
+                .background(RoundedRectangle(cornerRadius: 14).fill(theme.ink.opacity(0.05)))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(theme.ink.opacity(0.1)))
+
+                Button(action: sendFriendRequest) {
+                    Text("ADD")
+                        .font(.nunito(12, .black)).tracking(0.6)
+                        .foregroundStyle(theme.onAccent)
+                        .padding(.horizontal, 20).frame(height: 46)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(theme.accent))
+                        .opacity(friendQuery.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
+                }
+                .buttonStyle(.plain)
+                .disabled(friendQuery.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            if let sent = friendRequestSentTo {
+                Text("Request sent to \(sent)").font(.nunito(12, .semibold)).foregroundStyle(theme.accent)
+            }
+        }
+    }
+
+    private func sendFriendRequest() {
+        let name = friendQuery.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        friendRequestSentTo = name
+        friendQuery = ""
+        friendFieldFocused = false
     }
 
     @ViewBuilder
@@ -138,29 +221,6 @@ struct ProfileScreen: View {
     }
 
     @ViewBuilder
-    private func accessibilitySection(theme: AppTheme) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("ACCESSIBILITY").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Text size").font(.nunito(15, .semibold)).foregroundStyle(theme.ink)
-                    Spacer()
-                    Text(app.extraTextSize == 0 ? "Default" : "+\(Int(app.extraTextSize)) pt")
-                        .font(.nunito(13, .bold))
-                        .foregroundStyle(theme.accent)
-                }
-                Slider(value: $app.extraTextSize, in: 0...20, step: 1).tint(theme.accent)
-                Text("Larger text is added everywhere in the app — turn/dashboard readouts, cards, and labels.")
-                    .font(.nunito(11, .semibold))
-                    .foregroundStyle(theme.ink.opacity(0.6))
-            }
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 18).fill(theme.ink.opacity(0.05)))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(theme.ink.opacity(0.09)))
-        }
-    }
-
-    @ViewBuilder
     private func settingsSection(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
@@ -176,6 +236,7 @@ struct ProfileScreen: View {
                 SettingsRow("Theme", value: theme.name, options: AppTheme.all.map(\.name), theme: theme) { v in
                     if let id = AppTheme.all.first(where: { $0.name == v })?.id { app.setTheme(id) }
                 }
+                SettingsRow("Compass tilt", value: app.opts.tilt, options: ["Off", "Mild", "Aggressive"], theme: theme) { app.opts.tilt = $0 }
                 SettingsRow("Voice of directions", value: app.opts.voice, options: ["Friendly", "Terse", "Cheeky"], theme: theme) { app.opts.voice = $0 }
                 SettingsRow("Activity detection", value: app.opts.activity, options: ["Automatic", "Walking", "Running", "Driving"], theme: theme) { app.opts.activity = $0 }
                 SettingsRow("Haptics on turns", value: app.opts.haptics, options: ["Off", "Light", "Strong"], theme: theme) { app.opts.haptics = $0 }

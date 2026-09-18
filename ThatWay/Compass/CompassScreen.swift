@@ -6,20 +6,43 @@
 import SwiftUI
 import MapKit
 
-/// Reports a view's actual on-screen frame so siblings (guide lines, the mode
-/// toggle's no-go zones) can key off where it really ended up, rather than a
-/// hard-coded offset tuned for one device size.
-private struct FramePreferenceKey: PreferenceKey {
+private enum Spacing {
+    static let container: CGFloat = 16
+    static let element: CGFloat = 12
+    static let tight: CGFloat = 8
+}
+
+/// Reports a view's real on-screen frame — used to pin the search results panel exactly
+/// below the search bar, wherever it actually ends up, rather than a guessed offset.
+private struct SearchBarFramePreferenceKey: PreferenceKey {
     static var defaultValue: CGRect?
     static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
         value = nextValue() ?? value
     }
 }
 
-private enum Spacing {
-    static let container: CGFloat = 16
-    static let element: CGFloat = 12
-    static let tight: CGFloat = 8
+/// Reports the dial cluster's real on-screen centre — so the guidance line above it can
+/// extend mathematically to that exact point (whatever it ends up being on a given device,
+/// at a given Dynamic Type size, mid-animation, etc.) rather than guessing a fixed offset.
+private struct DialCenterPreferenceKey: PreferenceKey {
+    static var defaultValue: CGPoint?
+    static func reduce(value: inout CGPoint?, nextValue: () -> CGPoint?) {
+        value = nextValue() ?? value
+    }
+}
+
+/// The three top pills' reference widths — recorded once here, at the sizes they were
+/// designed at, and used everywhere else only as *ratios* to maintain while the row
+/// stretches to fill whatever width the actual device has. The theme square is fixed
+/// (it has to stay square), so only the activity and mode pills flex against each other.
+private enum TopBarMetrics {
+    static let activityReferenceWidth: CGFloat = 160
+    static let modeReferenceWidth: CGFloat = 132
+    static let activityWidthRatio: CGFloat = activityReferenceWidth / (activityReferenceWidth + modeReferenceWidth)
+    static let themeSquareSize: CGFloat = 54
+    static let pillHeight: CGFloat = 66
+    static let edgePadding: CGFloat = 12
+    static let gap: CGFloat = 12
 }
 
 struct CompassScreen: View {
@@ -28,116 +51,102 @@ struct CompassScreen: View {
     // it here is what makes SwiftUI re-render this screen when a route arrives or advances,
     // since a nested ObservableObject's own publishes don't bubble through AppModel's.
     @EnvironmentObject var routing: RoutingManager
-    @State private var dialFrame: CGRect?
-    @State private var cardFrame: CGRect?
+    // Same story as `routing` above — read by GuidanceLineView via app state, declared here
+    // only so SwiftUI re-renders this screen when a bake completes.
+    @EnvironmentObject var routeDataGenerator: RouteDataGenerator
     @FocusState private var searchFocused: Bool
+    @State private var searchBarFrame: CGRect?
+    @State private var dialCenter: CGPoint?
 
     /// Reserve room below the content for RootView's floating tab bar so the
     /// destination card never sits under it — trimmed down so the card sits closer to
     /// the (now lower, more spread-out) tab bar instead of floating far above it.
     private let tabBarClearance: CGFloat = 60
 
-    /// How much lower the dial (and its tilt guide lines, and the route line above it)
-    /// sit while guiding, versus resting centred in Point mode.
-    private let guidingDialDrop: CGFloat = 40
-
     var body: some View {
         GeometryReader { geo in
             let k = geo.size.width / 402
             let theme = app.currentTheme
-            // The compass itself (and the guide lines behind it) run ~17.5% larger than
-            // the rest of the screen's chrome, via their own scale factor — everything
-            // else on screen keeps using the plain `k`.
-            let dialK = k * 1.175
-            // Shrinks gracefully on narrower/shorter phones instead of overflowing.
-            let dialSize = min(286 * dialK, geo.size.width - 96, geo.size.height * 0.36)
-            let dialCenter = dialFrame.map { CGPoint(x: $0.midX, y: $0.midY) }
-                ?? CGPoint(x: geo.size.width / 2, y: geo.size.height * 0.5)
+            // The compass's diameter is a fixed share of the screen width, so it adapts
+            // from one device to another: 80% in guidance (when flat), 85% in point mode (centred).
+            // Capped by height so it can never overflow a short screen.
+            let dialSize = min(geo.size.width * (app.guiding ? 0.80 : 0.85), geo.size.height * 0.46)
+            let dialK = dialSize / 286
             let blurRest = app.searchOpen ? 3.0 : 0.0
 
             ZStack {
                 RadialGradient(colors: [theme.worldA, theme.worldB], center: .init(x: 0.5, y: 0.54), startRadius: 0, endRadius: 420 * k)
                     .ignoresSafeArea()
 
-                // Search bar pinned to the top (safe-area inset handled by the VStack itself
-                // respecting the safe area), friends row fixed below it, compass centered in
-                // the remaining space, destination card anchored above the tab bar. Everything
-                // except the search bar itself blurs when its results are showing, so it stays
-                // the one clearly "live" thing on screen.
+                // Activity/theme/mode pills are anchored to the top of the screen, fixed —
+                // no floating, no dragging, no collision-avoidance with the dial or card
+                // below. Search bar and friends row sit right below; compass centered in the
+                // remaining space; destination card anchored above the tab bar. Everything
+                // except the search bar itself blurs when its results are showing, so it
+                // stays the one clearly "live" thing on screen.
                 VStack(spacing: 0) {
-                    // Wrapped together and nudged up as one unit so the activity pill, search
-                    // bar, and friends row all shift in lockstep rather than drifting apart.
-                    VStack(spacing: 0) {
-                        activityPill(theme: theme)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.leading, Spacing.container * k)
-                            .padding(.top, Spacing.tight * k)
+                    topBar(theme: theme, screenWidth: geo.size.width)
+                        .padding(.top, 12)
+                        .blur(radius: blurRest)
+                        .allowsHitTesting(!app.searchOpen)
+
+                    if !app.guiding {
+                        searchBar(theme: theme)
+                            .padding(.horizontal, Spacing.container * k)
+                            .padding(.top, Spacing.element * k)
+                            .background(
+                                GeometryReader { barGeo in
+                                    Color.clear.preference(key: SearchBarFramePreferenceKey.self, value: barGeo.frame(in: .named("compassScreen")))
+                                }
+                            )
+                            .onPreferenceChange(SearchBarFramePreferenceKey.self) { searchBarFrame = $0 }
+
+                        friendsRow(k: k, theme: theme)
+                            .frame(height: 80 * k)
+                            .padding(.top, Spacing.element * k)
                             .blur(radius: blurRest)
-
-                        if !app.guiding {
-                            searchBar(theme: theme)
-                                .padding(.horizontal, Spacing.container * k)
-                                .padding(.top, Spacing.element * k)
-
-                            friendsRow(k: k, theme: theme)
-                                .frame(height: 80 * k)
-                                .padding(.top, Spacing.element * k)
-                                .blur(radius: blurRest)
-                                .zIndex(1)
-                        }
+                            .zIndex(1)
                     }
-                    .offset(y: -10)
 
                     if app.guiding {
-                        RouteLineView(color: app.routeColor)
+                        // currentLocation/speedKmh deliberately read the throttled
+                        // guidanceCheck* snapshot (updated once per adaptive poll) rather
+                        // than the live, continuously-updating values — the look-ahead
+                        // geometry should only recompute as often as the corridor check
+                        // itself actually runs.
+                        GuidanceLineView(
+                            guidanceData: routeDataGenerator.guidanceData,
+                            steps: routing.steps,
+                            currentLocation: app.guidanceCheckPosition,
+                            speedKmh: app.guidanceCheckSpeedKmh,
+                            activity: app.guidanceActivity,
+                            destination: app.destinationCoordinate,
+                            color: app.routeColor,
+                            dialCenter: dialCenter,
+                            // The dial tilts about its top edge, so that edge never moves: it always sits
+                            // half the dial's diameter above its centre.
+                            dialHalfHeight: dialSize / 2,
+                            isRecalculating: routeDataGenerator.guidanceData != nil && routeDataGenerator.isGenerating
+                        )
                             .frame(maxHeight: .infinity)
                             .padding(.top, Spacing.element * k)
-                            // Follows the dial down so the line still runs right up to it
-                            // instead of leaving a gap, and reaches further to show more
-                            // of the road ahead.
-                            .offset(y: guidingDialDrop * k * 0.6)
                             .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.guiding)
                     } else {
                         Spacer(minLength: Spacing.element * k)
                     }
 
                     dialCluster(theme: theme, k: dialK, dialSize: dialSize)
-                        // Guidance mode settles the dial lower, out of the way of the
-                        // route line above it, with the turn card now sitting closer to
-                        // the tab bar to leave room for the drop.
-                        .offset(y: app.guiding ? guidingDialDrop * k : 0)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.guiding)
-                        .background(
-                            GeometryReader { dialGeo in
-                                Color.clear.preference(key: FramePreferenceKey.self, value: dialGeo.frame(in: .named("compassScreen")))
-                            }
-                        )
-                        .onPreferenceChange(FramePreferenceKey.self) { dialFrame = $0 }
                         .blur(radius: blurRest)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.75), value: app.guiding)
 
-                    // Offset alone only moves the dial visually — it reserves no extra
-                    // room, so without this the dropped dial would overlap the turn card
-                    // right below it. Growing this spacer by the same drop keeps the gap
-                    // between them exactly what it was in Point mode.
-                    Spacer(minLength: (Spacing.element + (app.guiding ? guidingDialDrop : 0)) * k)
+                    Spacer(minLength: Spacing.element * k)
 
                     bottomCard(theme: theme, k: k)
                         .padding(.horizontal, Spacing.container * k)
-                        .background(
-                            GeometryReader { cardGeo in
-                                Color.clear.preference(key: CardFramePreferenceKey.self, value: cardGeo.frame(in: .named("compassScreen")))
-                            }
-                        )
-                        .onPreferenceChange(CardFramePreferenceKey.self) { cardFrame = $0 }
                         .blur(radius: blurRest)
 
                     Spacer(minLength: tabBarClearance * k)
                 }
-
-                ModeToggle(k: k, dialCenter: dialCenter, bounds: geo.size, cardFrame: cardFrame)
-                    .environmentObject(app)
-                    .blur(radius: blurRest)
-                    .allowsHitTesting(!app.searchOpen)
 
                 if app.searchOpen {
                     Color.black.opacity(0.001)
@@ -145,14 +154,24 @@ struct CompassScreen: View {
                         .contentShape(Rectangle())
                         .onTapGesture { closeSearch() }
 
+                    // Pinned to the search bar's own real bottom edge (tracked above via
+                    // SearchBarFramePreferenceKey), never a guessed offset — so on any
+                    // device, at any content size, the panel starts at least 12px below the
+                    // search bar and never creeps up over it.
                     SearchResultsPanel(k: k, onClose: closeSearch)
                         .environmentObject(app)
-                        .padding(.top, 100 * k)
+                        .padding(.top, (searchBarFrame?.maxY ?? 100 * k) + 12)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+
+                if app.arrived {
+                    arrivalOverlay(theme: theme)
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
             }
             .coordinateSpace(name: "compassScreen")
+            .animation(.spring(response: 0.5, dampingFraction: 0.75), value: app.arrived)
             .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.searchOpen)
             // The search field's own focus would otherwise trigger the system's default
             // keyboard-avoidance and shove this whole screen (compass included) upward —
@@ -182,8 +201,7 @@ struct CompassScreen: View {
 
     /// The dial and its faint tilt guide lines — positioned relative to this one cluster's
     /// own centre, so they can never drift out of alignment with each other regardless of
-    /// what sits above them on a given device. The friend-colour treatment lives entirely
-    /// on the dial face itself now (see `DialView`) rather than a separate backdrop.
+    /// what sits above them on a given device.
     @ViewBuilder
     private func dialCluster(theme: AppTheme, k: CGFloat, dialSize: CGFloat) -> some View {
         ZStack {
@@ -194,6 +212,18 @@ struct CompassScreen: View {
                 .frame(width: dialSize, height: dialSize)
         }
         .frame(width: dialSize, height: dialSize)
+        // Reports this cluster's real centre in the screen's shared coordinate space, so
+        // GuidanceLineView can extend its line to exactly that point — mathematically, not
+        // by a hand-tuned offset that only happens to line up on one device.
+        .background(
+            GeometryReader { dialGeo in
+                Color.clear.preference(key: DialCenterPreferenceKey.self, value: CGPoint(
+                    x: dialGeo.frame(in: .named("compassScreen")).midX,
+                    y: dialGeo.frame(in: .named("compassScreen")).midY
+                ))
+            }
+        )
+        .onPreferenceChange(DialCenterPreferenceKey.self) { dialCenter = $0 }
     }
 
     /// Faint vertical lines sitting just behind the dial — anchored to the interface, not the
@@ -218,25 +248,123 @@ struct CompassScreen: View {
         }
     }
 
+    /// The three anchored top pills — activity, theme toggle, Point/Guidance — fixed to
+    /// the top of the screen. No floating, no dragging, no collision avoidance with the
+    /// dial or destination card below: they're just always here. The activity and mode
+    /// pills stretch to fill whatever width the device has, split according to their
+    /// recorded reference-width ratio (`TopBarMetrics`); the theme square stays a fixed
+    /// size since it has to stay square.
     @ViewBuilder
-    private func activityPill(theme: AppTheme) -> some View {
-        HStack(spacing: Spacing.tight) {
-            Circle()
-                .fill(app.routeColor)
-                .frame(width: 7, height: 7)
-                .shadow(color: app.routeColor, radius: 5)
-            Text(app.activity)
-                .font(.nunito(10, .extraBold))
-                .tracking(1.4)
-                .foregroundStyle(theme.ink.opacity(0.86))
+    private func topBar(theme: AppTheme, screenWidth: CGFloat) -> some View {
+        let available = max(
+            0,
+            screenWidth - TopBarMetrics.edgePadding * 2 - TopBarMetrics.gap * 2 - TopBarMetrics.themeSquareSize
+        )
+        let activityWidth = available * TopBarMetrics.activityWidthRatio
+        let modeWidth = available * (1 - TopBarMetrics.activityWidthRatio)
+
+        HStack(spacing: TopBarMetrics.gap) {
+            activityPill(theme: theme, width: activityWidth)
+            themeSquareButton(theme: theme)
+            modeTogglePill(theme: theme, width: modeWidth)
+        }
+        .padding(.horizontal, TopBarMetrics.edgePadding)
+    }
+
+    @ViewBuilder
+    private func activityPill(theme: AppTheme, width: CGFloat) -> some View {
+        let stationary = app.isStationary
+        VStack(spacing: 4) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(stationary ? Color.white : app.routeColor)
+                    .frame(width: 7, height: 7)
+                    .shadow(color: stationary ? .white : app.routeColor, radius: 5)
+                Text(app.activityDisplayLabel)
+                    .font(.nunito(10, .extraBold))
+                    .tracking(1.0)
+                    .foregroundStyle(theme.ink.opacity(0.86))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            }
             Text("\(Int(app.displaySpeed.rounded())) \(app.opts.units == "Miles" ? "mph" : "km/h")")
-                .font(.nunito(10, .semibold))
+                .font(.nunito(11, .semibold))
                 .foregroundStyle(theme.textSecondary)
         }
-        .padding(.vertical, Spacing.tight - 1)
-        .padding(.horizontal, Spacing.element)
-        .background(Capsule().fill(theme.ink.opacity(0.06)))
-        .overlay(Capsule().stroke(theme.borderColor))
+        .frame(width: width, height: TopBarMetrics.pillHeight)
+        .background(RoundedRectangle(cornerRadius: 20).fill(theme.ink.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.borderColor))
+    }
+
+    /// A small square, standalone from the mode pill now — tap to cycle light/dark, exactly
+    /// as it did when it lived inside the old floating toggle. Fixed size: unlike the two
+    /// pills either side of it, it doesn't flex with screen width, since it has to stay
+    /// visually square.
+    @ViewBuilder
+    private func themeSquareButton(theme: AppTheme) -> some View {
+        Button { app.toggleTheme() } label: {
+            RoundedRectangle(cornerRadius: 14)
+                .fill(theme.ink.opacity(0.06))
+                .frame(width: TopBarMetrics.themeSquareSize, height: TopBarMetrics.themeSquareSize)
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(theme.borderColor))
+                .overlay(
+                    Circle()
+                        .fill(theme.light ? Color(hex: "FFD86B") : theme.ink.opacity(0.22))
+                        .frame(width: 16, height: 16)
+                        .shadow(color: theme.light ? Color(hex: "FFD86B").opacity(0.9) : .clear, radius: 8)
+                )
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: app.theme)
+    }
+
+    /// The Point/Guidance switch — a single tap target now (no drag-to-move, no
+    /// drag-vs-tap disambiguation), since the pill no longer moves around the screen. The
+    /// track+dot sits at the pill's leading edge with an equal (12px) margin from the top,
+    /// bottom, and left of the pill; the labels fill the remaining space to its right.
+    @ViewBuilder
+    private func modeTogglePill(theme: AppTheme, width: CGFloat) -> some View {
+        let margin: CGFloat = TopBarMetrics.gap
+        let dotSize: CGFloat = 13 * 1.7
+        let trackWidth: CGFloat = dotSize + 6
+        let trackHeight: CGFloat = TopBarMetrics.pillHeight - margin * 2
+
+        Button { app.flipMode() } label: {
+            HStack(spacing: 10) {
+                ZStack(alignment: .top) {
+                    RoundedRectangle(cornerRadius: trackWidth / 2)
+                        .fill(theme.ink.opacity(0.14))
+                        .frame(width: trackWidth, height: trackHeight)
+                    Circle()
+                        .fill(app.accent)
+                        .frame(width: dotSize, height: dotSize)
+                        .shadow(color: app.accent, radius: 6)
+                        .offset(y: app.guiding ? trackHeight - dotSize : 0)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.guiding)
+                }
+                .padding(.leading, margin)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Point")
+                        .font(.nunito(10, .extraBold))
+                        .foregroundStyle(theme.ink)
+                        .opacity(app.guiding ? 0.3 : 1)
+                    Text("Guidance")
+                        .font(.nunito(10, .extraBold))
+                        .foregroundStyle(theme.ink)
+                        .opacity(app.guiding ? 1 : 0.3)
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+                Spacer(minLength: 0)
+            }
+            .frame(width: width, height: TopBarMetrics.pillHeight)
+            .background(RoundedRectangle(cornerRadius: 20).fill(theme.ink.opacity(0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.borderColor))
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: app.guiding)
     }
 
     @ViewBuilder
@@ -275,55 +403,36 @@ struct CompassScreen: View {
         .sensoryFeedback(.impact(weight: .light), trigger: app.searchOpen)
     }
 
+    /// A purely social/decorative roster — friends have no real location data, so unlike a
+    /// place or the You page, tapping one doesn't point or route to them (there's nothing
+    /// real to point at).
     @ViewBuilder
     private func friendsRow(k: CGFloat, theme: AppTheme) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: Spacing.element) {
                 ForEach(Friend.all) { f in
-                    let selected = app.destKind == .friend && app.destColor == f.color
-                    Button {
-                        if selected {
-                            app.clearDestination()
-                        } else {
-                            app.goToFriend(f)
+                    VStack(spacing: 6) {
+                        ZStack {
+                            Circle()
+                                .fill(LinearGradient(colors: [app.currentTheme.accent, Color(hex: "34D6A5")], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 52, height: 52)
+                            Circle().fill(theme.screen).frame(width: 48, height: 48)
+                            Circle().fill(f.color).frame(width: 42, height: 42)
+                            Text(f.initials)
+                                .font(.nunito(15, .extraBold))
+                                .foregroundStyle(Color(hex: "241A14"))
                         }
-                    } label: {
-                        VStack(spacing: 6) {
-                            ZStack {
-                                Circle()
-                                    .fill(LinearGradient(colors: [app.currentTheme.accent, Color(hex: "34D6A5")], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                    .frame(width: 52, height: 52)
-                                Circle().fill(theme.screen).frame(width: 48, height: 48)
-                                Circle().fill(f.color).frame(width: 42, height: 42)
-                                Text(f.initials)
-                                    .font(.nunito(15, .extraBold))
-                                    .foregroundStyle(Color(hex: "241A14"))
-                            }
-                            .overlay(
-                                Circle().stroke(f.color, lineWidth: selected ? 2 : 0)
-                                    .shadow(color: f.color, radius: selected ? 8 : 0)
-                            )
-                            // Selected avatars zoom up well beyond their row and must paint
-                            // over the search bar above, not get clipped or buried under it.
-                            // Anchored to the bottom so all the growth goes upward — it must
-                            // never push down into the name label sitting right below it.
-                            .scaleEffect(selected ? 1.45 : 1, anchor: .bottom)
-                            .zIndex(selected ? 1 : 0)
-                            Text(f.name)
-                                .font(.nunito(11, .semibold))
-                                .foregroundStyle(theme.textSecondary)
-                                .lineLimit(1)
-                        }
-                        .frame(width: 56)
+                        Text(f.name)
+                            .font(.nunito(11, .semibold))
+                            .foregroundStyle(theme.textSecondary)
+                            .lineLimit(1)
                     }
-                    .buttonStyle(.plain)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.65), value: selected)
+                    .frame(width: 56)
                 }
             }
             .padding(.horizontal, Spacing.container * k)
         }
         .scrollClipDisabled()
-        .sensoryFeedback(.impact(weight: .medium), trigger: app.destColor)
     }
 
     @ViewBuilder
@@ -336,7 +445,7 @@ struct CompassScreen: View {
                     Circle().fill(app.accent).frame(width: 10, height: 10).shadow(color: app.accent, radius: 6)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(app.dest).font(.nunito(16, .extraBold)).foregroundStyle(theme.ink).lineLimit(1)
-                        Text(app.friendMode ? "Pointing at a friend" : app.destinationCoordinate != nil ? "Real bearing · tap ROUTE" : "Straight-line pointing")
+                        Text(app.destinationCoordinate != nil ? "Real bearing · tap GUIDE" : "Straight-line pointing")
                             .font(.nunito(13, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(1)
                     }
                     Spacer()
@@ -348,7 +457,7 @@ struct CompassScreen: View {
                     Button { app.startGuidance() } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "arrowshape.turn.up.right").font(.system(size: 12, weight: .bold))
-                            Text("ROUTE").font(.nunito(12, .black)).tracking(0.6)
+                            Text("GUIDE").font(.nunito(12, .black)).tracking(0.6)
                         }
                         .foregroundStyle(app.accent.onInk)
                         .padding(.horizontal, Spacing.element + 3).padding(.vertical, Spacing.tight + 2)
@@ -361,39 +470,43 @@ struct CompassScreen: View {
             }
         } else {
             // The turn card: a real OSRM instruction when a route is loaded (with a lane hint
-            // swapped for live distance-to-turn), the simulated mock turn otherwise.
-            HStack(spacing: Spacing.container) {
+            // swapped for live distance-to-turn), the simulated mock turn otherwise. Sized
+            // and coloured to match the top bar's pills (fixed height, same faint fill) —
+            // a fixed height means a one-line vs two-line instruction never bobs the dial
+            // above it, without needing to reserve extra line space to fake that.
+            HStack(spacing: Spacing.element) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 15).fill(theme.accent.opacity(0.16)).frame(width: 46, height: 46)
+                    RoundedRectangle(cornerRadius: 12).fill(theme.accent.opacity(0.16)).frame(width: 38, height: 38)
                     TurnGlyph(dir: app.turnDir, color: theme.accent)
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(app.turnCopy).font(.nunito(16, .extraBold)).foregroundStyle(theme.ink).lineLimit(2)
-                    Text(app.turnSubtitle).font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.turnCopy).font(.nunito(14, .extraBold)).foregroundStyle(theme.ink).lineLimit(1).minimumScaleFactor(0.8)
+                    Text(app.turnSubtitle).font(.nunito(11, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(1)
                 }
-                Spacer()
+                Spacer(minLength: 0)
                 Button { app.endGuidance() } label: {
                     Text("END")
                         .font(.nunito(11, .black)).tracking(0.9)
-                        .foregroundStyle(theme.textSecondary)
-                        .padding(.horizontal, Spacing.element + 2).padding(.vertical, Spacing.tight + 2)
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(theme.borderColor))
+                        .foregroundStyle(theme.accent)
+                        .padding(.horizontal, Spacing.element).padding(.vertical, Spacing.tight)
+                        .background(Capsule().fill(theme.accent.opacity(0.14)))
                 }
             }
-            .padding(.horizontal, Spacing.container + 2).padding(.vertical, Spacing.element + 4)
-            .background(RoundedRectangle(cornerRadius: 22).fill(theme.ink.opacity(0.07)))
-            .overlay(RoundedRectangle(cornerRadius: 22).stroke(theme.borderColor))
+            .padding(.horizontal, Spacing.container + 2)
+            .frame(height: TopBarMetrics.pillHeight)
+            .background(RoundedRectangle(cornerRadius: 20).fill(theme.ink.opacity(0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.borderColor))
         }
     }
 
-    /// Shown in idle mode — no place or friend selected, dial resting north-up.
+    /// Shown in idle mode — no place selected, dial resting north-up.
     @ViewBuilder
     private func idleCard(theme: AppTheme) -> some View {
         HStack(spacing: Spacing.element) {
             Image(systemName: "location.north.line")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(theme.textSecondary)
-            Text("Search or pick a friend to start pointing")
+            Text("Search for a place to start pointing")
                 .font(.nunito(13, .semibold))
                 .foregroundStyle(theme.textSecondary)
             Spacer()
@@ -402,14 +515,41 @@ struct CompassScreen: View {
         .background(RoundedRectangle(cornerRadius: 22).fill(theme.ink.opacity(0.07)))
         .overlay(RoundedRectangle(cornerRadius: 22).stroke(theme.borderColor))
     }
-}
 
-/// Reports the destination card's frame, mirroring `FramePreferenceKey` — kept as a
-/// distinct type since a view can only own one preference value per key per subtree.
-private struct CardFramePreferenceKey: PreferenceKey {
-    static var defaultValue: CGRect?
-    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
-        value = nextValue() ?? value
+    /// The completion screen shown once guidance detects arrival (within 100m of the
+    /// destination) — guidance has nothing left to compute at that point, so this replaces
+    /// the turn card/dial interaction entirely until the user taps Done.
+    @ViewBuilder
+    private func arrivalOverlay(theme: AppTheme) -> some View {
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea()
+                .contentShape(Rectangle())
+
+            VStack(spacing: 18) {
+                ZStack {
+                    Circle().fill(app.accent.opacity(0.18)).frame(width: 84, height: 84)
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 44, weight: .bold))
+                        .foregroundStyle(app.accent)
+                }
+                VStack(spacing: 6) {
+                    Text("You've arrived").font(.nunito(22, .black)).foregroundStyle(theme.ink)
+                    Text(app.dest).font(.nunito(15, .semibold)).foregroundStyle(theme.textSecondary)
+                }
+                Button { app.endGuidance() } label: {
+                    Text("DONE").font(.nunito(13, .black)).tracking(1)
+                        .foregroundStyle(app.accent.onInk)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Capsule().fill(app.accent))
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: 320)
+            .background(RoundedRectangle(cornerRadius: 28).fill(theme.screen))
+            .overlay(RoundedRectangle(cornerRadius: 28).stroke(theme.borderColor))
+            .padding(.horizontal, 40)
+        }
     }
 }
 
@@ -431,55 +571,6 @@ private struct TurnGlyph: View {
         .frame(width: 22, height: 22)
         .foregroundStyle(color)
         .fontWeight(.bold)
-    }
-}
-
-/// The "road ahead" indicator shown in guidance mode: a colour-coded vertical line
-/// (blue for driving, green for walking) running from just below the header down to
-/// the dial, fading in at the top for depth, with chevrons marking the direction of
-/// travel. Doubles as a visual countdown to the turn: `progress` is 1 when far from the
-/// turn (full height) and 0 right at it (compresses toward the dial, then disappears).
-private struct RouteLineView: View {
-    let color: Color
-    @State private var dashPhase: CGFloat = 0
-
-    var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .top) {
-                // Full-height glow line — always present at full length while guiding; it
-                // never shrinks or vanishes mid-route.
-                LinearGradient(
-                    stops: [.init(color: .clear, location: 0), .init(color: color.opacity(0.85), location: 0.14), .init(color: color, location: 1)],
-                    startPoint: .top, endPoint: .bottom
-                )
-                .frame(width: 4)
-                .clipShape(Capsule())
-                .shadow(color: color.opacity(0.5), radius: 6)
-                .frame(maxWidth: .infinity)
-
-                // A continuously-marching dashed overlay reads as traffic flowing down the
-                // line toward you, rather than the line itself counting down.
-                Path { path in
-                    path.move(to: CGPoint(x: geo.size.width / 2, y: 14))
-                    path.addLine(to: CGPoint(x: geo.size.width / 2, y: geo.size.height))
-                }
-                .stroke(Color.white.opacity(0.85), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [8, 16], dashPhase: dashPhase))
-
-                // Destination marker capping the top of the line.
-                ZStack {
-                    Circle().fill(color.opacity(0.28)).frame(width: 24, height: 24)
-                    Circle().fill(color).frame(width: 10, height: 10)
-                        .overlay(Circle().stroke(.white, lineWidth: 1.5))
-                }
-                .frame(maxWidth: .infinity)
-                .shadow(color: color.opacity(0.6), radius: 8)
-            }
-        }
-        .onAppear {
-            withAnimation(.linear(duration: 1.0).repeatForever(autoreverses: false)) {
-                dashPhase = -48
-            }
-        }
     }
 }
 
@@ -545,9 +636,9 @@ private struct SearchResultsPanel: View {
                 .padding(.vertical, Spacing.element)
         } else {
             VStack(spacing: 0) {
-                ForEach(app.recentSearches, id: \.self) { name in
+                ForEach(app.recentSearches) { place in
                     Button {
-                        app.pickPlace(name)
+                        app.pickRecent(place)
                         onClose()
                     } label: {
                         HStack(spacing: Spacing.element) {
@@ -556,7 +647,7 @@ private struct SearchResultsPanel: View {
                                 .foregroundStyle(theme.ink.opacity(0.76))
                                 .frame(width: 34, height: 34)
                                 .background(RoundedRectangle(cornerRadius: 11).fill(theme.ink.opacity(0.08)))
-                            Text(name).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink)
+                            Text(place.name).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink)
                             Spacer()
                         }
                         .padding(.vertical, Spacing.tight + 3).padding(.horizontal, Spacing.tight)

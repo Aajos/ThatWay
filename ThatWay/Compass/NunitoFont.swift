@@ -43,16 +43,7 @@ enum NunitoWeight: CGFloat {
 }
 
 enum Nunito {
-    /// The accessibility text-size slider's current boost, added to every Nunito size
-    /// app-wide on top of whatever the system's own Dynamic Type setting already scales
-    /// it by. `AppModel.extraTextSize` writes it on every change, and since practically
-    /// every screen holds `@EnvironmentObject var app: AppModel`, that same `@Published`
-    /// write already forces those views to re-evaluate `body` (and so re-read this) on
-    /// its own, with no extra plumbing needed at each individual `.nunito(...)` call site.
-    static var extraSize: CGFloat = 0
-
     static func font(_ size: CGFloat, _ weight: NunitoWeight) -> Font {
-        let size = size + extraSize
         // Nunito.ttf is registered at launch via Info.plist's UIAppFonts — no runtime
         // CTFontManagerRegisterFontsForURL call needed (and calling it again here would
         // just report "already registered" as failure, which used to make this silently

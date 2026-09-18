@@ -12,6 +12,24 @@ import Combine
 import CoreLocation
 import Foundation
 
+/// One real intersection the route passes through along a step's road segment — whether
+/// the route actually turns there or just continues straight through. `otherBearings`
+/// holds every *other* road meeting at this point (true-north degrees), with the road the
+/// route arrived on and the one it continues along already excluded — these are the roads
+/// not taken, for `GuidanceLineView`'s side-branch markers. Each carries OSRM's own raw
+/// `entry` flag (whether that road can legally be turned onto at all) unfiltered — the
+/// entry/bearing/name filter stages themselves live in `GuidanceLineView` now, so its debug
+/// log can show exactly how many candidates survive each stage rather than only ever seeing
+/// an already-filtered list. `outBearing` (the road actually taken) is kept separately so a
+/// caller can filter out "other" roads that are really just the same road's own curve
+/// re-entering the graph (a roundabout's arc, a divided road's other carriageway) rather
+/// than a genuinely different one.
+struct RouteIntersection {
+    let coordinate: CLLocationCoordinate2D
+    let otherBearings: [(bearing: CLLocationDirection, entry: Bool)]
+    let outBearing: CLLocationDirection?
+}
+
 /// One turn-by-turn instruction: what to say, how far it covers, and the bearing to
 /// walk/drive along for its own segment (from where the step starts to where it ends).
 struct RouteStep: Identifiable {
@@ -29,6 +47,9 @@ struct RouteStep: Identifiable {
     /// The heading to point the compass along for this step, computed from
     /// `startCoordinate` to `endCoordinate` via `CompassManager.bearing`.
     let bearing: CLLocationDirection
+    /// Every real intersection along this step's own road — not just its final manoeuvre
+    /// point — straight from OSRM's own per-step intersection list.
+    let intersections: [RouteIntersection]
 
     /// A rough left/right/straight bucket for the turn-arrow glyph, derived from OSRM's
     /// maneuver modifier (e.g. "slight left", "sharp right", "straight").
@@ -61,9 +82,13 @@ final class RoutingManager: ObservableObject {
     /// How close (metres) the traveller needs to get to a step's endpoint before
     /// guidance advances to the next instruction.
     private let arrivalRadius: CLLocationDistance = 50
-    /// How far (metres) the traveller can drift from the route line before it counts as
-    /// having left the route rather than just normal GPS noise.
-    private let offRouteThreshold: CLLocationDistance = 45
+
+    /// How far (metres) the traveller can be from the route's OSRM-snapped start point and
+    /// still count as "at the start". OSRM snaps the route onto the nearest road it knows
+    /// about, which can sit well outside the walking/driving corridor tolerance from a raw
+    /// coordinate (an address, a mock GPS fix) — without this, that snap gap alone reads as
+    /// having already drifted off a route nobody has taken a step on yet.
+    private let startSnapRadius: CLLocationDistance = 50
 
     var currentStep: RouteStep? { steps.indices.contains(currentStepIndex) ? steps[currentStepIndex] : nil }
     var nextStep: RouteStep? { steps.indices.contains(currentStepIndex + 1) ? steps[currentStepIndex + 1] : nil }
@@ -115,6 +140,9 @@ final class RoutingManager: ObservableObject {
                 errorMessage = message
                 return
             }
+            print("[RoutingManager] Route distance: \(osrmRoute.distance) m")
+            print("[RoutingManager] Route polyline points: \(osrmRoute.geometry.coordinates.count)")
+            print("[RoutingManager] First 3 points: \(osrmRoute.geometry.coordinates.prefix(3))")
             let parsed = Self.parse(osrmRoute)
             steps = parsed.steps
             routePolyline = parsed.polyline
@@ -141,20 +169,34 @@ final class RoutingManager: ObservableObject {
         errorMessage = nil
     }
 
-    /// Called every tick with the traveller's real (or simulated) position. Advances to the
-    /// next step once they're within `arrivalRadius` of the current step's endpoint, trims
-    /// `remainingPolyline` down to the road still ahead of them, and flags `isOffRoute` when
-    /// they've drifted too far from the planned line for whoever owns navigation (AppModel)
-    /// to fetch a fresh route.
-    func updateProgress(userLocation: CLLocationCoordinate2D) {
+    /// Called on each `LocationCheckScheduler` poll with the traveller's real (or simulated)
+    /// position and current activity. Advances to the next step once they're within
+    /// `arrivalRadius` of the current step's endpoint, trims `remainingPolyline` down to the
+    /// road still ahead of them, and flags `isOffRoute` when they've drifted further than
+    /// the activity's real corridor tolerance (15m walking, 30m driving) from the planned
+    /// line — for whoever owns navigation (AppModel) to fetch a fresh route.
+    func updateProgress(userLocation: CLLocationCoordinate2D, activity: GuidanceActivity) {
         guard !routePolyline.isEmpty else {
             remainingPolyline = []
             isOffRoute = false
             return
         }
-        if let nearest = CompassManager.nearestPoint(on: routePolyline, to: userLocation) {
-            isOffRoute = nearest.distance > offRouteThreshold
-            remainingPolyline = [nearest.point] + routePolyline.suffix(from: min(nearest.segmentIndex + 1, routePolyline.count))
+        let threshold = activity.corridorRadius
+        if let routeStartPoint = routePolyline.first {
+            let distanceToStart = CompassManager.distance(from: userLocation, to: routeStartPoint)
+            print("[RoutingManager] Route snapped to: \(routeStartPoint), user at: \(userLocation), distance: \(distanceToStart) m")
+            if distanceToStart <= startSnapRadius {
+                isOffRoute = false
+                remainingPolyline = routePolyline
+            } else if let nearest = CompassManager.nearestPoint(on: routePolyline, to: userLocation) {
+                print("[RoutingManager] Distance to route: \(nearest.distance) m, threshold: \(threshold) m")
+                print("[RoutingManager] Off-route? \(nearest.distance > threshold)")
+                isOffRoute = nearest.distance > threshold
+                if isOffRoute {
+                    print("[RoutingManager] ⚠️ FLAGGED OFF-ROUTE - triggering reroute")
+                }
+                remainingPolyline = [nearest.point] + routePolyline.suffix(from: min(nearest.segmentIndex + 1, routePolyline.count))
+            }
         }
         if let step = currentStep, !isFinished,
            CompassManager.distance(from: userLocation, to: step.endCoordinate) <= arrivalRadius {
@@ -171,6 +213,28 @@ final class RoutingManager: ObservableObject {
                 let start = coordinates.first ?? CLLocationCoordinate2D(latitude: step.maneuver.location[1], longitude: step.maneuver.location[0])
                 let end = coordinates.last ?? start
                 let bearing = CompassManager.bearing(from: start, to: end)
+                let intersections: [RouteIntersection] = step.intersections.map { intersection in
+                    var excluded = Set<Int>()
+                    if let inIndex = intersection.in { excluded.insert(inIndex) }
+                    if let outIndex = intersection.out { excluded.insert(outIndex) }
+                    // Only the road arrived on and the one continued along are dropped here
+                    // — everything else (including `entry: false` roads you can't legally
+                    // turn onto) is kept raw, with its own entry flag, so GuidanceLineView's
+                    // filter stages can be logged individually instead of collapsing straight
+                    // to a final list.
+                    let otherBearings: [(bearing: CLLocationDirection, entry: Bool)] = intersection.bearings.enumerated()
+                        .filter { offset, _ in !excluded.contains(offset) }
+                        .map { offset, bearing in
+                            let entryFlag = intersection.entry.indices.contains(offset) ? intersection.entry[offset] : true
+                            return (CLLocationDirection(bearing), entryFlag)
+                        }
+                    let outBearing = intersection.out.flatMap { intersection.bearings.indices.contains($0) ? CLLocationDirection(intersection.bearings[$0]) : nil }
+                    return RouteIntersection(
+                        coordinate: CLLocationCoordinate2D(latitude: intersection.location[1], longitude: intersection.location[0]),
+                        otherBearings: otherBearings,
+                        outBearing: outBearing
+                    )
+                }
                 steps.append(RouteStep(
                     instruction: humanize(maneuver: step.maneuver, roadName: step.name),
                     distance: step.distance,
@@ -180,7 +244,8 @@ final class RoutingManager: ObservableObject {
                     maneuverModifier: step.maneuver.modifier,
                     startCoordinate: start,
                     endCoordinate: end,
-                    bearing: bearing
+                    bearing: bearing,
+                    intersections: intersections
                 ))
             }
         }
@@ -241,6 +306,22 @@ private struct OSRMStep: Decodable {
     let name: String
     let maneuver: OSRMManeuver
     let geometry: OSRMGeometry
+    let intersections: [OSRMIntersection]
+}
+
+/// One real intersection along a step's road, as OSRM reports it — every road meeting
+/// there (`bearings`), which of those the route arrived on (`in`) and continues along
+/// (`out`), by index into `bearings`/`entry`. `entry` (whether each bearing can legally be
+/// entered — `true` for a real option, `false` for a one-way street the wrong way or a
+/// restricted turn) is carried through unfiltered into `RouteIntersection.otherBearings`;
+/// GuidanceLineView applies and logs the actual entry/bearing/name filter stages itself.
+private struct OSRMIntersection: Decodable {
+    /// [longitude, latitude], per OSRM's convention.
+    let location: [Double]
+    let bearings: [Int]
+    let entry: [Bool]
+    let `in`: Int?
+    let out: Int?
 }
 
 private struct OSRMManeuver: Decodable {

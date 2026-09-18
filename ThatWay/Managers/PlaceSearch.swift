@@ -54,19 +54,4 @@ enum PlaceSearch {
             return []
         }
     }
-
-    /// Real points of interest within `radius` metres of `coordinate` — cafes, shops,
-    /// landmarks, etc. — for the map's "what's around here" layer.
-    static func nearbyPlaces(around coordinate: CLLocationCoordinate2D, radius: CLLocationDistance) async -> [MKMapItem] {
-        let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: radius)
-        print("[PlaceSearch] Fetching nearby places within \(Int(radius))m of \(coordinate.latitude), \(coordinate.longitude)")
-        do {
-            let response = try await MKLocalSearch(request: request).start()
-            print("[PlaceSearch] Found \(response.mapItems.count) nearby place(s)")
-            return response.mapItems
-        } catch {
-            print("[PlaceSearch] Nearby places failed: \(error.localizedDescription)")
-            return []
-        }
-    }
 }

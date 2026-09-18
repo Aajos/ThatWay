@@ -51,6 +51,26 @@ extension Color {
     var dominantTrio: [Color] {
         [self, adjustedBrightness(0.16), hueShifted(-18).adjustedBrightness(-0.08)]
     }
+
+    /// Linearly blends two colours in RGB space — used to fade the route line smoothly
+    /// between activity colours instead of snapping at a threshold.
+    static func lerp(_ a: Color, _ b: Color, _ t: Double) -> Color {
+        let t = max(0, min(1, t))
+        func components(_ c: Color) -> (CGFloat, CGFloat, CGFloat, CGFloat) {
+            let parts = UIColor(c).cgColor.components ?? [0, 0, 0, 1]
+            if parts.count >= 4 { return (parts[0], parts[1], parts[2], parts[3]) }
+            if parts.count == 2 { return (parts[0], parts[0], parts[0], parts[1]) }
+            return (0, 0, 0, 1)
+        }
+        let (ar, ag, ab, aa) = components(a)
+        let (br, bg, bb, ba) = components(b)
+        return Color(
+            red: Double(ar + (br - ar) * CGFloat(t)),
+            green: Double(ag + (bg - ag) * CGFloat(t)),
+            blue: Double(ab + (bb - ab) * CGFloat(t)),
+            opacity: Double(aa + (ba - aa) * CGFloat(t))
+        )
+    }
 }
 
 enum ThemeID: String, CaseIterable, Identifiable {
@@ -119,36 +139,23 @@ struct AppTheme: Identifiable {
     static func byId(_ id: ThemeID) -> AppTheme { all.first { $0.id == id }! }
 }
 
+/// A friend in the user's social roster. Purely a social/UI element — there's no real
+/// backend for friend locations, so friends don't have a coordinate, don't appear on the
+/// map, and can't be pointed at or routed to (that would mean fabricating a location for a
+/// real-seeming person, which is exactly the kind of mock data this app avoids elsewhere).
 struct Friend: Identifiable {
     let id: String
     let name: String
     let initials: String
     let color: Color
-    let mapPos: CGPoint // fraction 0...1 of the map's virtual 1200x1200 field
 
     static let all: [Friend] = [
-        Friend(id: "ay", name: "Ayaan", initials: "AY", color: Color(hex: "FFB4A1"), mapPos: CGPoint(x: 760 / 1200, y: 380 / 1200)),
-        Friend(id: "ri", name: "Riya", initials: "RI", color: Color(hex: "9FE8CE"), mapPos: CGPoint(x: 300 / 1200, y: 470 / 1200)),
-        Friend(id: "de", name: "Dev", initials: "DE", color: Color(hex: "F5D98C"), mapPos: CGPoint(x: 840 / 1200, y: 700 / 1200)),
-        Friend(id: "mi", name: "Mira", initials: "MI", color: Color(hex: "C7B8FF"), mapPos: CGPoint(x: 420 / 1200, y: 820 / 1200)),
-        Friend(id: "ka", name: "Kabir", initials: "KA", color: Color(hex: "FF9E7A"), mapPos: CGPoint(x: 640 / 1200, y: 900 / 1200)),
+        Friend(id: "ay", name: "Ayaan", initials: "AY", color: Color(hex: "FFB4A1")),
+        Friend(id: "ri", name: "Riya", initials: "RI", color: Color(hex: "9FE8CE")),
+        Friend(id: "de", name: "Dev", initials: "DE", color: Color(hex: "F5D98C")),
+        Friend(id: "mi", name: "Mira", initials: "MI", color: Color(hex: "C7B8FF")),
+        Friend(id: "ka", name: "Kabir", initials: "KA", color: Color(hex: "FF9E7A")),
     ]
-
-    /// A real, locatable coordinate for this fictional friend — a small fixed offset
-    /// (within roughly a 900m square) from `origin`, derived from their normalized
-    /// on-canvas position. They're fictional people, but this gives them a genuine
-    /// coordinate so pointing/routing to them uses the same real bearing, distance, and
-    /// OSRM math as any other destination, instead of a separate simulated path.
-    func coordinate(near origin: CLLocationCoordinate2D) -> CLLocationCoordinate2D {
-        let metersPerDegreeLat = 111_320.0
-        let metersPerDegreeLon = 111_320.0 * cos(origin.latitude * .pi / 180)
-        let dx = (mapPos.x - 0.5) * 900
-        let dy = (0.5 - mapPos.y) * 900
-        return CLLocationCoordinate2D(
-            latitude: origin.latitude + dy / metersPerDegreeLat,
-            longitude: origin.longitude + dx / metersPerDegreeLon
-        )
-    }
 }
 
 enum TurnDir { case left, right, straight }
@@ -213,7 +220,7 @@ enum AppScreen: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .compass: return "COMPASS"
+        case .compass: return "WAY"
         case .map: return "MAP"
         case .store: return "STORE"
         case .profile: return "YOU"
@@ -231,20 +238,8 @@ enum AppScreen: String, CaseIterable, Identifiable {
     }
 }
 
-enum StoreTab: String, CaseIterable, Identifiable {
-    case themes, skins, donate
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .themes: return "Themes"
-        case .skins: return "Skins"
-        case .donate: return "Donate"
-        }
-    }
-}
-
 enum NavMode { case point, guidance }
-enum DestKind { case none, place, friend }
+enum DestKind { case none, place }
 enum Visibility: String, CaseIterable, Identifiable {
     case friends = "Friends", close = "Close ones", nobody = "Nobody"
     var id: String { rawValue }
@@ -256,13 +251,11 @@ struct NavOptions {
     var share = "Off"
     var units = "Kilometres"
     var activity = "Automatic"
+    var tilt = "Aggressive"
 }
 
 /// Geometry helpers ported 1:1 from the design's math.
 enum CompassGeometry {
-    static let scalePoint: Double = 0.9
-    static let scaleGuide: Double = 1.06
-
     static func fmt(_ metres: Double) -> String {
         if metres >= 1000 {
             return String(format: "%.1f km", metres / 1000)
@@ -273,4 +266,12 @@ enum CompassGeometry {
     static func aud(_ n: Double) -> String {
         String(format: "$%.2f AUD", n)
     }
+}
+
+struct RecentPlace: Codable, Hashable, Identifiable {
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    var id: String { name }
+    var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
 }

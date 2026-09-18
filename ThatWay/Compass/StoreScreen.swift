@@ -7,6 +7,15 @@ import SwiftUI
 
 struct StoreScreen: View {
     @EnvironmentObject var app: AppModel
+    @State private var customAmount = ""
+    @State private var showAllSkins = false
+    @FocusState private var customFocused: Bool
+
+    private let tips: [(amount: String, name: String)] = [
+        ("$5", "A flat white"),
+        ("$15", "A month of tiles"),
+        ("$40", "Patron"),
+    ]
 
     var body: some View {
         let theme = app.currentTheme
@@ -14,171 +23,209 @@ struct StoreScreen: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Store").font(.nunito(24, .black))
-                Text(blurb).font(.nunito(13, .semibold)).foregroundStyle(theme.ink.opacity(0.68))
+                Text("Navigation is free, forever, no ads. Prices in AUD.")
+                    .font(.nunito(13, .semibold)).foregroundStyle(theme.ink.opacity(0.68))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20)
             .padding(.top, 10)
 
-            HStack(spacing: 6) {
-                ForEach(StoreTab.allCases) { tab in
-                    Button {
-                        app.storeTab = tab
-                    } label: {
-                        Text(tab.label)
-                            .font(.nunito(13, .extraBold))
-                            .foregroundStyle(theme.ink)
-                            .opacity(app.storeTab == tab ? 1 : 0.5)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(RoundedRectangle(cornerRadius: 14).fill(app.storeTab == tab ? theme.accent.opacity(0.2) : theme.ink.opacity(0.04)))
-                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(app.storeTab == tab ? theme.accent.opacity(0.45) : theme.ink.opacity(0.09)))
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-
             ScrollView {
-                switch app.storeTab {
-                case .themes: themesList(theme: theme)
-                case .skins: skinsGrid(theme: theme)
-                case .donate: donateList(theme: theme)
+                VStack(alignment: .leading, spacing: 26) {
+                    donateSection(theme: theme)
+                    themesSection(theme: theme)
+                    skinsSection(theme: theme)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 18)
+                .padding(.bottom, 100)
             }
-            .padding(.bottom, 94)
+            .scrollDismissesKeyboard(.interactively)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.top, 8)
         .background(theme.screen)
+        .sheet(isPresented: $showAllSkins) { allSkinsSheet }
     }
 
-    private var blurb: String {
-        switch app.storeTab {
-        case .donate: return "Optional, always. Prices in AUD."
-        case .themes: return "Every theme is free and repaints the whole app."
-        case .skins: return "Three skins free, the rest a few dollars in AUD."
-        }
+    private func sectionLabel(_ text: String, theme: AppTheme) -> some View {
+        Text(text).font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
     }
+
+    // MARK: Donate
 
     @ViewBuilder
-    private func themesList(theme: AppTheme) -> some View {
-        VStack(spacing: 12) {
-            ForEach(AppTheme.all) { th in
-                Button { app.setTheme(th.id) } label: {
-                    HStack(spacing: 14) {
-                        HStack(spacing: 5) {
-                            ForEach(th.swatches.indices, id: \.self) { i in
-                                RoundedRectangle(cornerRadius: 7).fill(th.swatches[i]).frame(width: 22, height: 44)
-                            }
+    private func donateSection(theme: AppTheme) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("DONATE", theme: theme)
+            HStack(spacing: 10) {
+                ForEach(tips, id: \.amount) { tip in
+                    Button {} label: {
+                        VStack(spacing: 4) {
+                            Text(tip.amount).font(.nunito(20, .black)).foregroundStyle(theme.accent)
+                            Text(tip.name).font(.nunito(11, .semibold)).foregroundStyle(theme.ink.opacity(0.7))
+                                .lineLimit(1).minimumScaleFactor(0.8)
                         }
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(th.name).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink)
-                            Text(th.note).font(.nunito(12, .semibold)).foregroundStyle(theme.ink.opacity(0.68))
-                        }
-                        Spacer()
-                        Text(app.theme == th.id ? "ACTIVE" : "FREE")
-                            .font(.nunito(11, .extraBold)).tracking(0.7)
-                            .foregroundStyle(app.theme == th.id ? theme.accent : theme.ink.opacity(0.45))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(RoundedRectangle(cornerRadius: 18).fill(theme.accent.opacity(0.12)))
+                        .overlay(RoundedRectangle(cornerRadius: 18).stroke(theme.accent.opacity(0.32)))
                     }
-                    .padding(16)
-                    .background(RoundedRectangle(cornerRadius: 20).fill(theme.ink.opacity(0.05)))
-                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(app.theme == th.id ? theme.accent.opacity(0.4) : theme.ink.opacity(0.09)))
+                    .buttonStyle(.plain)
+                }
+            }
+            HStack(spacing: 10) {
+                HStack(spacing: 6) {
+                    Text("$").font(.nunito(16, .extraBold)).foregroundStyle(theme.ink.opacity(0.6))
+                    TextField("Custom amount", text: $customAmount)
+                        .keyboardType(.decimalPad)
+                        .focused($customFocused)
+                        .font(.nunito(15, .semibold))
+                }
+                .padding(.horizontal, 14).frame(height: 46)
+                .background(RoundedRectangle(cornerRadius: 14).fill(theme.ink.opacity(0.05)))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(theme.ink.opacity(0.1)))
+
+                Button { customFocused = false } label: {
+                    Text("DONATE")
+                        .font(.nunito(12, .black)).tracking(0.6)
+                        .foregroundStyle(theme.onAccent)
+                        .padding(.horizontal, 18).frame(height: 46)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(theme.accent))
+                        .opacity(customAmount.isEmpty ? 0.5 : 1)
                 }
                 .buttonStyle(.plain)
+                .disabled(customAmount.isEmpty)
             }
+            Text("Tips can be one-off or recurring. Enjoying the app? Consider leaving a review on the App Store!")
+                .font(.nunito(11, .semibold)).foregroundStyle(theme.ink.opacity(0.6))
         }
-        .padding(16)
     }
 
+    // MARK: Themes
+
     @ViewBuilder
-    private func skinsGrid(theme: AppTheme) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            ForEach(Skin.all) { sk in
-                let owned = app.ownedSkins.contains(sk.id)
-                let equipped = app.skin == sk.id
-                Button { app.pickSkin(sk.id) } label: {
-                    VStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(RadialGradient(colors: [theme.dialA, theme.dialB], center: .init(x: 0.5, y: 0.3), startRadius: 0, endRadius: 44))
-                                .overlay(Circle().stroke(theme.ink.opacity(0.12)))
-                            if sk.hasArt, let glyph = sk.glyph {
-                                Text(glyph).font(.nunito(30, .extraBold)).foregroundStyle(theme.accent)
-                            } else {
-                                ZStack {
-                                    DiagonalHatch(color: theme.ink.opacity(0.08))
-                                    Text("3D asset\nplaceholder")
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .foregroundStyle(theme.ink.opacity(0.68))
-                                        .multilineTextAlignment(.center)
+    private func themesSection(theme: AppTheme) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("THEMES", theme: theme)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(AppTheme.all) { th in
+                        Button { app.setTheme(th.id) } label: {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack(spacing: 5) {
+                                    ForEach(th.swatches.indices, id: \.self) { i in
+                                        RoundedRectangle(cornerRadius: 7).fill(th.swatches[i]).frame(width: 22, height: 44)
+                                    }
                                 }
-                                .clipShape(Circle())
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(th.name).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink)
+                                    Text(app.theme == th.id ? "ACTIVE" : "FREE")
+                                        .font(.nunito(11, .extraBold)).tracking(0.7)
+                                        .foregroundStyle(app.theme == th.id ? theme.accent : theme.ink.opacity(0.45))
+                                }
                             }
+                            .padding(16)
+                            .frame(width: 150, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 20).fill(theme.ink.opacity(0.05)))
+                            .overlay(RoundedRectangle(cornerRadius: 20).stroke(app.theme == th.id ? theme.accent.opacity(0.4) : theme.ink.opacity(0.09)))
                         }
-                        .frame(width: 88, height: 88)
-
-                        VStack(spacing: 6) {
-                            Text(sk.name).font(.nunito(14, .extraBold)).foregroundStyle(theme.ink)
-                            Text(equipped ? "EQUIPPED" : owned ? (sk.price > 0 ? "OWNED" : "FREE") : app.aud(sk.price))
-                                .font(.nunito(11, .extraBold)).tracking(0.5)
-                                .foregroundStyle(equipped ? theme.accent : owned ? theme.ink.opacity(0.45) : theme.accent)
-                        }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 16)
-                    .frame(maxWidth: .infinity)
-                    .background(RoundedRectangle(cornerRadius: 20).fill(theme.ink.opacity(0.05)))
-                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(equipped ? theme.accent.opacity(0.4) : theme.ink.opacity(0.09)))
+                }
+                .padding(.horizontal, 1)
+            }
+        }
+    }
+
+    // MARK: Skins
+
+    @ViewBuilder
+    private func skinsSection(theme: AppTheme) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                sectionLabel("SKINS", theme: theme)
+                Spacer()
+                Button { showAllSkins = true } label: {
+                    Text("MORE")
+                        .font(.nunito(11, .black)).tracking(0.8)
+                        .foregroundStyle(theme.accent)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Capsule().fill(theme.accent.opacity(0.14)))
                 }
                 .buttonStyle(.plain)
             }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(Skin.all) { sk in
+                        skinCard(sk, theme: theme).frame(width: 140)
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
         }
-        .padding(16)
     }
 
-    @ViewBuilder
-    private func donateList(theme: AppTheme) -> some View {
-        VStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Navigation is free, forever, no ads").font(.nunito(15, .extraBold)).foregroundStyle(theme.accent)
-                Text("Every theme is free too. Tips and a few paid skins cover map tiles and the server bill.")
-                    .font(.nunito(13, .semibold)).foregroundStyle(theme.ink.opacity(0.76))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(18)
-            .background(RoundedRectangle(cornerRadius: 20).fill(theme.accent.opacity(0.12)))
-            .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.accent.opacity(0.32)))
-
-            ForEach(tips, id: \.amount) { tip in
-                HStack(spacing: 14) {
-                    Text(tip.amount)
-                        .font(.nunito(14, .extraBold)).foregroundStyle(theme.accent)
-                        .frame(width: 54, height: 44)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(theme.accent.opacity(0.16)))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(tip.name).font(.nunito(14, .extraBold)).foregroundStyle(theme.ink)
-                        Text(tip.note).font(.nunito(12, .semibold)).foregroundStyle(theme.ink.opacity(0.68))
-                    }
-                    Spacer()
+    private var allSkinsSheet: some View {
+        let theme = app.currentTheme
+        return NavigationStack {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    ForEach(Skin.all) { sk in skinCard(sk, theme: theme, dismissOnPick: true) }
                 }
                 .padding(16)
-                .background(RoundedRectangle(cornerRadius: 18).fill(theme.ink.opacity(0.05)))
-                .overlay(RoundedRectangle(cornerRadius: 18).stroke(theme.ink.opacity(0.1)))
             }
-
-            Text("All prices in AUD. Tips can be one off or recurring- as you choose. Enjoy the app? Consider leaving a review on the app store!")
-                .font(.nunito(11, .semibold))
-                .foregroundStyle(theme.ink.opacity(0.6))
-                .frame(maxWidth: .infinity, alignment: .leading)
+            .background(theme.screen)
+            .navigationTitle("Skins")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showAllSkins = false } } }
         }
-        .padding(16)
+        .presentationDetents([.large])
+        .preferredColorScheme(theme.light ? .light : .dark)
     }
 
-    private let tips: [(amount: String, name: String, note: String)] = [
-        ("$5", "A flat white", "One-off, no strings."),
-        ("$15", "A month of tiles", "Covers map data for a while."),
-        ("$40", "Patron", "Your name on the About page, if you want it."),
-    ]
+    @ViewBuilder
+    private func skinCard(_ sk: Skin, theme: AppTheme, dismissOnPick: Bool = false) -> some View {
+        let owned = app.ownedSkins.contains(sk.id)
+        let equipped = app.skin == sk.id
+        Button {
+            app.pickSkin(sk.id)
+            if dismissOnPick { showAllSkins = false }
+        } label: {
+            VStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(RadialGradient(colors: [theme.dialA, theme.dialB], center: .init(x: 0.5, y: 0.3), startRadius: 0, endRadius: 44))
+                        .overlay(Circle().stroke(theme.ink.opacity(0.12)))
+                    if sk.hasArt, let glyph = sk.glyph {
+                        Text(glyph).font(.nunito(30, .extraBold)).foregroundStyle(theme.accent)
+                    } else {
+                        ZStack {
+                            DiagonalHatch(color: theme.ink.opacity(0.08))
+                            Text("3D asset\nplaceholder")
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(theme.ink.opacity(0.68))
+                                .multilineTextAlignment(.center)
+                        }
+                        .clipShape(Circle())
+                    }
+                }
+                .frame(width: 88, height: 88)
+
+                VStack(spacing: 6) {
+                    Text(sk.name).font(.nunito(14, .extraBold)).foregroundStyle(theme.ink)
+                    Text(equipped ? "EQUIPPED" : owned ? (sk.price > 0 ? "OWNED" : "FREE") : app.aud(sk.price))
+                        .font(.nunito(11, .extraBold)).tracking(0.5)
+                        .foregroundStyle(equipped ? theme.accent : owned ? theme.ink.opacity(0.45) : theme.accent)
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 16)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 20).fill(theme.ink.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(equipped ? theme.accent.opacity(0.4) : theme.ink.opacity(0.09)))
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 private struct DiagonalHatch: View {

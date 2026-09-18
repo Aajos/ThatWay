@@ -14,7 +14,6 @@ import MapKit
 final class AppModel: ObservableObject {
     // Navigation
     @Published var screen: AppScreen = .compass
-    @Published var storeTab: StoreTab = .themes
     @Published var mode: NavMode = .point
     @Published var skin: SkinID = .needle
     @Published var theme: ThemeID = .ember
@@ -25,31 +24,40 @@ final class AppModel: ObservableObject {
     @Published var avatarSheet = false
     @Published var searchOpen = false
     @Published var searchQuery = ""
-    @Published var dest = "Sunrise Bakery"
-    @Published var destKind: DestKind = .place
-    @Published var destColor: Color?
-    @Published var destInitials = ""
-    @Published var recentSearches = ["Sunrise Bakery", "Home", "Baker Street Lot", "The Office", "Riya's place"]
+    @Published var dest = ""
+    @Published var destKind: DestKind = .none
+    /// Past destinations, newest first, each with the real coordinate it resolved to — so
+    /// tapping one goes straight to that exact place instead of re-geocoding a bare name
+    /// (which could fail, or land on a different same-named place). Persisted across launches.
+    @Published var recentSearches: [RecentPlace] = AppModel.loadRecents() {
+        didSet { AppModel.saveRecents(recentSearches) }
+    }
 
-    // Real routing (OSRM) and real location (CoreLocation via LocationManager). Friends
-    // stay on the simulated system below. `simulatedPosition` is now only a fallback
-    // walker — used in place of a real GPS fix when running in the Simulator without a
-    // simulated location, or before permission is granted — everything that needs "where
-    // the user is" should read `currentPosition`, which prefers the real fix.
-    @Published var destinationCoordinate: CLLocationCoordinate2D? = AppModel.mockDestinations["Sunrise Bakery"]
+    // Real routing (OSRM) and real location (CoreLocation via LocationManager).
+    // `simulatedPosition` is only a fallback walker — used in place of a real GPS fix when
+    // running in the Simulator without a simulated location, or before permission is
+    // granted — everything that needs "where the user is" should read `currentPosition`,
+    // which prefers the real fix. There's no mock destination anymore: the app opens idle,
+    // with nothing selected, until a real search result is picked.
+    @Published var destinationCoordinate: CLLocationCoordinate2D?
     @Published var simulatedPosition: CLLocationCoordinate2D = AppModel.mockUserLocation
     let routingManager = RoutingManager()
     let locationManager = LocationManager()
+    let routeDataGenerator = RouteDataGenerator()
+    let locationCheckScheduler = LocationCheckScheduler()
 
-    static let mockUserLocation = CLLocationCoordinate2D(latitude: -33.8568, longitude: 151.2153) // Circular Quay
-    static let mockDestinations: [String: CLLocationCoordinate2D] = [
-        "Sunrise Bakery": CLLocationCoordinate2D(latitude: -33.8587, longitude: 151.2140),  // near the Opera House
-        "Home": CLLocationCoordinate2D(latitude: -33.8908, longitude: 151.2743),            // Bondi Beach
-        "Baker Street Lot": CLLocationCoordinate2D(latitude: -33.8737, longitude: 151.1998), // Darling Harbour
-        "The Office": CLLocationCoordinate2D(latitude: -33.8523, longitude: 151.2108),       // Circular Quay
-        "Riya's place": CLLocationCoordinate2D(latitude: -33.8600, longitude: 151.2200),     // Woolloomooloo
-        "Barangaroo": CLLocationCoordinate2D(latitude: -33.8599, longitude: 151.2008),       // test destination
-    ]
+    /// The position/speed the guidance corridor check last actually looked at — updated
+    /// only by `performLocationCheck()`, i.e. once per adaptive poll (10s walking, 3s
+    /// driving), not continuously. `GuidanceLineView`'s look-ahead reads these rather than
+    /// the live `currentPosition`/`speedKmh`, so its geometry only recomputes as often as
+    /// the corridor check itself actually runs.
+    @Published private(set) var guidanceCheckPosition: CLLocationCoordinate2D = AppModel.mockUserLocation
+    @Published private(set) var guidanceCheckSpeedKmh: Double = 0
+    /// True once within 100m of the destination — shows the completion screen. Reset
+    /// whenever a fresh guidance session starts or the destination is dismissed.
+    @Published var arrived = false
+
+    static let mockUserLocation = CLLocationCoordinate2D(latitude: -37.8941463, longitude: 145.2916477) // 58 Glenfern Road, Ferntree Gully
 
     // Idle ambient animation tick — purely cosmetic (drives `sway`, a subtle needle
     // wobble at rest); never used to fake a position, speed, or distance reading.
@@ -58,41 +66,44 @@ final class AppModel: ObservableObject {
     // Profile
     @Published var vis: Visibility = .friends
     @Published var closeKm: Double = 8
-
-    // Accessibility — added to every Nunito font size app-wide (see NunitoFont.swift).
-    @Published var extraTextSize: Double = 0 {
-        didSet { Nunito.extraSize = extraTextSize }
-    }
-
-    // Floating mode toggle
-    @Published var togX: CGFloat = 244
-    @Published var togY: CGFloat = 84
-    @Published var dragging = false
+    /// Which mode picking a destination (a search result) drops straight into.
+    /// Point mode is a straight-line bearing with no live route tracking — cheap on
+    /// battery. Guidance keeps fetching/baking real turn-by-turn data continuously, which
+    /// costs more power for a smoother, corridor-aware experience. Explicit "route there"
+    /// actions (the ROUTE button, a map-tap confirmation) always start guidance regardless
+    /// of this — it only governs what picking a destination defaults to.
+    @Published var defaultNavMode: NavMode = .point
 
     @Published var opts = NavOptions()
 
-    private var timer: AnyCancellable?
 
-    let tiltStrength: Double = 0.7
-    static let togW: CGFloat = 132
-    static let togH: CGFloat = 62
-    static let exclusionRadius: CGFloat = 140
-    static let cardExclusionRadius: CGFloat = 60
+    /// Full tilt (at a turn) for the "Compass tilt" setting, in degrees: Off, Mild, Aggressive.
+    var maxTiltDegrees: Double {
+        switch opts.tilt {
+        case "Off": return 0
+        case "Mild": return 15
+        default: return 30
+        }
+    }
+
+    private var timer: AnyCancellable?
 
     init() {
         timer = Timer.publish(every: 0.09, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.tick() }
         locationManager.requestPermission()
-        // The default demo destination is set directly above rather than through
-        // `pickPlace`, so it needs its own kick to fetch a preview route on launch.
-        fetchRoute(to: destinationCoordinate)
     }
 
     func tick() {
         t += 1
-        if guiding, routingManager.hasRoute {
-            advanceSimulatedPosition()
+        // Purely cosmetic per-tick work only — the fallback walker's own position needs
+        // smooth 90ms-scale movement to look like real motion in the Simulator. Anything
+        // that actually costs something (corridor/off-route checks, reroute fetches) is no
+        // longer here: it runs exclusively from `locationCheckScheduler`'s adaptive poll,
+        // not on every tick.
+        if guiding, !hasRealLocation, routingManager.hasRoute {
+            advanceFallbackWalker()
         }
     }
 
@@ -107,17 +118,11 @@ final class AppModel: ObservableObject {
     /// ever a forged reading.
     private static let fallbackWalkSpeed: Double = 1.4
 
-    /// Advances guidance progress each tick. With a real GPS fix, the phone's own motion
-    /// is authoritative — this just re-checks the real position against the route. Without
-    /// one (Simulator with no simulated location, or permission not yet granted), it falls
-    /// back to walking a traveller along the route's real geometry at a fixed pace, purely
-    /// so there's real geometry to look at while developing without a device.
-    private func advanceSimulatedPosition() {
-        guard !hasRealLocation else {
-            routingManager.updateProgress(userLocation: currentPosition)
-            rerouteIfOffRoute()
-            return
-        }
+    /// Moves the fallback traveller a little further along the route's real geometry each
+    /// tick, for smooth visual motion while developing without a device. This is *only*
+    /// ever position bookkeeping — it does not check the route, flag off-route, or trigger
+    /// a reroute; `performLocationCheck()` does all of that, on its own adaptive schedule.
+    private func advanceFallbackWalker() {
         let polyline = routingManager.routePolyline
         guard !polyline.isEmpty else { return }
         let tickInterval = 0.09
@@ -125,8 +130,39 @@ final class AppModel: ObservableObject {
         if let point = CompassManager.pointAlong(polyline, distance: routeProgressMeters) {
             simulatedPosition = point
         }
-        routingManager.updateProgress(userLocation: simulatedPosition)
+    }
+
+    /// The actual guidance work — corridor check, off-route flag, reroute trigger, arrival
+    /// detection, and the look-ahead snapshot `GuidanceLineView` reads — run from here, and
+    /// only from here, on `locationCheckScheduler`'s adaptive cadence (10s walking, 3s
+    /// driving) instead of continuously. This is the whole point of the scheduler: the
+    /// expensive part of guidance now runs a few times a minute instead of ~11 times a
+    /// second.
+    private func performLocationCheck() {
+        guidanceCheckPosition = currentPosition
+        guidanceCheckSpeedKmh = speedKmh
+        routingManager.updateProgress(userLocation: currentPosition, activity: guidanceActivity)
+        checkArrival()
+        // Skips a pointless reroute fetch for a route that's about to be torn down anyway.
+        guard !arrived else { return }
         rerouteIfOffRoute()
+    }
+
+    /// How close (metres) counts as "arrived" — deliberately generous (100m) rather than
+    /// RoutingManager's own tighter per-step `arrivalRadius`, since this is about ending the
+    /// whole trip, not just advancing to the next turn instruction.
+    private static let arrivalDistance: CLLocationDistance = 100
+
+    /// Once within `arrivalDistance` of the actual destination: stop polling, drop the now-
+    /// pointless baked guidance data, and show the completion screen — there's nothing left
+    /// for guidance to compute once the trip is over.
+    private func checkArrival() {
+        guard guiding, !arrived, let destinationCoordinate else { return }
+        guard CompassManager.distance(from: currentPosition, to: destinationCoordinate) < Self.arrivalDistance else { return }
+        print("[AppModel] Arrived at destination")
+        arrived = true
+        routeDataGenerator.clearGuidanceData()
+        locationCheckScheduler.stop()
     }
 
     private var lastRerouteAt: Date?
@@ -146,7 +182,11 @@ final class AppModel: ObservableObject {
         if let last = lastRerouteAt, Date().timeIntervalSince(last) < rerouteCooldown { return }
         lastRerouteAt = Date()
         print("[AppModel] Off route — fetching a fresh route from the current position")
-        fetchRoute(to: destinationCoordinate)
+        // Stopped here and restarted once the new route lands in `fetchRoute` below — the
+        // old route's corridor is invalid for the length of the fetch, so there's nothing
+        // useful for a check to run against in between.
+        locationCheckScheduler.stop()
+        fetchRoute(to: destinationCoordinate, isReroute: true)
     }
 
     // MARK: - Derived state
@@ -163,7 +203,7 @@ final class AppModel: ObservableObject {
     /// stand-in "north") — matches the old fixed behaviour until a real heading arrives.
     var currentHeading: CLLocationDirection { locationManager.hasReliableHeading ? locationManager.heading : 0 }
 
-    /// Idle: not guiding, and no place or friend selected to point at. The dial goes
+    /// Idle: not guiding, and no place selected to point at. The dial goes
     /// north-up and flat, with the cardinal markers emphasized, so it's unmistakably at rest.
     var isIdle: Bool { !guiding && destKind == .none }
     /// A subtle idle-only needle wobble — cosmetic "alive" motion, not a stand-in for any
@@ -219,9 +259,43 @@ final class AppModel: ObservableObject {
         return routingManager.currentStep?.turnDirection ?? .straight
     }
 
+    /// The next real turn's OSRM modifier ("left", "sharp right", "uturn", …) once it's within
+    /// range — 300m standing still, stretching to 1km at 100 km/h, since faster travel needs
+    /// earlier warning. Nil on a straight run, when there's no route, or at arrival.
+    var upcomingTurnModifier: String? {
+        guard guiding, hasRealRoute, let upcoming = routingManager.nextStep,
+              upcoming.maneuverType != "arrive",
+              distanceToManeuver <= 300 + min(1, speedKmh / 100) * 700,
+              let modifier = upcoming.maneuverModifier,
+              modifier.contains("left") || modifier.contains("right") else { return nil }
+        return modifier
+    }
+
+    /// The arrow beside the distance readout: straight up by default, then a bend in the
+    /// upcoming turn's direction, or a U-turn arrow for sharp turns and U-turns.
+    var dialArrowSymbol: String {
+        guard let modifier = upcomingTurnModifier else { return "arrow.up" }
+        let side = modifier.contains("left") ? "left" : "right"
+        switch modifier {
+        case "uturn", "sharp left", "sharp right": return "arrow.uturn.\(side)"
+        case "slight left", "slight right": return "arrow.up.\(side)"
+        default: return "arrow.turn.up.\(side)"
+        }
+    }
+
+    /// How far to rotate the dial's cardinal ring (the tick marks and N/E/S/W letters) so
+    /// "N" always sits at true geographic north on screen as the phone turns — a real
+    /// rotating compass bezel, independent of the needle. The needle keeps pointing at the
+    /// destination via `needleDeg`, which is already screen-relative (bearing minus
+    /// heading), so the two rotate independently and only agree when the destination
+    /// itself lies due north.
+    var dialHeadingDeg: Double { CompassManager.relativeBearing(heading: currentHeading, bearing: 0) }
+
     var needleDeg: Double {
-        // Idle: no destination at all — rest dead on north rather than the ambient sway.
-        if isIdle { return 0 }
+        // Idle: no destination selected — point at true north (same math as the dial's own
+        // north marker), so needle and dial visibly agree instead of the needle freezing
+        // at a fake straight-up regardless of which way the phone is actually facing.
+        if isIdle { return dialHeadingDeg }
         // Point the needle at the real bearing from wherever the traveller actually is
         // right now toward the next turn (guidance with a loaded route) — converging on
         // the real destination itself once the final step is reached — or toward the
@@ -240,16 +314,26 @@ final class AppModel: ObservableObject {
         return sway
     }
 
-    var dialScale: Double { guiding ? CompassGeometry.scaleGuide : CompassGeometry.scalePoint }
     /// Fully flat at rest in idle mode — no lean at all, so the dial visibly settles.
-    var tiltDeg: Double { isIdle ? 0 : far * 54 * tiltStrength }
+    var tiltDeg: Double { isIdle ? 0 : far * maxTiltDegrees }
+    /// Sideways lean into the upcoming turn (same turn the dial arrow shows): a little for a slight
+    /// bend, more for a full turn, most for a sharp turn or U-turn — scaled by the "Compass tilt"
+    /// setting (Off = none, Mild = 60%).
     var laneDeg: Double {
-        guard guiding, hasRealRoute else { return 0 }
-        switch turnDir {
-        case .left: return -10
-        case .right: return 10
-        case .straight: return 0
+        guard let modifier = upcomingTurnModifier else { return 0 }
+        let strength: Double
+        switch opts.tilt {
+        case "Off": return 0
+        case "Mild": strength = 0.6
+        default: strength = 1
         }
+        let magnitude: Double
+        switch modifier {
+        case "uturn", "sharp left", "sharp right": magnitude = 16
+        case "slight left", "slight right": magnitude = 7
+        default: magnitude = 13
+        }
+        return (modifier.contains("left") ? -1 : 1) * magnitude * strength
     }
 
     /// Real speed over ground from CoreLocation, in km/h — zero whenever there's no real
@@ -257,18 +341,44 @@ final class AppModel: ObservableObject {
     var speedKmh: Double { max(0, locationManager.speed) * 3.6 }
     /// `speedKmh` converted to the unit the user picked in Settings.
     var displaySpeed: Double { opts.units == "Miles" ? speedKmh * 0.621371 : speedKmh }
-    var auto: String { speedKmh < 7 ? "WALKING" : speedKmh < 15 ? "RUNNING" : "DRIVING" }
+    /// Under 8 km/h is walking, 8–20 is running, above 20 is driving.
+    var auto: String { speedKmh < 8 ? "WALKING" : speedKmh < 20 ? "RUNNING" : "DRIVING" }
     var activity: String { opts.activity == "Automatic" ? auto : opts.activity.uppercased() }
-    var routeColor: Color { activity == "DRIVING" ? Color(hex: "3B82F6") : Color(hex: "2FCF9B") }
+    /// `activity` collapsed to the two-state corridor/polling profile everything guidance-
+    /// related actually keys off — "RUNNING" gets walking's tighter tolerance, since a
+    /// runner drifts about as far from a path as a walker does.
+    var guidanceActivity: GuidanceActivity { activity == "DRIVING" ? .driving : .walking }
 
-    var friendMode: Bool { destKind == .friend && destColor != nil }
-    var accent: Color { friendMode ? (destColor ?? currentTheme.accent) : currentTheme.accent }
+    /// True at walking pace or below where "walking" stops being a meaningful label —
+    /// under 2 km/h is standing still (or GPS noise on a stationary phone), not actually
+    /// walking anywhere. Display-only: doesn't affect `activity`/`guidanceActivity`, which
+    /// still need a real walking/running/driving classification for corridor tolerance and
+    /// route colour regardless of whether the label shown right now says "stationary".
+    var isStationary: Bool { speedKmh <= 2 }
+    var activityDisplayLabel: String { isStationary ? "STATIONARY" : activity }
 
-    /// The 2-3 tones the dial's glass rim gradient pulls from — the selected friend's
-    /// colors when pointing at one, otherwise the theme's own accent pairing.
+    /// The route line's colour, blended continuously from the real speed rather than
+    /// snapping between fixed colours at the walk/run/drive boundaries — green through
+    /// amber to blue, smoothly, across bands centred on the 8 and 20 km/h thresholds.
+    var routeColor: Color {
+        let walk = Color(hex: "2FCF9B")
+        let run = Color(hex: "FFB020")
+        let drive = Color(hex: "3B82F6")
+        let kmh = speedKmh
+        switch kmh {
+        case ..<5: return walk
+        case 5..<11: return .lerp(walk, run, (kmh - 5) / 6)
+        case 11..<17: return run
+        case 17..<23: return .lerp(run, drive, (kmh - 17) / 6)
+        default: return drive
+        }
+    }
+
+    var accent: Color { currentTheme.accent }
+
+    /// The 2-3 tones the dial's glass rim gradient pulls from.
     var dialGlassColors: [Color] {
-        friendMode ? (destColor ?? currentTheme.accent).dominantTrio
-            : [currentTheme.accent, Color(hex: "34D6A5"), currentTheme.accent.hueShifted(24)]
+        [currentTheme.accent, Color(hex: "34D6A5"), currentTheme.accent.hueShifted(24)]
     }
 
     var currentAvatar: AvatarOption { AvatarOption.byId(avatar) }
@@ -290,24 +400,63 @@ final class AppModel: ObservableObject {
     /// Fetches (or clears) the real OSRM route for `destination` from wherever the user
     /// actually is right now. Drives both the guidance turn card and the route-preview
     /// line shown on the Map tab, so a route appears as soon as a destination exists —
-    /// not just once guidance formally starts.
-    private func fetchRoute(to destination: CLLocationCoordinate2D?) {
+    /// not just once guidance formally starts. When this fetch is happening because guidance
+    /// is actually active, it also bakes (or, for a reroute, re-bakes) `RouteDataGenerator`'s
+    /// guidance data once the route arrives — never for a plain Point-mode preview.
+    private func fetchRoute(to destination: CLLocationCoordinate2D?, isReroute: Bool = false) {
         guard let destination else { routingManager.clear(); return }
         let origin = currentPosition
-        Task { await routingManager.getRoute(from: origin, to: destination) }
+        Task {
+            await routingManager.getRoute(from: origin, to: destination)
+            guard guiding, routingManager.hasRoute, !arrived else { return }
+            if isReroute {
+                routeDataGenerator.regenerateGuidanceData(
+                    polyline: routingManager.routePolyline, steps: routingManager.steps, activity: guidanceActivity
+                )
+                // The reroute fetch is done and the new route is baking — resume polling
+                // against it. `start` is idempotent, so this is also harmless on the very
+                // first fetch (isReroute: false), where the scheduler was already started
+                // synchronously in `startGuidance()` below and just keeps running. Guarded
+                // on `!arrived` above: this fetch could have been in flight when a later
+                // check already detected arrival and stopped the scheduler — without that
+                // guard, this completion would silently restart it right afterward.
+                startLocationChecks()
+            } else {
+                routeDataGenerator.generateGuidanceData(
+                    polyline: routingManager.routePolyline, steps: routingManager.steps, activity: guidanceActivity
+                )
+            }
+        }
+    }
+
+    /// Starts (or resumes) `locationCheckScheduler` for the current mode/activity, and runs
+    /// one check immediately rather than waiting out a full interval before the guidance
+    /// line has anything real to show.
+    private func startLocationChecks() {
+        locationCheckScheduler.start(
+            mode: mode,
+            activityProvider: { [weak self] in self?.guidanceActivity ?? .walking },
+            onCheck: { [weak self] in self?.performLocationCheck() }
+        )
     }
 
     func startGuidance() {
         mode = .guidance
         routeProgressMeters = 0
         lastRerouteAt = nil
+        arrived = false
         simulatedPosition = Self.mockUserLocation
         fetchRoute(to: destinationCoordinate)
+        startLocationChecks()
+        performLocationCheck()
     }
 
     func endGuidance() {
         mode = .point
         routeProgressMeters = 0
+        arrived = false
+        routeDataGenerator.clearGuidanceData()
+        locationCheckScheduler.stop()
         // The route itself stays put — the destination is still selected, so the Map tab
         // keeps showing the preview line until the user picks something new or clears it.
     }
@@ -322,29 +471,25 @@ final class AppModel: ObservableObject {
         setTheme(currentTheme.light ? lastDark : .paper)
     }
 
-    /// A friend's real, locatable coordinate, derived from the user's current position —
-    /// see `Friend.coordinate(near:)`. Used for both the compass needle/routing and the
-    /// Map tab's annotation, so a friend behaves exactly like any other real destination.
-    func coordinate(for f: Friend) -> CLLocationCoordinate2D { f.coordinate(near: currentPosition) }
-
-    func goToFriend(_ f: Friend) {
-        dest = f.name
-        destKind = .friend
-        destColor = f.color
-        destInitials = f.initials
-        mode = .point
-        let coordinate = coordinate(for: f)
-        destinationCoordinate = coordinate
-        fetchRoute(to: coordinate)
+    /// After a destination coordinate is set, starts navigating to it in whichever mode the
+    /// user picked as their default (You page) — Guidance jumps straight into turn-by-turn,
+    /// Point just previews the route line and waits for an explicit ROUTE tap. Explicit
+    /// "route there" actions elsewhere (the ROUTE button, a map-tap confirmation) bypass
+    /// this and always call `startGuidance()` directly.
+    private func beginNavigatingToDestination() {
+        if defaultNavMode == .guidance {
+            startGuidance()
+        } else {
+            mode = .point
+            fetchRoute(to: destinationCoordinate)
+        }
     }
 
-    /// Drops whatever place or friend is selected and returns the compass to idle:
+    /// Drops whatever place is selected and returns the compass to idle:
     /// north-up, flat, cardinal markers emphasized.
     func clearDestination() {
         destKind = .none
         dest = ""
-        destColor = nil
-        destInitials = ""
         destinationCoordinate = nil
         routingManager.clear()
     }
@@ -354,27 +499,25 @@ final class AppModel: ObservableObject {
         guard !trimmed.isEmpty else { return }
         dest = trimmed
         destKind = .place
-        destColor = nil
-        destInitials = ""
         searchOpen = false
         searchQuery = ""
-        mode = .point
-        recentSearches.removeAll { $0 == trimmed }
-        recentSearches.insert(trimmed, at: 0)
-        if recentSearches.count > 5 { recentSearches.removeLast() }
 
-        // Show the mock coordinate immediately if this name happens to be one of the test
-        // destinations (instant feedback, no network round-trip needed), then replace it
-        // with a real geocoded result once that resolves. Falls back to staying on the
-        // mock value (or nil, if there wasn't one) if the real search fails or is offline.
-        destinationCoordinate = Self.mockDestinations[trimmed]
-        fetchRoute(to: destinationCoordinate)
+        // No coordinate yet — nothing to navigate to until the real geocode below resolves.
+        // Point mode just sits with the name shown and no bearing until then; Guidance
+        // mode's own fetch below is a no-op (`fetchRoute` clears on a nil destination) until
+        // the real coordinate arrives and triggers the actual first fetch.
+        destinationCoordinate = nil
+        beginNavigatingToDestination()
         let origin = currentPosition
         Task { [weak self] in
             guard let self, let real = await PlaceSearch.firstResult(for: trimmed, near: origin) else { return }
             guard self.dest == trimmed else { return } // a newer search superseded this one
             self.destinationCoordinate = real
-            self.fetchRoute(to: real)
+            self.remember(name: trimmed, coordinate: real)
+            // Corrects whichever mode is already active (Point preview or live Guidance)
+            // with the real coordinate — a reroute in spirit, even though it's a geocode
+            // correction rather than the traveller actually drifting off the road.
+            self.fetchRoute(to: real, isReroute: true)
         }
     }
 
@@ -384,18 +527,43 @@ final class AppModel: ObservableObject {
         let name = mapItem.name ?? "Selected place"
         dest = name
         destKind = .place
-        destColor = nil
-        destInitials = ""
         searchOpen = false
         searchQuery = ""
-        mode = .point
-        recentSearches.removeAll { $0 == name }
-        recentSearches.insert(name, at: 0)
-        if recentSearches.count > 5 { recentSearches.removeLast() }
+        remember(name: name, coordinate: mapItem.placemark.coordinate)
 
-        let coordinate = mapItem.placemark.coordinate
-        destinationCoordinate = coordinate
-        fetchRoute(to: coordinate)
+        destinationCoordinate = mapItem.placemark.coordinate
+        beginNavigatingToDestination()
+    }
+
+    /// Picks a past destination using the coordinate it was saved with — no geocoding
+    /// round-trip, so it can't fail or resolve to a different place.
+    func pickRecent(_ place: RecentPlace) {
+        dest = place.name
+        destKind = .place
+        searchOpen = false
+        searchQuery = ""
+        remember(name: place.name, coordinate: place.coordinate)
+        destinationCoordinate = place.coordinate
+        beginNavigatingToDestination()
+    }
+
+    private func remember(name: String, coordinate: CLLocationCoordinate2D) {
+        var updated = recentSearches
+        updated.removeAll { $0.name == name }
+        updated.insert(RecentPlace(name: name, latitude: coordinate.latitude, longitude: coordinate.longitude), at: 0)
+        recentSearches = Array(updated.prefix(5))
+    }
+
+    private static let recentsKey = "recentSearches.v1"
+    private static func loadRecents() -> [RecentPlace] {
+        guard let data = UserDefaults.standard.data(forKey: recentsKey),
+              let decoded = try? JSONDecoder().decode([RecentPlace].self, from: data) else { return [] }
+        return decoded
+    }
+    private static func saveRecents(_ recents: [RecentPlace]) {
+        if let data = try? JSONEncoder().encode(recents) {
+            UserDefaults.standard.set(data, forKey: recentsKey)
+        }
     }
 
     /// A notable named spot tapped on the Map tab — either one of our own real nearby-place
@@ -424,14 +592,10 @@ final class AppModel: ObservableObject {
         guard let prompt = mapSelectionPrompt else { return }
         dest = prompt.name
         destKind = .place
-        destColor = nil
-        destInitials = ""
         searchOpen = false
         searchQuery = ""
         destinationCoordinate = prompt.coordinate
-        recentSearches.removeAll { $0 == prompt.name }
-        recentSearches.insert(prompt.name, at: 0)
-        if recentSearches.count > 5 { recentSearches.removeLast() }
+        remember(name: prompt.name, coordinate: prompt.coordinate)
         mapSelectionPrompt = nil
         startGuidance()
     }
@@ -463,7 +627,6 @@ final class AppModel: ObservableObject {
 
     func goDonate() {
         screen = .store
-        storeTab = .donate
     }
 
     func selectTab(_ s: AppScreen) {
@@ -472,64 +635,4 @@ final class AppModel: ObservableObject {
         avatarSheet = false
     }
 
-    /// How much room the floating tab bar needs at the bottom, so the toggle never slides
-    /// under it and reads as "vanished."
-    static let tabBarClearance: CGFloat = 90
-
-    /// Clamp the floating toggle inside the screen (20px edge padding, and clear of the tab
-    /// bar at the bottom). If it strays within 140pt of the compass dial's centre, shove it
-    /// sideways clear of the dial; if it strays within 60pt of the destination card, lift it
-    /// straight up clear of the card. Both pushes are solved geometrically for the exact
-    /// horizontal/vertical distance needed — not just "however far it currently is short by"
-    /// — so a toggle sitting directly above or below the target still clears it in one move.
-    func placeToggle(_ x: CGFloat, _ y: CGFloat, in size: CGSize, dialCenter: CGPoint, cardFrame: CGRect?) -> CGPoint {
-        let edgePadding: CGFloat = 20
-        func clamp(_ px: CGFloat, _ py: CGFloat) -> CGPoint {
-            CGPoint(
-                x: max(edgePadding, min(size.width - Self.togW - edgePadding, px)),
-                y: max(edgePadding, min(size.height - Self.togH - edgePadding - Self.tabBarClearance, py))
-            )
-        }
-        func pushHorizontally(_ p: CGPoint, awayFrom target: CGPoint, radius: CGFloat) -> CGPoint {
-            let center = CGPoint(x: p.x + Self.togW / 2, y: p.y + Self.togH / 2)
-            let dy = center.y - target.y
-            guard abs(dy) < radius else { return p }
-            let requiredDx = (radius * radius - dy * dy).squareRoot() + 1
-            let currentDx = center.x - target.x
-            guard abs(currentDx) < requiredDx else { return p }
-            let direction: CGFloat = currentDx >= 0 ? 1 : -1
-            let newCenterX = target.x + direction * requiredDx
-            var result = clamp(newCenterX - Self.togW / 2, p.y)
-
-            // A narrow screen can make the ideal horizontal-only escape wider than the
-            // screen itself — edge-clamping would then silently drop the toggle back inside
-            // the exclusion circle. If that happens, finish clearing it vertically too.
-            let resultCenter = CGPoint(x: result.x + Self.togW / 2, y: result.y + Self.togH / 2)
-            let resultDist = (pow(resultCenter.x - target.x, 2) + pow(resultCenter.y - target.y, 2)).squareRoot()
-            if resultDist < radius {
-                let verticalDirection: CGFloat = dy >= 0 ? 1 : -1
-                let maxDx = abs(resultCenter.x - target.x)
-                let neededDy = (radius * radius - maxDx * maxDx).squareRoot() + 1
-                let newCenterY = target.y + verticalDirection * neededDy
-                result = clamp(result.x, newCenterY - Self.togH / 2)
-            }
-            return result
-        }
-        func pushUp(_ p: CGPoint, awayFrom rect: CGRect, margin: CGFloat) -> CGPoint {
-            let center = CGPoint(x: p.x + Self.togW / 2, y: p.y + Self.togH / 2)
-            let dx = center.x - min(max(center.x, rect.minX), rect.maxX)
-            guard abs(dx) < margin else { return p }
-            let requiredDy = (margin * margin - dx * dx).squareRoot() + 1
-            let targetY = rect.minY - requiredDy
-            guard center.y > targetY else { return p }
-            return clamp(p.x, targetY - Self.togH / 2)
-        }
-
-        var p = clamp(x, y)
-        p = pushHorizontally(p, awayFrom: dialCenter, radius: Self.exclusionRadius)
-        if let cardFrame {
-            p = pushUp(p, awayFrom: cardFrame, margin: Self.cardExclusionRadius)
-        }
-        return p
-    }
 }

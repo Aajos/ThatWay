@@ -2,8 +2,7 @@
 //  MapScreen.swift
 //  ThatWay
 //
-//  A real MapKit map: real tiles for the area around the user, their real location (via
-//  MapKit's own location handling), friends placed as real nearby coordinates, real
+//  A real MapKit map: real tiles for the area around the user, their real location, real
 //  points of interest, and — once a destination is selected — the actual fetched route
 //  traced live, trimmed back as the traveller moves and refreshed if they drift off it.
 //
@@ -14,7 +13,6 @@ import MapKit
 struct MapScreen: View {
     @EnvironmentObject var app: AppModel
     @State private var cameraPosition: MapCameraPosition = .automatic
-    @State private var nearbyPlaces: [MKMapItem] = []
     @State private var hasCenteredOnce = false
     @State private var selection: MapSelection<MKMapItem>?
     @State private var is3D = false
@@ -49,16 +47,8 @@ struct MapScreen: View {
                 .padding(.bottom, 6)
 
             Map(position: $cameraPosition, selection: $selection) {
-                UserAnnotation()
-
-                ForEach(Friend.all) { f in
-                    Annotation(f.name, coordinate: app.coordinate(for: f)) {
-                        friendMarker(f, theme: theme)
-                    }
-                }
-
-                // The real destination and route line appear as soon as a place or friend
-                // is selected — a preview before guidance even starts, exactly like the
+                // The real destination and route line appear as soon as a place is
+                // selected — a preview before guidance even starts, exactly like the
                 // route line a real turn-by-turn app shows you before you hit "Go".
                 if let destinationCoordinate = app.destinationCoordinate {
                     Marker(app.dest, coordinate: destinationCoordinate)
@@ -69,21 +59,27 @@ struct MapScreen: View {
                         .stroke(app.routeColor, lineWidth: 6)
                 }
 
-                // Tagged so tapping one of our own real nearby-place markers reports back
-                // through `selection` exactly like tapping a built-in Apple Maps POI does.
-                ForEach(nearbyPlaces, id: \.self) { item in
-                    Marker(item: item).tint(.orange).tag(item)
+                // Fixed size (no zoom magnification), declared last so it's the topmost annotation and nearby business
+                // markers and labels can never draw over the traveller's own position.
+                Annotation("You", coordinate: app.currentPosition, anchor: .center) {
+                    userLocationDot
                 }
+                .annotationTitles(.hidden)
             }
             .mapStyle(currentMapStyle)
             .mapControls {
                 MapUserLocationButton()
-                MapPitchToggle()
                 MapCompass()
+                    .mapControlVisibility(.visible)
             }
-            .overlay(alignment: .bottomTrailing) {
+            .overlay(alignment: .topTrailing) {
                 mapActionCluster(theme: theme)
-                    .padding(12)
+                    // Clears MapKit's own native recenter + compass buttons stacked
+                    // above (forced always-visible so this offset is never guessing at a
+                    // gap), so the two 2D/3D and map-style buttons read as a continuation
+                    // of that same corner group rather than a second, separate cluster.
+                    .padding(.top, 116)
+                    .padding(.trailing, 12)
             }
             .clipShape(RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).stroke(theme.ink.opacity(0.1)))
@@ -95,9 +91,6 @@ struct MapScreen: View {
         .background(theme.screen)
         .onAppear {
             centerOnUserIfNeeded()
-            Task {
-                nearbyPlaces = await PlaceSearch.nearbyPlaces(around: app.currentPosition, radius: 1500)
-            }
         }
         .onChange(of: app.hasRealLocation) { _, hasFix in
             if hasFix { centerOnUserIfNeeded() }
@@ -117,15 +110,13 @@ struct MapScreen: View {
         withAnimation { cameraPosition = .region(region) }
     }
 
-    /// A tap on either one of our own real nearby-place markers or a built-in Apple Maps
-    /// point of interest — either way, a real named place with a real coordinate, so it
-    /// gets routed through the same "autofill + ask to route" flow.
+    /// A tap on one of the map's own built-in Apple Maps points of interest — a real named
+    /// place with a real coordinate, so it gets routed through the same "autofill + ask to
+    /// route" flow.
     private func handleSelection(_ newValue: MapSelection<MKMapItem>?) {
         guard let newValue else { return }
         if let feature = newValue.feature, let name = feature.title {
             app.selectMapFeature(name: name, coordinate: feature.coordinate)
-        } else if let item = newValue.value {
-            app.selectMapFeature(name: item.name ?? "Selected place", coordinate: item.placemark.coordinate)
         }
         selection = nil
     }
@@ -150,6 +141,31 @@ struct MapScreen: View {
         mapStyleIndex = (mapStyleIndex + 1) % 3
     }
 
+    /// Temporary +/- zoom buttons for testing on a Mac, where pinch-to-zoom isn't available
+    /// the way it is on a real device or the Simulator's own trackpad gestures.
+    private func zoom(by factor: Double) {
+        let camera = cameraPosition.camera
+            ?? MapCamera(centerCoordinate: app.currentPosition, distance: 1200, heading: 0, pitch: is3D ? 60 : 0)
+        withAnimation(.easeInOut(duration: 0.25)) {
+            cameraPosition = .camera(MapCamera(
+                centerCoordinate: camera.centerCoordinate,
+                distance: max(200, min(20000, camera.distance * factor)),
+                heading: camera.heading,
+                pitch: camera.pitch
+            ))
+        }
+    }
+
+    private var userLocationDot: some View {
+        ZStack {
+            Circle().fill(Color.blue.opacity(0.18)).frame(width: 26, height: 26)
+            Circle().fill(Color.blue)
+                .frame(width: 12, height: 12)
+                .overlay(Circle().stroke(.white, lineWidth: 2.5))
+                .shadow(color: .black.opacity(0.35), radius: 2)
+        }
+    }
+
     private var mapStyleLabel: String {
         switch mapStyleIndex {
         case 1: return "HYBRID"
@@ -158,44 +174,35 @@ struct MapScreen: View {
         }
     }
 
-    /// A small custom cluster of map actions — 2D/3D perspective and map style — alongside
-    /// MapKit's own built-in controls (recenter, native pitch toggle, compass).
+    /// Our own map actions — 2D/3D perspective and map style — styled as the same
+    /// translucent circles MapKit's native controls use, so stacked below the native
+    /// recenter/compass pair they read as one continuous corner group instead of a second,
+    /// visually distinct cluster.
     @ViewBuilder
     private func mapActionCluster(theme: AppTheme) -> some View {
         VStack(spacing: 10) {
-            mapActionButton(icon: "cube", label: is3D ? "2D" : "3D", theme: theme, action: toggle3D)
-            mapActionButton(icon: "globe.americas.fill", label: mapStyleLabel, theme: theme, action: cycleMapStyle)
+            // Temporary Mac-testing convenience — pinch-to-zoom isn't available there.
+            mapActionButton(icon: "plus.magnifyingglass", label: "IN", action: { zoom(by: 0.5) })
+            mapActionButton(icon: "minus.magnifyingglass", label: "OUT", action: { zoom(by: 2) })
+            mapActionButton(icon: "cube", label: is3D ? "2D" : "3D", action: toggle3D)
+            mapActionButton(icon: "globe.americas.fill", label: mapStyleLabel, action: cycleMapStyle)
         }
     }
 
     @ViewBuilder
-    private func mapActionButton(icon: String, label: String, theme: AppTheme, action: @escaping () -> Void) -> some View {
+    private func mapActionButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 2) {
                 Image(systemName: icon).font(.system(size: 15, weight: .semibold))
                 Text(label).font(.nunito(8, .extraBold)).tracking(0.4)
             }
-            .foregroundStyle(theme.ink)
-            .frame(width: 50, height: 46)
-            .background(RoundedRectangle(cornerRadius: 14).fill(theme.screen.opacity(0.92)))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(theme.borderColor))
-            .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
+            .foregroundStyle(.primary)
+            .frame(width: 44, height: 44)
+            .background(Circle().fill(.ultraThinMaterial))
+            .overlay(Circle().stroke(.white.opacity(0.15), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
         }
         .buttonStyle(.plain)
     }
 
-    @ViewBuilder
-    private func friendMarker(_ f: Friend, theme: AppTheme) -> some View {
-        VStack(spacing: 4) {
-            Circle().fill(f.color).frame(width: 34, height: 34)
-                .overlay(Circle().stroke(.white, lineWidth: 2))
-                .overlay(Text(f.initials).font(.nunito(12, .extraBold)).foregroundStyle(Color(hex: "241A14")))
-                .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-            Text(f.name)
-                .font(.nunito(10, .semibold))
-                .foregroundStyle(theme.ink)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(theme.screen.opacity(0.85), in: Capsule())
-        }
-    }
 }
