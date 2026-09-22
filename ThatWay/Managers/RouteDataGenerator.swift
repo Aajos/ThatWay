@@ -67,23 +67,12 @@ final class RouteDataGenerator: ObservableObject {
     private let sampleInterval: CLLocationDistance = 15
 
     /// Generates guidance data for `polyline`/`steps`, unless data already exists — in which
-    /// case it's reused as-is. Call this once, when the user taps into Guidance mode.
+    /// case it's reused as-is. Called once, when the traveller comes within 500m of the destination — only that final stretch is ever baked.
     func generateGuidanceData(polyline: [CLLocationCoordinate2D], steps: [RouteStep], activity: GuidanceActivity) {
         guard guidanceData == nil else {
             print("[RouteDataGenerator] Reusing existing guidance data (\(guidanceData?.waypoints.count ?? 0) waypoints)")
             return
         }
-        bake(polyline: polyline, steps: steps, activity: activity)
-    }
-
-    /// Bakes fresh data after a reroute, since the old waypoints describe a road that's no
-    /// longer the plan. Deliberately does *not* clear `guidanceData` to nil first — the
-    /// stale-but-still-roughly-correct line keeps showing until the fresh bake is ready and
-    /// swaps in atomically, rather than flashing back to the loading state (with its
-    /// squiggle and "Loading your guideline" text) every time a reroute happens. That flash
-    /// is exactly the bug this avoids: guidance can legitimately reroute every few seconds,
-    /// and re-showing the loading UI each time reads as broken, not as a real load.
-    func regenerateGuidanceData(polyline: [CLLocationCoordinate2D], steps: [RouteStep], activity: GuidanceActivity) {
         bake(polyline: polyline, steps: steps, activity: activity)
     }
 

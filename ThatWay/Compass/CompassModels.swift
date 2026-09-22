@@ -251,7 +251,7 @@ struct NavOptions {
     var share = "Off"
     var units = "Kilometres"
     var activity = "Automatic"
-    var tilt = "Aggressive"
+    var tilt = "Slight"
 }
 
 /// Geometry helpers ported 1:1 from the design's math.
@@ -272,6 +272,9 @@ struct RecentPlace: Codable, Hashable, Identifiable {
     let name: String
     let latitude: Double
     let longitude: Double
-    var id: String { name }
+    /// The address (street / suburb) it resolved to — shown under the name, and what tells two
+    /// same-named places (every "Coles") apart.
+    var subtitle: String? = nil
+    var id: String { "\(name)|\(String(format: "%.4f,%.4f", latitude, longitude))" }
     var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
 }

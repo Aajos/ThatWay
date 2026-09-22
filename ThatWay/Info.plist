@@ -6,7 +6,5 @@
 	<array>
 		<string>Nunito.ttf</string>
 	</array>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>ThatWay uses your location to point the compass, centre the map, and find nearby places.</string>
 </dict>
 </plist>

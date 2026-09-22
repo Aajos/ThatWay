@@ -44,6 +44,7 @@ final class AppModel: ObservableObject {
     let routingManager = RoutingManager()
     let locationManager = LocationManager()
     let routeDataGenerator = RouteDataGenerator()
+    let etaManager = ETAManager()
     let locationCheckScheduler = LocationCheckScheduler()
 
     /// The position/speed the guidance corridor check last actually looked at — updated
@@ -77,11 +78,11 @@ final class AppModel: ObservableObject {
     @Published var opts = NavOptions()
 
 
-    /// Full tilt (at a turn) for the "Compass tilt" setting, in degrees: Off, Mild, Aggressive.
+    /// Forward tilt (toward a turn) for the "Compass tilt" setting, in degrees: Off, Slight, Hard.
     var maxTiltDegrees: Double {
         switch opts.tilt {
         case "Off": return 0
-        case "Mild": return 15
+        case "Slight": return 15
         default: return 30
         }
     }
@@ -104,6 +105,16 @@ final class AppModel: ObservableObject {
         // not on every tick.
         if guiding, !hasRealLocation, routingManager.hasRoute {
             advanceFallbackWalker()
+        }
+        // Which instruction is current, and how far off it is, is re-derived from the traveller's
+        // real position along the route about once a second — cheap (a windowed nearest-point
+        // search), and independent of the slower corridor/off-route poll — so the way card can
+        // never lag a long way behind the road.
+        if guiding, routingManager.hasRoute, !arrived, t % 11 == 0 {
+            routingManager.advanceProgress(userLocation: currentPosition)
+            checkArrival()
+            bakeRouteLineIfNeeded()
+            etaManager.update(routing: routingManager, speedKmh: speedKmh, activity: guidanceActivity)
         }
     }
 
@@ -143,23 +154,35 @@ final class AppModel: ObservableObject {
         guidanceCheckSpeedKmh = speedKmh
         routingManager.updateProgress(userLocation: currentPosition, activity: guidanceActivity)
         checkArrival()
+        bakeRouteLineIfNeeded()
         // Skips a pointless reroute fetch for a route that's about to be torn down anyway.
         guard !arrived else { return }
         rerouteIfOffRoute()
     }
 
-    /// How close (metres) counts as "arrived" — deliberately generous (100m) rather than
-    /// RoutingManager's own tighter per-step `arrivalRadius`, since this is about ending the
-    /// whole trip, not just advancing to the next turn instruction.
-    private static let arrivalDistance: CLLocationDistance = 100
+    /// How close (metres) counts as "arrived": within 5m of the destination itself — never merely
+    /// "close enough", and never just because the route line has run out.
+    private static let arrivalDistance: CLLocationDistance = 5
 
     /// Once within `arrivalDistance` of the actual destination: stop polling, drop the now-
     /// pointless baked guidance data, and show the completion screen — there's nothing left
     /// for guidance to compute once the trip is over.
-    private func checkArrival() {
+    private var lastArrivalCheckPosition: CLLocationCoordinate2D?
+
+    func checkArrival() {
         guard guiding, !arrived, let destinationCoordinate else { return }
-        guard CompassManager.distance(from: currentPosition, to: destinationCoordinate) < Self.arrivalDistance else { return }
+        defer { lastArrivalCheckPosition = currentPosition }
+        // Checked on the path travelled since the last check, not just where the traveller is
+        // now — at 40 km/h a 5m circle is easily stepped over between two one-second checks.
+        var reached = CompassManager.distance(from: currentPosition, to: destinationCoordinate) <= Self.arrivalDistance
+        if !reached, let previous = lastArrivalCheckPosition,
+           CompassManager.distance(from: previous, to: currentPosition) < 200,
+           let closest = CompassManager.nearestPoint(on: [previous, currentPosition], to: destinationCoordinate) {
+            reached = closest.distance <= Self.arrivalDistance
+        }
+        guard reached else { return }
         print("[AppModel] Arrived at destination")
+        cardsExpanded = false
         arrived = true
         routeDataGenerator.clearGuidanceData()
         locationCheckScheduler.stop()
@@ -214,13 +237,13 @@ final class AppModel: ObservableObject {
     /// the turn card and needle with actual turn-by-turn data instead of a straight line.
     var hasRealRoute: Bool { routingManager.hasRoute }
 
-    /// Straight-line distance from the user's current position to the step's endpoint.
-    var distanceToManeuver: Double {
-        guard let coordinate = routingManager.currentStep?.endCoordinate else { return 0 }
-        return CompassManager.distance(from: currentPosition, to: coordinate)
-    }
+    /// The instruction the traveller is heading for right now (nil before a route loads).
+    var upcomingCard: GuidanceCard? { hasRealRoute ? routingManager.upcomingCard : nil }
 
-    /// Real distance to whatever's currently relevant: the next turn while a route is
+    /// Metres along the road to that instruction's action point.
+    var distanceToManeuver: Double { routingManager.distanceToUpcoming }
+
+    /// Real distance to whatever's currently relevant: the next instruction while a route is
     /// loaded and guiding, otherwise a straight line to the destination. Zero when there's
     /// nothing selected — never a simulated countdown.
     var activeDist: Double {
@@ -230,19 +253,17 @@ final class AppModel: ObservableObject {
     }
 
     var far: Double {
-        if guiding, hasRealRoute, let metres = routingManager.currentStep?.distance {
-            return max(0, min(1, distanceToManeuver / max(metres, 1)))
-        }
+        if guiding, hasRealRoute { return routingManager.legFraction }
         return max(0, min(1, activeDist / (guiding ? 500 : 1200)))
     }
 
-    /// The turn card's headline: the real OSRM instruction once a route is loaded,
-    /// otherwise a loading/error message, or a plain "head toward X" while the route
-    /// is still being fetched.
+    /// The turn card's headline: the *upcoming* instruction (never the manoeuvre already made),
+    /// otherwise a loading/error message, or a plain "head toward X" while the route is still
+    /// being fetched.
     var turnCopy: String {
         if routingManager.isLoading { return "Finding your route…" }
         if let error = routingManager.errorMessage { return error }
-        if guiding, hasRealRoute { return routingManager.currentStep?.instruction ?? "You've arrived" }
+        if guiding, hasRealRoute { return upcomingCard?.title ?? "You've arrived" }
         return dest.isEmpty ? "Head toward your destination" : "Head toward \(dest)"
     }
 
@@ -256,30 +277,58 @@ final class AppModel: ObservableObject {
 
     var turnDir: TurnDir {
         guard guiding, hasRealRoute else { return .straight }
-        return routingManager.currentStep?.turnDirection ?? .straight
+        return upcomingCard?.turn.dir ?? .straight
     }
 
-    /// The next real turn's OSRM modifier ("left", "sharp right", "uturn", …) once it's within
-    /// range — 300m standing still, stretching to 1km at 100 km/h, since faster travel needs
-    /// earlier warning. Nil on a straight run, when there's no route, or at arrival.
-    var upcomingTurnModifier: String? {
-        guard guiding, hasRealRoute, let upcoming = routingManager.nextStep,
-              upcoming.maneuverType != "arrive",
-              distanceToManeuver <= 300 + min(1, speedKmh / 100) * 700,
-              let modifier = upcoming.maneuverModifier,
-              modifier.contains("left") || modifier.contains("right") else { return nil }
-        return modifier
+    /// Whether the real route line is drawn. It only comes in for the last 500m, to pinpoint the
+    /// destination and how to reach it — before that, the compass and the cards do the guiding.
+    var showsPolyline: Bool {
+        guiding && hasRealRoute && routingManager.remainingDistance <= 500
     }
+
+    /// Whether the full-screen card list is pulled up.
+    @Published var cardsExpanded = false
+
+    /// The line under the current card's headline, by how far off the turn is: a long way (stay on
+    /// this road), coming up, the final approach, then "Now".
+    var currentPhaseText: String {
+        guard guiding, let card = upcomingCard else { return "" }
+        let d = distanceToManeuver
+        if card.kind == .arrive { return d > 30 ? "Almost there" : "Here" }
+        if d > 1000 { return "Continue" }
+        if d > 100 { return "Coming up" }
+        if d > 30 { return "Get ready" }
+        return "Now"
+    }
+
+    /// "Get ready" and "Now" — the last 100m before a turn — are the only phase lines that
+    /// get picked out in the accent colour; everything earlier is quiet secondary text.
+    var currentPhaseHighlighted: Bool {
+        guard guiding, let card = upcomingCard, card.kind != .arrive else { return false }
+        return distanceToManeuver <= 100
+    }
+
+    /// The next real turn (its shape and how far off it is) — nil on a straight run, with no
+    /// route, or at arrival. Roundabouts report their *exit*, not the entry.
+    var upcomingTurn: (turn: TurnShape, distance: Double)? {
+        guard guiding, let card = upcomingCard, card.kind != .arrive, card.kind != .depart,
+              card.turn.side != .straight else { return nil }
+        return (card.turn, distanceToManeuver)
+    }
+
+    /// How early the compass starts showing an arrow for an upcoming turn — 300m standing still,
+    /// stretching to 1km at 100 km/h, since faster travel needs earlier warning.
+    private var arrowRange: Double { 300 + min(1, speedKmh / 100) * 700 }
 
     /// The arrow beside the distance readout: straight up by default, then a bend in the
     /// upcoming turn's direction, or a U-turn arrow for sharp turns and U-turns.
     var dialArrowSymbol: String {
-        guard let modifier = upcomingTurnModifier else { return "arrow.up" }
-        let side = modifier.contains("left") ? "left" : "right"
-        switch modifier {
-        case "uturn", "sharp left", "sharp right": return "arrow.uturn.\(side)"
-        case "slight left", "slight right": return "arrow.up.\(side)"
-        default: return "arrow.turn.up.\(side)"
+        guard let upcoming = upcomingTurn, upcoming.distance <= arrowRange else { return "arrow.up" }
+        let side = upcoming.turn.side == .left ? "left" : "right"
+        switch upcoming.turn.severity {
+        case .uTurn, .sharp: return "arrow.uturn.\(side)"
+        case .slight: return "arrow.up.\(side)"
+        case .normal: return "arrow.turn.up.\(side)"
         }
     }
 
@@ -301,7 +350,10 @@ final class AppModel: ObservableObject {
         // the real destination itself once the final step is reached — or toward the
         // destination directly otherwise, whenever we have a real coordinate for it.
         if guiding, hasRealRoute {
-            let target = routingManager.isFinished ? destinationCoordinate : routingManager.currentStep?.endCoordinate
+            // Aimed at where the instruction actually happens — for a roundabout that's the EXIT
+            // (so the needle says left, straight or right, never a hard turn into the circle) —
+            // and at the destination itself once the last instruction is behind us.
+            let target = upcomingCard?.kind == .arrive ? destinationCoordinate : (upcomingCard?.exitCoordinate ?? destinationCoordinate)
             if let target {
                 let bearing = CompassManager.bearing(from: currentPosition, to: target)
                 return CompassManager.relativeBearing(heading: currentHeading, bearing: bearing) + sway * 0.15
@@ -316,24 +368,44 @@ final class AppModel: ObservableObject {
 
     /// Fully flat at rest in idle mode — no lean at all, so the dial visibly settles.
     var tiltDeg: Double { isIdle ? 0 : far * maxTiltDegrees }
-    /// Sideways lean into the upcoming turn (same turn the dial arrow shows): a little for a slight
-    /// bend, more for a full turn, most for a sharp turn or U-turn — scaled by the "Compass tilt"
-    /// setting (Off = none, Mild = 60%).
+    /// Sideways lean toward the upcoming turn — how the compass tells you what's coming and which
+    /// side to be on (including a road that splits and a lane you must hold). Direction and
+    /// strength come from the same next turn the arrow shows (for a roundabout, its exit):
+    /// - Slight: always a clear hint toward the next turn at any distance, firming up as it nears.
+    /// - Hard: the same hint until 1km out, then a firm lean held right to the turn.
+    /// Positive = toward the right. DialView also slides the dial toward the turn so the lean reads
+    /// as a lean, not just a narrowing.
+    /// The lean stops the side guide lines mark: a Slight lean never goes past 20°, a Hard lean up to 40°.
+    static let slightLeanMax: Double = 20
+    static let hardLeanMax: Double = 40
+
+    /// How far the dial's leaning-side edge sits from the centre (as a multiple of its radius) at
+    /// `degrees` of lean: 1 + 0.16 × degrees/40. DialView slides the dial so its edge lands here, and
+    /// the guide lines are drawn at exactly the Slight and Hard maximums — so they always agree.
+    static func leanEdgeFactor(atDegrees degrees: Double) -> Double { 1 + 0.16 * abs(degrees) / 40 }
+
     var laneDeg: Double {
-        guard let modifier = upcomingTurnModifier else { return 0 }
-        let strength: Double
+        guard let upcoming = upcomingTurn else { return 0 }
+        let severity: Double
+        switch upcoming.turn.severity {
+        case .slight: severity = 0.7
+        case .normal: severity = 1
+        case .sharp: severity = 1.15
+        case .uTurn: severity = 1.25
+        }
+        let sign = upcoming.turn.side == .left ? -1.0 : 1.0
         switch opts.tilt {
-        case "Off": return 0
-        case "Mild": strength = 0.6
-        default: strength = 1
+        case "Off":
+            return 0
+        case "Slight":
+            // Always a hint toward the next turn, firming up as it nears — never past the Slight line.
+            let closeness = 1 - min(1, upcoming.distance / 400)
+            return sign * max(6, min(Self.slightLeanMax, (9 + closeness * 12) * severity))
+        default:
+            // A hint until 1km out, then a firm lean up to the Hard line, held to the turn.
+            if upcoming.distance <= 1000 { return sign * max(22, min(Self.hardLeanMax, 32 * severity)) }
+            return sign * max(6, min(Self.slightLeanMax, 9 * severity))
         }
-        let magnitude: Double
-        switch modifier {
-        case "uturn", "sharp left", "sharp right": magnitude = 16
-        case "slight left", "slight right": magnitude = 7
-        default: magnitude = 13
-        }
-        return (modifier.contains("left") ? -1 : 1) * magnitude * strength
     }
 
     /// Real speed over ground from CoreLocation, in km/h — zero whenever there's no real
@@ -389,8 +461,13 @@ final class AppModel: ObservableObject {
 
     // MARK: - Actions
 
+    /// Guidance needs somewhere to guide to: without a selected destination there's no route to
+    /// fetch, and it would just sit buffering (and burning power) for nothing.
+    var canStartGuidance: Bool { destKind != .none && destinationCoordinate != nil }
+
     func flipMode() {
         if mode == .point {
+            guard canStartGuidance else { return }
             startGuidance()
         } else {
             endGuidance()
@@ -398,11 +475,9 @@ final class AppModel: ObservableObject {
     }
 
     /// Fetches (or clears) the real OSRM route for `destination` from wherever the user
-    /// actually is right now. Drives both the guidance turn card and the route-preview
-    /// line shown on the Map tab, so a route appears as soon as a destination exists —
-    /// not just once guidance formally starts. When this fetch is happening because guidance
-    /// is actually active, it also bakes (or, for a reroute, re-bakes) `RouteDataGenerator`'s
-    /// guidance data once the route arrives — never for a plain Point-mode preview.
+    /// actually is right now. Drives the way cards, the compass and the route-preview line on the
+    /// Map tab, so a route appears as soon as a destination exists. The on-screen route line is
+    /// *not* baked here — see `bakeRouteLineIfNeeded()`.
     private func fetchRoute(to destination: CLLocationCoordinate2D?, isReroute: Bool = false) {
         guard let destination else { routingManager.clear(); return }
         let origin = currentPosition
@@ -410,9 +485,9 @@ final class AppModel: ObservableObject {
             await routingManager.getRoute(from: origin, to: destination)
             guard guiding, routingManager.hasRoute, !arrived else { return }
             if isReroute {
-                routeDataGenerator.regenerateGuidanceData(
-                    polyline: routingManager.routePolyline, steps: routingManager.steps, activity: guidanceActivity
-                )
+                // The old route line describes a road that's no longer the plan — drop it; the
+                // last-500m line is baked fresh from the new route when it's actually needed.
+                routeDataGenerator.clearGuidanceData()
                 // The reroute fetch is done and the new route is baking — resume polling
                 // against it. `start` is idempotent, so this is also harmless on the very
                 // first fetch (isReroute: false), where the scheduler was already started
@@ -421,12 +496,22 @@ final class AppModel: ObservableObject {
                 // check already detected arrival and stopped the scheduler — without that
                 // guard, this completion would silently restart it right afterward.
                 startLocationChecks()
-            } else {
-                routeDataGenerator.generateGuidanceData(
-                    polyline: routingManager.routePolyline, steps: routingManager.steps, activity: guidanceActivity
-                )
             }
         }
+    }
+
+    /// The route line is only ever drawn for the last 500m, so it's only ever *computed* then: the
+    /// moment the traveller comes within 500m of the destination this bakes just that final stretch
+    /// (the rest of the route is never turned into line geometry at all). Cheap to call every tick —
+    /// it does nothing unless the line is due and not already there.
+    func bakeRouteLineIfNeeded() {
+        guard !arrived, showsPolyline, routeDataGenerator.guidanceData == nil, !routeDataGenerator.isGenerating else { return }
+        let ahead = routingManager.remainingPolyline
+        guard ahead.count > 1 else { return }
+        let progress = routingManager.progressAlong
+        let remainingSteps = routingManager.steps.filter { $0.endAlong > progress }
+        print("[AppModel] Within 500m of the destination — baking the route line (\(Int(routingManager.remainingDistance))m)")
+        routeDataGenerator.generateGuidanceData(polyline: ahead, steps: remainingSteps, activity: guidanceActivity)
     }
 
     /// Starts (or resumes) `locationCheckScheduler` for the current mode/activity, and runs
@@ -441,6 +526,9 @@ final class AppModel: ObservableObject {
     }
 
     func startGuidance() {
+        guard canStartGuidance else { return }
+        etaManager.reset()
+        lastArrivalCheckPosition = nil
         mode = .guidance
         routeProgressMeters = 0
         lastRerouteAt = nil
@@ -452,6 +540,8 @@ final class AppModel: ObservableObject {
     }
 
     func endGuidance() {
+        cardsExpanded = false
+        etaManager.reset()
         mode = .point
         routeProgressMeters = 0
         arrived = false
@@ -514,6 +604,8 @@ final class AppModel: ObservableObject {
             guard self.dest == trimmed else { return } // a newer search superseded this one
             self.destinationCoordinate = real
             self.remember(name: trimmed, coordinate: real)
+            // Guidance is refused until there's a coordinate — start it now if that's the default.
+            if self.defaultNavMode == .guidance, self.mode != .guidance { self.startGuidance(); return }
             // Corrects whichever mode is already active (Point preview or live Guidance)
             // with the real coordinate — a reroute in spirit, even though it's a geocode
             // correction rather than the traveller actually drifting off the road.
@@ -529,9 +621,11 @@ final class AppModel: ObservableObject {
         destKind = .place
         searchOpen = false
         searchQuery = ""
-        remember(name: name, coordinate: mapItem.placemark.coordinate)
+        let placemark = mapItem.placemark
+        let address = [placemark.thoroughfare, placemark.locality].compactMap { $0 }.joined(separator: ", ")
+        remember(name: name, coordinate: placemark.coordinate, subtitle: address.isEmpty ? nil : address)
 
-        destinationCoordinate = mapItem.placemark.coordinate
+        destinationCoordinate = placemark.coordinate
         beginNavigatingToDestination()
     }
 
@@ -542,15 +636,16 @@ final class AppModel: ObservableObject {
         destKind = .place
         searchOpen = false
         searchQuery = ""
-        remember(name: place.name, coordinate: place.coordinate)
+        remember(name: place.name, coordinate: place.coordinate, subtitle: place.subtitle)
         destinationCoordinate = place.coordinate
         beginNavigatingToDestination()
     }
 
-    private func remember(name: String, coordinate: CLLocationCoordinate2D) {
+    private func remember(name: String, coordinate: CLLocationCoordinate2D, subtitle: String? = nil) {
         var updated = recentSearches
-        updated.removeAll { $0.name == name }
-        updated.insert(RecentPlace(name: name, latitude: coordinate.latitude, longitude: coordinate.longitude), at: 0)
+        // Same name *and* place counts as the same entry; two branches of the same shop don't merge.
+        updated.removeAll { $0.name == name && CompassManager.distance(from: $0.coordinate, to: coordinate) < 150 }
+        updated.insert(RecentPlace(name: name, latitude: coordinate.latitude, longitude: coordinate.longitude, subtitle: subtitle), at: 0)
         recentSearches = Array(updated.prefix(5))
     }
 

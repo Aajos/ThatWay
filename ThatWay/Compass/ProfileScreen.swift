@@ -39,7 +39,7 @@ struct ProfileScreen: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("DEFAULT MODE").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
             HStack(spacing: 10) {
-                navModeCard(.point, title: "Point", icon: "location.north.line", detail: "Saves battery", theme: theme)
+                navModeCard(.point, title: "Point", icon: "location.north.line", detail: "Power-efficient", theme: theme)
                 navModeCard(.guidance, title: "Guidance", icon: "arrow.triangle.turn.up.right.diamond.fill", detail: "Live turns", theme: theme)
             }
         }
@@ -236,7 +236,7 @@ struct ProfileScreen: View {
                 SettingsRow("Theme", value: theme.name, options: AppTheme.all.map(\.name), theme: theme) { v in
                     if let id = AppTheme.all.first(where: { $0.name == v })?.id { app.setTheme(id) }
                 }
-                SettingsRow("Compass tilt", value: app.opts.tilt, options: ["Off", "Mild", "Aggressive"], theme: theme) { app.opts.tilt = $0 }
+                SettingsRow("Compass tilt", value: app.opts.tilt, options: ["Off", "Slight", "Hard"], theme: theme) { app.opts.tilt = $0 }
                 SettingsRow("Voice of directions", value: app.opts.voice, options: ["Friendly", "Terse", "Cheeky"], theme: theme) { app.opts.voice = $0 }
                 SettingsRow("Activity detection", value: app.opts.activity, options: ["Automatic", "Walking", "Running", "Driving"], theme: theme) { app.opts.activity = $0 }
                 SettingsRow("Haptics on turns", value: app.opts.haptics, options: ["Off", "Light", "Strong"], theme: theme) { app.opts.haptics = $0 }

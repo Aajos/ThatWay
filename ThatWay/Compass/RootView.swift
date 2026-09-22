@@ -71,7 +71,7 @@ private struct TabBar: View {
             LinearGradient(colors: [.clear, theme.screen], startPoint: .top, endPoint: .init(x: 0.5, y: 0.42))
                 .ignoresSafeArea(edges: .bottom)
         )
-        .opacity(app.avatarSheet || app.searchOpen ? 0 : 1)
+        .opacity(app.avatarSheet || app.searchOpen || app.cardsExpanded ? 0 : 1)
         .offset(y: 20)
         .sensoryFeedback(.selection, trigger: app.screen)
     }

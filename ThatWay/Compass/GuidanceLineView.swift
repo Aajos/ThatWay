@@ -262,22 +262,20 @@ struct GuidanceLineView: View {
                         with: .color(polylineColor),
                         style: StrokeStyle(lineWidth: Self.tunnelCoreWidth, lineCap: .round, lineJoin: .round)
                     )
-                    // Current-location marker, right where the hidden dummy line meets the
-                    // real route — a small arrow in the route colour with a black border, so
-                    // it's clear which point is "you" and that everything below it is just
-                    // the extension running behind the compass.
-                    // Scaled up by 70% of the adaptive zoom's own magnification, so the marker
-                    // grows along with the route as the view pushes in near a turn.
-                    let markerScale = min(3, 1 + 0.7 * (model.zoomFactor - 1))
-                    let p = model.nearPoint
+                    // Current-location marker: a small arrow in the route colour with a black border,
+                    // fixed at 15pt tall at every zoom. It sits on the hidden dummy line *below* where
+                    // the real route starts (never on the route itself), so the route — and the
+                    // destination flag at its end — always finishes in front of it, never on top of it.
+                    let markerHeight: CGFloat = 15
+                    let markerCenter = CGPoint(x: model.nearPoint.x, y: model.nearPoint.y + 12)
                     var arrow = Path()
-                    arrow.move(to: CGPoint(x: p.x, y: p.y - 9 * markerScale))
-                    arrow.addLine(to: CGPoint(x: p.x + 7 * markerScale, y: p.y + 7 * markerScale))
-                    arrow.addLine(to: CGPoint(x: p.x, y: p.y + 3 * markerScale))
-                    arrow.addLine(to: CGPoint(x: p.x - 7 * markerScale, y: p.y + 7 * markerScale))
+                    arrow.move(to: CGPoint(x: markerCenter.x, y: markerCenter.y - markerHeight / 2))
+                    arrow.addLine(to: CGPoint(x: markerCenter.x + 6, y: markerCenter.y + markerHeight / 2))
+                    arrow.addLine(to: CGPoint(x: markerCenter.x, y: markerCenter.y + markerHeight / 2 - 4))
+                    arrow.addLine(to: CGPoint(x: markerCenter.x - 6, y: markerCenter.y + markerHeight / 2))
                     arrow.closeSubpath()
                     context.fill(arrow, with: .color(polylineColor))
-                    context.stroke(arrow, with: .color(.black), style: StrokeStyle(lineWidth: 1.5 * min(markerScale, 1.6), lineJoin: .round))
+                    context.stroke(arrow, with: .color(.black), style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
                 }
                 // Canvas clips its own drawing to its layout frame — since the tail
                 // deliberately draws past `geo.size.height` down to the dial's real centre,
@@ -840,7 +838,7 @@ struct GuidanceLineView: View {
             .font(.system(size: 16, weight: .bold))
             .foregroundStyle(color)
             .frame(width: 20, height: 20)
-            .offset(x: 8, y: -8)
+            .offset(x: 8, y: -14)
         .shadow(color: color.opacity(0.6), radius: 8)
     }
 }

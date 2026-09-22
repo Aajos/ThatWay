@@ -12,6 +12,15 @@ struct DialView: View {
     let k: CGFloat
     @State private var breathing = false
 
+    private func leanOffset(k: CGFloat) -> CGFloat {
+        let lean = app.laneDeg
+        guard lean != 0 else { return 0 }
+        let radius = 143 * k
+        let edge = radius * CGFloat(AppModel.leanEdgeFactor(atDegrees: lean))
+        let pulledIn = radius * CGFloat(cos(abs(lean) * .pi / 180))
+        return (lean < 0 ? -1 : 1) * (edge - pulledIn)
+    }
+
     var body: some View {
         let theme = app.currentTheme
         let glassColors = app.dialGlassColors
@@ -108,7 +117,10 @@ struct DialView: View {
         // Pivots on the dial's top edge (not its centre), so the top stays fixed on screen and the
         // bottom swings out toward the viewer as it tilts.
         .rotation3DEffect(.degrees(app.tiltDeg), axis: (x: 1, y: 0, z: 0), anchor: .top, perspective: 0.18)
-        .rotation3DEffect(.degrees(app.laneDeg), axis: (x: 0, y: 1, z: 0), perspective: 0.4)
+        .rotation3DEffect(.degrees(app.laneDeg), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+        // Slides so the leaning side's edge lands on the matching side guide line (Slight or Hard):
+        // edge = radius × (1 + 0.16 × lean/40), and the rotation already pulls it in by cos(lean).
+        .offset(x: leanOffset(k: k))
         .overlay(alignment: .top) {
             VStack(spacing: 7) {
                 if app.isIdle {
@@ -120,15 +132,25 @@ struct DialView: View {
                         .tracking(1.6)
                         .foregroundStyle(theme.textSecondary)
                 } else {
-                    HStack(spacing: 8) {
-                        Text(app.fmt(app.activeDist))
-                            .font(.nunito(34, .black))
-                            .foregroundStyle(theme.ink)
+                    if app.guiding, app.hasRealRoute, app.etaManager.arrivalClock != nil {
+                        // While guiding the arrival time lives under the compass; on the dial itself
+                        // there's just the adaptive direction arrow, centred and large.
                         Image(systemName: app.dialArrowSymbol)
-                            .font(.system(size: 22, weight: .black))
+                            .font(.system(size: 52, weight: .black))
                             .foregroundStyle(theme.ink)
                             .contentTransition(.symbolEffect(.replace))
                             .animation(.easeInOut(duration: 0.25), value: app.dialArrowSymbol)
+                    } else {
+                        HStack(spacing: 8) {
+                            Text(app.fmt(app.activeDist))
+                                .font(.nunito(34, .black))
+                                .foregroundStyle(theme.ink)
+                            Image(systemName: app.dialArrowSymbol)
+                                .font(.system(size: 26, weight: .black))
+                                .foregroundStyle(theme.ink)
+                                .contentTransition(.symbolEffect(.replace))
+                                .animation(.easeInOut(duration: 0.25), value: app.dialArrowSymbol)
+                        }
                     }
                 }
             }

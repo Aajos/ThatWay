@@ -44,7 +44,7 @@ struct MapScreen: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.top, 2)
-                .padding(.bottom, 6)
+                .padding(.bottom, 0)
 
             Map(position: $cameraPosition, selection: $selection) {
                 // The real destination and route line appear as soon as a place is
@@ -83,8 +83,10 @@ struct MapScreen: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 26))
             .overlay(RoundedRectangle(cornerRadius: 26).stroke(theme.ink.opacity(0.1)))
-            .padding(.horizontal, 16)
-            .padding(.bottom, 90)
+            // 5pt from the screen edges, the title above and the tab bar below (the tab icons
+            // begin ~46pt above the bottom of the safe area).
+            .padding(.horizontal, 5)
+            .padding(.bottom, 46)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.top, 8)
