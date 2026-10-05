@@ -22,6 +22,9 @@ final class LocationManager: NSObject, ObservableObject {
     /// launch and, if that's declined, shows a card pointing at Settings.
     @Published private(set) var isReducedAccuracy = false
     private var askedForFullAccuracy = false
+    /// Running totals for the test log. Plain counters, not @Published: nothing redraws for them.
+    private(set) var fixCount = 0
+    private(set) var headingCount = 0
 
     private let manager = CLLocationManager()
 
@@ -155,6 +158,7 @@ extension LocationManager: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let latest = locations.last else { return }
         Perf.hit("locFix")
+        fixCount += 1
         // Each @Published assignment redraws the screen, so only touch what actually changed.
         location = latest
         let newSpeed = max(0, latest.speed)
@@ -164,6 +168,7 @@ extension LocationManager: CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
         Perf.hit("headingFix")
+        headingCount += 1
         if newHeading.headingAccuracy != headingAccuracy { headingAccuracy = newHeading.headingAccuracy }
         guard newHeading.headingAccuracy >= 0 else { return }
         let newHeadingValue = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading

@@ -18,6 +18,19 @@ enum RouteFailure: Equatable {
     case noRoadNearby
     case locationUnavailable
 
+    /// Short stable name for the test log (no details).
+    var logName: String {
+        switch self {
+        case .offline: return "offline"
+        case .timeout: return "timeout"
+        case .serverUnavailable: return "serverUnavailable"
+        case .rateLimited: return "rateLimited"
+        case .noRoute: return "noRoute"
+        case .noRoadNearby: return "noRoadNearby"
+        case .locationUnavailable: return "locationUnavailable"
+        }
+    }
+
     var message: String {
         switch self {
         case .offline: return "No internet connection. Waiting to reconnect."

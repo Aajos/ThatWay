@@ -118,6 +118,10 @@ final class AppModel: ObservableObject {
             .store(in: &cancellables)
         locationManager.$authorizationStatus.dropFirst().sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
         locationManager.$isReducedAccuracy.dropFirst().sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        // Routing trouble (offline, timeouts…) goes in the test log by name only.
+        self.routingManager.$currentFailure.removeDuplicates().compactMap { $0 }
+            .sink { [weak self] failure in self?.tripLog.count("failure.\(failure.logName)") }
+            .store(in: &cancellables)
         locationManager.requestPermission()
         restorePersistedTrip()
         refreshLocationProfile()
@@ -140,6 +144,7 @@ final class AppModel: ObservableObject {
 
     private func lowPowerChanged() {
         lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        tripLog.noteLowPower(lowPower)
         if sceneActive { startTick() }
         refreshLocationProfile()
     }
@@ -170,6 +175,7 @@ final class AppModel: ObservableObject {
     func setSceneActive(_ active: Bool) {
         guard active != sceneActive else { return }
         sceneActive = active
+        tripLog.count(active ? "screenOn" : "screenOff")
         updateScreenAwake()
         if active {
             startTick()
@@ -286,6 +292,7 @@ final class AppModel: ObservableObject {
             headingCorrection = CompassHealth.signedDifference(predicted, from: locationManager.heading)
         }
         usingGPSHeading = true
+        tripLog.count("gpsDirection")
     }
 
     func stopUsingGPSDirection() { usingGPSHeading = false }
@@ -318,7 +325,10 @@ final class AppModel: ObservableObject {
         compassHealth.evaluate(heading: locationManager.heading, headingAccuracy: locationManager.headingAccuracy, at: now)
         let suspect = compassHealth.status == .suspect
         let predicted = suspect ? compassHealth.predictedHeading : nil
-        if suspect != compassSuspect { compassSuspect = suspect }
+        if suspect != compassSuspect {
+            compassSuspect = suspect
+            if suspect { tripLog.count("compassSuspect") }
+        }
         if predicted != compassPredicted { compassPredicted = predicted }
         if usingGPSHeading {
             if !suspect {
@@ -340,11 +350,33 @@ final class AppModel: ObservableObject {
     func recalibrateCompass() {
         guard !recalibratingCompass else { return }
         locationManager.restartHeading()
+        tripLog.count("recalibrate")
         compassHealth.noteRecalibrating(at: Date())
         recalibratingCompass = true
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(8))
             self?.recalibratingCompass = false
+        }
+    }
+
+    // MARK: - Test logs
+
+    /// Real-world test logging (see `TripLog`): numbers only, on by default while the app is being tested.
+    @Published var testLogging: Bool = UserDefaults.standard.object(forKey: "testLogging.v1") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(testLogging, forKey: "testLogging.v1")
+            if !testLogging { tripLog.end(reason: "loggingOff", arrived: arrived, progressMetres: routingManager.progressAlong) }
+        }
+    }
+    private(set) lazy var tripLog = TripLogger(live: { [unowned self] in
+        .init(fixes: locationManager.fixCount, headings: locationManager.headingCount, screenOn: sceneActive)
+    })
+
+    private func beginTripLog(restored: Bool) {
+        guard testLogging else { return }
+        tripLog.begin(mode: travelMode.rawValue, restored: restored)
+        if routingManager.hasRoute {
+            tripLog.routeInfo(metres: routingManager.routeLength, seconds: routingManager.totalDuration, steps: routingManager.cards.count)
         }
     }
 
@@ -412,6 +444,7 @@ final class AppModel: ObservableObject {
         print("[AppModel] Arrived at destination")
         cardsExpanded = false
         arrived = true
+        tripLog.end(reason: "arrived", arrived: true, progressMetres: routingManager.progressAlong)
         audioManager.finishGuidance()
         routeDataGenerator.clearGuidanceData()
         locationCheckScheduler.stop()
@@ -428,6 +461,7 @@ final class AppModel: ObservableObject {
     private func rerouteIfOffRoute() {
         guard routingManager.isOffRoute, !routingManager.isLoading, let destinationCoordinate else { return }
         print("[AppModel] Off route — fetching a fresh route from the current position")
+        tripLog.count("reroute")
         // Stopped here and restarted once the new route lands in `fetchRoute` below — the
         // old route's corridor is invalid for the length of the fetch, so there's nothing
         // useful for a check to run against in between.
@@ -715,6 +749,7 @@ final class AppModel: ObservableObject {
         didSet {
             guard oldValue != travelMode else { return }
             AppModel.saveTravelMode(travelMode)
+            tripLog.count("modeChange")
             updateBackgroundTracking()
             scheduleModeChangeReroute()
         }
@@ -806,6 +841,7 @@ final class AppModel: ObservableObject {
         let profile = travelProfile
         await routingManager.getRoute(from: origin, to: destination, profile: profile, isReroute: isReroute)
         guard guiding, routingManager.hasRoute, !arrived else { return }
+        tripLog.routeInfo(metres: routingManager.routeLength, seconds: routingManager.totalDuration, steps: routingManager.cards.count)
         if let route = routingManager.currentRoute {
             if Perf.on("persist") { RoutePersistence.save(PersistedTrip(route: route, destinationCoordinate: destination, destinationName: dest, profile: profile)) }
         }
@@ -850,12 +886,14 @@ final class AppModel: ObservableObject {
         lastArrivalCheckPosition = nil
         mode = .guidance
         arrived = false
+        beginTripLog(restored: false)
         fetchRoute(to: destinationCoordinate)
         startLocationChecks()
         performLocationCheck()
     }
 
     func endGuidance() {
+        tripLog.end(reason: "ended", arrived: arrived, progressMetres: routingManager.progressAlong)
         audioManager.stop()
         cardsExpanded = false
         etaManager.reset()
@@ -881,6 +919,7 @@ final class AppModel: ObservableObject {
         destKind = .place
         mode = .guidance
         routingManager.restore(route: trip.route, destination: trip.destinationCoordinate, profile: trip.profile)
+        beginTripLog(restored: true)
         startLocationChecks()
     }
 

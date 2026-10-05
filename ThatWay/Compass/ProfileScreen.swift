@@ -10,6 +10,9 @@ struct ProfileScreen: View {
     @EnvironmentObject var friendsManager: FriendsManager
     @State private var friendQuery = ""
     @FocusState private var friendFieldFocused: Bool
+    @State private var showLogShare = false
+    @State private var logExport: URL?
+    @State private var logRefresh = 0
 
     var body: some View {
         let theme = app.currentTheme
@@ -27,6 +30,7 @@ struct ProfileScreen: View {
                 defaultNavModeSection(theme: theme)
                 achievementsSection(theme: theme)
                 settingsSection(theme: theme)
+                testLogsSection(theme: theme)
                 if Config.backendEnabled {
                     signOutSection(theme: theme)
                 }
@@ -343,6 +347,51 @@ struct ProfileScreen: View {
         }
     }
 
+    /// Real-world test logs: numbers only (CPU, memory, battery, network, route sizes — never places or
+    /// coordinates). Shared from here, or found in the Files app under On My iPhone ▸ ThatWay.
+    @ViewBuilder
+    private func testLogsSection(theme: AppTheme) -> some View {
+        let files = app.tripLog.logFiles()
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "waveform.path.ecg").font(.system(size: 11, weight: .heavy))
+                Text("TEST LOGS").font(.nunito(10, .extraBold)).tracking(1.8)
+            }
+            .foregroundStyle(theme.ink.opacity(0.68))
+            VStack(alignment: .leading, spacing: 0) {
+                SettingsRow("Record test logs", value: app.testLogging ? "On" : "Off", options: ["On", "Off"], theme: theme, isLast: false) { app.testLogging = ($0 == "On") }
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("\(files.count) trip\(files.count == 1 ? "" : "s") saved · \(Int(app.tripLog.totalSizeKB())) KB. Numbers only — no places, routes or coordinates are ever recorded.")
+                        .font(.nunito(12, .semibold)).foregroundStyle(theme.ink.opacity(0.7))
+                    HStack(spacing: 10) {
+                        Button {
+                            logExport = app.tripLog.exportCombined()
+                            showLogShare = logExport != nil
+                        } label: {
+                            Text("SHARE LOGS").font(.nunito(12, .black)).tracking(0.6).foregroundStyle(theme.onAccent)
+                                .padding(.horizontal, 16).padding(.vertical, 10)
+                                .background(Capsule().fill(theme.accent))
+                        }
+                        .buttonStyle(.plain).disabled(files.isEmpty).opacity(files.isEmpty ? 0.4 : 1)
+                        Button { app.tripLog.clear(); logRefresh += 1 } label: {
+                            Text("CLEAR").font(.nunito(12, .black)).tracking(0.6).foregroundStyle(theme.accent)
+                                .padding(.horizontal, 16).padding(.vertical, 10)
+                                .background(Capsule().fill(theme.tint(0.14)))
+                        }
+                        .buttonStyle(.plain).disabled(files.isEmpty).opacity(files.isEmpty ? 0.4 : 1)
+                    }
+                }
+                .padding(14)
+            }
+            .background(RoundedRectangle(cornerRadius: 20).fill(theme.ink.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.ink.opacity(0.09)))
+            .id(logRefresh)
+        }
+        .sheet(isPresented: $showLogShare) {
+            if let logExport { ShareSheet(items: [logExport]) }
+        }
+    }
+
     @ViewBuilder
     private func donateBanner(theme: AppTheme) -> some View {
         Button { app.goDonate() } label: {
@@ -413,4 +462,11 @@ private struct SettingsRow: View {
             }
         }
     }
+}
+
+/// The system share sheet (AirDrop, Files, Messages…) for exporting the test logs.
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: items, applicationActivities: nil) }
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
