@@ -19,6 +19,9 @@ enum Perf {
         return Set(args[i + 1].split(separator: ",").map(String.init))
     }()
     static func on(_ link: String) -> Bool { !off.contains(link) }
+    /// `-TW_GHOST 1` forces the "compass may be off" overlay so it can be inspected in the simulator
+    /// (which has no compass to go wrong).
+    static let ghost = ProcessInfo.processInfo.arguments.contains("-TW_GHOST")
     static func anim(_ a: Animation) -> Animation? { on("anim") ? a : nil }
 
     private static let lock = NSLock()
@@ -125,6 +128,7 @@ enum Perf {
     }
     #else
     @inline(__always) static func on(_ link: String) -> Bool { true }
+    static let ghost = false
     @inline(__always) static func anim(_ a: Animation) -> Animation? { a }
     @inline(__always) static func hit(_ key: String) {}
     @inline(__always) static func stamp(_ key: String) {}

@@ -37,14 +37,14 @@ final class LocationManager: NSObject, ObservableObject {
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.distanceFilter = 3
         manager.headingFilter = 1
+        // The UI is portrait-only, so the heading is always measured the way the portrait screen faces.
+        // (It used to follow the phone's *physical* orientation: glancing at the screen with the phone
+        // tipped past upright read as "upside down" and swung the compass 180° / 90°.)
+        manager.headingOrientation = .portrait
 
         if authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways {
             start()
         }
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
     }
 
     /// iOS has no separate "compass" permission dialog — heading only ever requires the
@@ -66,14 +66,6 @@ final class LocationManager: NSObject, ObservableObject {
     func start() {
         if Perf.on("loc") { manager.startUpdatingLocation() }
         if CLLocationManager.headingAvailable(), Perf.on("heading") {
-            if Perf.on("orient") {
-                UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-                NotificationCenter.default.addObserver(
-                    self, selector: #selector(deviceOrientationDidChange),
-                    name: UIDevice.orientationDidChangeNotification, object: nil
-                )
-                updateHeadingOrientation()
-            }
             manager.startUpdatingHeading()
         }
     }
@@ -113,25 +105,20 @@ final class LocationManager: NSObject, ObservableObject {
     func stop() {
         manager.stopUpdatingLocation()
         manager.stopUpdatingHeading()
-        NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
-        UIDevice.current.endGeneratingDeviceOrientationNotifications()
     }
 
-    /// Keeps the heading reading correct regardless of how the phone is actually being
-    /// held — flat like a real compass, in landscape, upside down, etc. Without this,
-    /// `CLLocationManager` assumes portrait and heading drifts 90°+ off as soon as the
-    /// phone is rotated, which matters a lot for an app you're meant to check mid-walk.
-    @objc private func deviceOrientationDidChange() {
-        updateHeadingOrientation()
-    }
-
-    private func updateHeadingOrientation() {
-        switch UIDevice.current.orientation {
-        case .portrait: manager.headingOrientation = .portrait
-        case .portraitUpsideDown: manager.headingOrientation = .portraitUpsideDown
-        case .landscapeLeft: manager.headingOrientation = .landscapeLeft
-        case .landscapeRight: manager.headingOrientation = .landscapeRight
-        default: break // faceUp/faceDown/unknown: keep whatever orientation was last valid
+    /// iOS offers no way to reset or recalibrate the magnetometer from an app. What an app can do is
+    /// tear the heading service down and bring it back up, which discards the sensor-fusion state
+    /// that sometimes gets stuck (a flipped or drifting heading), and let iOS raise its own figure-8
+    /// calibration prompt if it judges the compass poorly calibrated.
+    func restartHeading() {
+        guard CLLocationManager.headingAvailable() else { return }
+        manager.stopUpdatingHeading()
+        manager.dismissHeadingCalibrationDisplay()
+        headingAccuracy = -1
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            self?.manager.startUpdatingHeading()
         }
     }
 }

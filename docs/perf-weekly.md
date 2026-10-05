@@ -95,3 +95,74 @@ as establishing the baseline rather than judging it.)
   screen. Expected: removes most of #2's cost.
 - Publish the dead-reckoned readout every 2 s instead of every 1 s. Expected: −0.2 to −0.4 pt, at the cost
   of a visibly steppier countdown at walking pace.
+
+---
+
+## Week of 2026-10-05, second batch (search fix, compass health, card split, clean-ups)
+
+### Changes
+
+1. **Search layout** (`CompassScreen`): the whole screen now ignores the keyboard (it used to shrink the layout
+   area by the keyboard's height and push everything down); the top pills hide while searching; results scroll
+   above the keyboard (`keyboardWillChangeFrame` → bottom padding). Zero cost outside search.
+2. **Heading orientation fixed to portrait** (`LocationManager`). It used to follow the phone's physical orientation,
+   which can swing the heading 90°/180° when the phone is tipped. *This is not the cause of the flips the user
+   saw (Apple's own Compass app shows them too, so the sensor or its system calibration is at fault).* It does
+   remove a source of error and the device-orientation notifications.
+3. **Compass health** (`CompassHealth`, `AppModel.updateCompassHealth`, `CompassGhostOverlay`). Compares the compass
+   with the GPS direction of travel on clean samples only (≥ 1 m/s, course steady for 6 s): checks after 1, then 3,
+   then 5 minutes while it agrees; a disagreement is re-checked after 10 s and only a second one marks it suspect;
+   heading accuracy worse than 30° is suspect at once. While suspect: a ghost compass (north marked at the GPS
+   direction), **Recalibrate compass** (restarts the heading service — iOS exposes no way to reset the magnetometer)
+   and **Use GPS direction** (steers the dial by GPS course, offset re-measured while moving; ends when the compass
+   agrees again). Check cost: one comparison a second, only while the screen is on.
+4. **Heading redraws moved off the whole screen** (`DialHost`): the dial observes the location manager itself, so a
+   heading change re-evaluates only the dial. This replaces last week's forward-everything fix (prediction #2 above).
+5. **Card split**: `GuidanceCardStack`, `NextCardsStack`, `PeekCard` take plain values (`GuidanceStackState`,
+   `NextStackState`, `CardFace`) and are `Equatable`; they redraw only when card text changed.
+6. **Progress publishes by quantum**: `RoutingManager.progressAlong` is no longer `@Published`; it announces itself
+   on a real fix, a card change, or every 4 m of dead-reckoned movement.
+7. **Clean-ups of older code**: `ETAManager` built two `DateFormatter`s on every read (several reads per redraw) and
+   published two values nobody observed each second; the idle tick is 3 s instead of 1 s; device-orientation
+   notifications are off.
+
+### Measured (Release, SE-2nd-gen simulator, 2-minute runs, one run each — noise ±0.5 pt in CPU)
+
+| Scenario | Build | CPU mean | CPU p95 | compass redraws/s | dial redraws/s | cards redraws/s | route publishes/s |
+|---|---|---|---|---|---|---|---|
+| Full trip, walk | last week's commit | 2.74 % | 10.8 % | 1.06 | 0.96 | – | 1.18 |
+| Full trip, walk | + dial/card split, clean-ups | 1.51 % | 4.1 % | 0.98 | 0.27 | 0.31 | 1.10 |
+| Full trip, walk | + progress quantum | 2.09 % (machine busier, load 158) | 6.4 % | **0.56** | 0.27 | 0.31 | **0.64** |
+| Last 450 m (route line drawn), drive | last week's commit | 1.38 % | 5.4 % | 1.29 | 0.97 | – | 1.63 |
+| Last 450 m, drive | + dial/card split, clean-ups | 1.27 % | 3.8 % | 1.30 | 0.16 | 0.41 | 1.63 |
+| Last 450 m, drive | + progress quantum | **0.91 %** | 3.7 % | **0.68** | 0.17 | 0.39 | 0.99 |
+
+Reading it: the *work counts* are the trustworthy column. Dial redraws fell ~75–85 %, compass-screen redraws fell
+~40–50 %, and the last-450 m scenario (the route line phase, not measured before) is under the 1 % target for the first
+time. The full-trip CPU figure is noisy across runs (1.5 – 2.1 % for essentially the same code); it needs three runs
+before a verdict. Heading redraws (item 4) cannot be measured in the simulator — device only.
+
+### Predicted vs. measured for last week's open items
+
+| Item | Predicted | Result |
+|---|---|---|
+| Card/ETA split | −0.3 to −0.6 pt | Dial split alone ≈ −0.3 to −1.2 pt depending on run; cards redraw 0.3–0.4/s instead of ~1/s |
+| Idle heading cost (#2) | +0.5 to +2.5 pt | Replaced by dial-only redraw (item 4); expected back to ≈ +0.1–0.4 pt. Verify on the phone |
+| Dead-reckoned readout every 2 s | −0.2 to −0.4 pt | Superseded by the 4 m quantum (equivalent saving, no visible stepping) |
+
+### Predictions for this batch (to verify on 2026-10-12)
+
+| Change | CPU | Memory | Battery (device) |
+|---|---|---|---|
+| Compass health check | +0 pt (one comparison/s, no allocation beyond a ≤ 8-sample array) | < +0.05 MB | ≈ 0 |
+| Ghost overlay (only while suspect) | +0.1 – 0.3 pt while shown (dashed ring + blur-free fill) | < +0.1 MB | ≈ 0 |
+| Recalibrate (heading restart) | one-off | 0 | one-off, negligible |
+| Heading to dial only | −0.5 to −2 pt vs last week's idle forward | 0 | −0.5 to −2 %/h in Point/idle |
+| Progress quantum + card split | −0.2 to −0.6 pt guiding | 0 | −0.5 to −1 %/h guiding |
+| 3 s idle tick | −0.05 pt | 0 | < −0.2 %/h idle |
+| Search layout | 0 | 0 | 0 |
+
+### Test tools added
+`scripts/perf/make_tail_trip.py` trims a trip to its last N metres so a run starts inside the route-line reveal
+zone; `link_test.py` gained a `deadreckon` link. `-TW_GHOST` (PERF builds only) forces the compass-warning overlay
+so it can be inspected in the simulator.

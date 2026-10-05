@@ -61,6 +61,8 @@ struct CompassScreen: View {
     /// between the two instead of one appearing and the other vanishing.
     @Namespace private var cardNamespace
     @State private var modeFlash: String?
+    /// Height of the on-screen keyboard (0 when hidden), so the search results end above it.
+    @State private var keyboardHeight: CGFloat = 0
     @Environment(\.dynamicTypeSize) private var typeSize
 
     /// Reserve room below the content for RootView's floating tab bar so the
@@ -103,12 +105,12 @@ struct CompassScreen: View {
                 // except the search bar itself blurs when its results are showing, so it
                 // stays the one clearly "live" thing on screen.
                 VStack(spacing: 0) {
-                    if Perf.on("topbar") { topBar(theme: theme, screenWidth: geo.size.width)
+                    // While searching, the pills step out of the way so the search bar rises to the top
+                    // and the results get the whole screen above the keyboard.
+                    if Perf.on("topbar"), !app.searchOpen { topBar(theme: theme, screenWidth: geo.size.width)
                         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                         .padding(.top, 12)
-                        // The three top pills stay sharp while the cards are up.
-                        .blur(radius: app.searchOpen ? 3 : 0)
-                        .allowsHitTesting(!app.searchOpen) }
+                        .transition(.opacity) }
 
                     if let issue = app.locationIssue {
                         locationIssueCard(issue, theme: theme)
@@ -155,7 +157,7 @@ struct CompassScreen: View {
                     // The active instruction is always the first thing under the pills — before the
                     // route line comes in and after — so it never jumps to another part of the screen.
                     if app.guiding, !app.arrived {
-                        if Perf.on("cards") { GuidanceCardStack(theme: theme, namespace: cardNamespace, showsPeeks: app.showsPolyline, opensOnPullDown: true, density: density)
+                        if Perf.on("cards") { GuidanceCardStack(state: GuidanceStackState(app: app, showsPeeks: app.showsPolyline), app: app, theme: theme, namespace: cardNamespace, showsPeeks: app.showsPolyline, opensOnPullDown: true, density: density).equatable()
                             .padding(.horizontal, Spacing.container * k)
                             .padding(.top, Spacing.element * k)
                             .blur(radius: blurRest)
@@ -226,7 +228,7 @@ struct CompassScreen: View {
                             .padding(.top, Spacing.element * k)
                     } else if app.guiding, !app.showsPolyline, !typeSize.isAccessibilitySize {
                         Color.clear.frame(height: Spacing.tight)
-                        Group { if Perf.on("cards") { NextCardsStack(theme: theme, namespace: cardNamespace, density: density) } }
+                        Group { if Perf.on("cards") { NextCardsStack(state: NextStackState(app: app), app: app, theme: theme, namespace: cardNamespace, density: density).equatable() } }
                             .padding(.horizontal, Spacing.container * k)
                             .blur(radius: blurRest)
                             .opacity(app.cardsExpanded ? 0 : 1)
@@ -250,6 +252,9 @@ struct CompassScreen: View {
                         Spacer(minLength: tabBarClearance * k)
                     }
                 }
+                // Always the full screen, pinned to the top: whatever the keyboard does to the layout
+                // proposal, the content can never end up centred lower down.
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
                 if app.guiding, app.cardsExpanded, app.hasRealRoute {
                     GuidanceCurtain(theme: theme, namespace: cardNamespace)
@@ -270,6 +275,7 @@ struct CompassScreen: View {
                     SearchResultsPanel(k: k, onClose: closeSearch)
                         .environmentObject(app)
                         .padding(.top, (searchBarFrame?.maxY ?? 100 * k) + 12)
+                        .padding(.bottom, keyboardHeight)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
@@ -284,8 +290,15 @@ struct CompassScreen: View {
             // keyboard-avoidance and shove this whole screen (compass included) upward —
             // the custom results panel already handles showing results, so nothing here
             // actually needs to shift when the keyboard appears.
-            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+                guard let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
+                let screenHeight = UIScreen.main.bounds.height
+                keyboardHeight = max(0, screenHeight - end.minY)
+            }
         }
+        // The keyboard must not resize or shift this screen at all (it shrank the layout area by the
+        // keyboard's height and pushed everything down); the results panel reserves keyboard room itself.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .alert(
             "Route there?",
             isPresented: Binding(
@@ -314,9 +327,18 @@ struct CompassScreen: View {
         ZStack {
             tiltGuideLines(theme: theme, dialSize: dialSize)
 
-            DialView(state: DialState(app: app), k: k)
-                .equatable()
+            DialHost(app: app, location: app.locationManager, k: k)
                 .frame(width: dialSize, height: dialSize)
+
+            if app.compassSuspect, !app.usingGPSHeading {
+                CompassGhostOverlay(theme: theme, predicted: app.compassPredicted, recalibrating: app.recalibratingCompass,
+                                    size: dialSize, onRecalibrate: { app.recalibrateCompass() }, onUseGPS: { app.useGPSDirection() })
+                    .transition(.opacity)
+            } else if app.usingGPSHeading {
+                GPSDirectionChip(theme: theme, onUndo: { app.stopUsingGPSDirection() })
+                    .offset(y: dialSize / 2 - 18)
+                    .transition(.opacity)
+            }
         }
         .frame(width: dialSize, height: dialSize)
         // Reports this cluster's real centre in the screen's shared coordinate space, so
@@ -812,26 +834,31 @@ private struct SearchResultsPanel: View {
                 .foregroundStyle(theme.textSecondary)
                 .padding(.top, Spacing.container)
 
-            if app.searchQuery.isEmpty {
-                recentList(theme: theme)
-            } else if isSearching && liveResults.isEmpty {
-                Text("Searching…")
-                    .font(.nunito(13, .semibold))
-                    .foregroundStyle(theme.textSecondary)
-                    .padding(.vertical, Spacing.element)
-            } else if liveResults.isEmpty {
-                Text("No matches for \u{201C}\(app.searchQuery)\u{201D}")
-                    .font(.nunito(13, .semibold))
-                    .foregroundStyle(theme.textSecondary)
-                    .padding(.vertical, Spacing.element)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(liveResults, id: \.self) { item in
-                        resultRow(item, theme: theme)
+            ScrollView {
+                VStack(alignment: .leading, spacing: Spacing.element) {
+                    if app.searchQuery.isEmpty {
+                        recentList(theme: theme)
+                    } else if isSearching && liveResults.isEmpty {
+                        Text("Searching…")
+                            .font(.nunito(13, .semibold))
+                            .foregroundStyle(theme.textSecondary)
+                            .padding(.vertical, Spacing.element)
+                    } else if liveResults.isEmpty {
+                        Text("No matches for \u{201C}\(app.searchQuery)\u{201D}")
+                            .font(.nunito(13, .semibold))
+                            .foregroundStyle(theme.textSecondary)
+                            .padding(.vertical, Spacing.element)
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(liveResults, id: \.self) { item in
+                                resultRow(item, theme: theme)
+                            }
+                        }
                     }
                 }
+                .padding(.bottom, Spacing.container)
             }
-            Spacer(minLength: 0)
+            .scrollDismissesKeyboard(.interactively)
         }
         .padding(.horizontal, Spacing.container)
         .frame(maxWidth: .infinity, alignment: .top)

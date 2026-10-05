@@ -107,12 +107,13 @@ final class AppModel: ObservableObject {
         #endif
         // Permission / precision changes are rare, and the "location issue" card reads them, so they
         // republish. (Fixes themselves deliberately don't — see `locationDidUpdate`.)
-        // The compass heading arrives up to ~10×/s and is what turns the dial and needle, but nothing
-        // else republishes while idle (or between the 1 Hz guidance refreshes), so it has to. Capped at
-        // 10 Hz — a fresher redraw than that isn't visible.
-        locationManager.$heading
+        // Speed shows in the top bar and nothing else republishes while idle; it changes at fix rate.
+        // (Heading is deliberately NOT forwarded here: the dial observes the location manager itself, so
+        // a heading change redraws only the dial, not the whole screen.)
+        locationManager.$speed
             .dropFirst()
-            .throttle(for: .milliseconds(100), scheduler: DispatchQueue.main, latest: true)
+            .removeDuplicates()
+            .throttle(for: .seconds(1), scheduler: DispatchQueue.main, latest: true)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         locationManager.$authorizationStatus.dropFirst().sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
@@ -131,8 +132,11 @@ final class AppModel: ObservableObject {
     private(set) var lowPower = false
     /// One tick a second is all anything needs now: the once-a-second guidance refresh. (The needle
     /// sway and aura breathing are implicit animations inside the dial, so they cost no app CPU.)
-    private var tickInterval: TimeInterval { lowPower ? 2.0 : 1.0 }
+    /// 1 s while guiding (the once-a-second refresh); 3 s otherwise, when the tick only has the compass
+    /// health check and the stationary-GPS check to do.
+    private var tickInterval: TimeInterval { (guiding ? 1.0 : 3.0) * (lowPower ? 2 : 1) }
     private var lastLocationAt = Date()
+    private var lastTickInterval: TimeInterval = 1
 
     private func lowPowerChanged() {
         lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
@@ -174,11 +178,16 @@ final class AppModel: ObservableObject {
         } else {
             timer = nil
             locationManager.setHeadingActive(false)
+            // Samples from before the screen went off say nothing about the compass afterwards.
+            compassHealth.reset()
+            if compassSuspect { compassSuspect = false; compassPredicted = nil }
+            usingGPSHeading = false
         }
     }
 
     private func startTick() {
         guard Perf.on("tick") else { timer = nil; return }
+        lastTickInterval = tickInterval
         timer = Timer.publish(every: tickInterval, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.tick() }
@@ -188,8 +197,6 @@ final class AppModel: ObservableObject {
         Perf.hit("locDeliver")
         Perf.stamp("locGap")
         lastLocationAt = Date()
-        // Point mode and idle have no 1 Hz refresh to carry a new position to the screen.
-        if sceneActive, !guiding { objectWillChange.send() }
         guard !sceneActive, Date().timeIntervalSince(lastGuidanceRefresh) >= 1 else { return }
         refreshGuidanceState()
     }
@@ -199,6 +206,7 @@ final class AppModel: ObservableObject {
         locationManager.setBackgroundGuidance(guiding && !arrived, activityType: travelMode.locationActivityType)
         refreshLocationProfile()
         updateScreenAwake()
+        if sceneActive, timer != nil, abs(tickInterval - lastTickInterval) > 0.01 { startTick() }
     }
 
     /// While a trip is being guided and the app is on screen, the display stays on — the compass is
@@ -227,6 +235,7 @@ final class AppModel: ObservableObject {
         lastGuidanceRefresh = Date()
         Perf.stamp("refreshGap")
         updateProjection()
+        if sceneActive { updateCompassHealth() }
         if guiding, routingManager.hasRoute, !arrived {
             if Perf.on("advance") { routingManager.advanceProgress(userLocation: currentPosition) }
             if Perf.on("arrival") { checkArrival() }
@@ -252,6 +261,76 @@ final class AppModel: ObservableObject {
         }
         routingManager.projectionExtra = extra
         routingManager.projectionArrivalMargin = travelMode.tuning.arrivalRadius + 1
+    }
+
+    // MARK: - Compass health
+
+    /// True while the phone's compass disagrees with the direction of travel (see `CompassHealth`):
+    /// the dial shows a ghost compass at the GPS direction and offers "Recalibrate".
+    @Published private(set) var compassSuspect = false
+    /// The GPS direction of travel the ghost compass is drawn at (degrees clockwise from north).
+    @Published private(set) var compassPredicted: Double?
+    /// True for a few seconds after the user taps "Recalibrate" (shows the figure-8 hint).
+    @Published private(set) var recalibratingCompass = false
+    /// True while the dial is steered by GPS direction instead of the (suspect) compass: the compass
+    /// still tracks the phone turning, so its reading is shifted by the offset between it and the GPS
+    /// course, re-measured whenever the traveller is moving steadily. Ends by itself once the compass
+    /// agrees with the direction of travel again, or when the user taps "Undo".
+    @Published private(set) var usingGPSHeading = false
+    private var headingCorrection: Double = 0
+    private var compassHealth = CompassHealth()
+
+    func useGPSDirection() {
+        guard compassSuspect else { return }
+        if let predicted = compassHealth.predictedHeading {
+            headingCorrection = CompassHealth.signedDifference(predicted, from: locationManager.heading)
+        }
+        usingGPSHeading = true
+    }
+
+    func stopUsingGPSDirection() { usingGPSHeading = false }
+
+    private func updateCompassHealth() {
+        guard Perf.on("compasshealth") else { return }
+        if Perf.ghost {
+            if !compassSuspect { compassSuspect = true; compassPredicted = 40 }
+            return
+        }
+        guard locationManager.hasReliableHeading, let fix = locationManager.location else { return }
+        let now = Date()
+        let fresh = now.timeIntervalSince(fix.timestamp) < 6 && (fix.courseAccuracy < 0 || fix.courseAccuracy <= 25)
+        compassHealth.observe(course: fresh ? fix.course : -1, speed: fresh ? fix.speed : 0, at: now)
+        compassHealth.evaluate(heading: locationManager.heading, headingAccuracy: locationManager.headingAccuracy, at: now)
+        let suspect = compassHealth.status == .suspect
+        let predicted = suspect ? compassHealth.predictedHeading : nil
+        if suspect != compassSuspect { compassSuspect = suspect }
+        if predicted != compassPredicted { compassPredicted = predicted }
+        if usingGPSHeading {
+            if !suspect {
+                usingGPSHeading = false          // the compass has proved itself again
+            } else if let course = compassHealth.steadyCourse(at: now) {
+                let fresh = CompassHealth.signedDifference(course, from: locationManager.heading)
+                if abs(CompassHealth.signedDifference(fresh, from: headingCorrection)) > 2 {
+                    headingCorrection = fresh
+                    objectWillChange.send()
+                }
+            }
+        }
+    }
+
+    /// iOS can't be told to recalibrate the magnetometer, so this restarts the heading service (clearing
+    /// stuck sensor-fusion state, and letting iOS raise its own figure-8 prompt if it wants), keeps the
+    /// warning up until the compass has agreed with the direction of travel twice, and asks the user to
+    /// wave the phone in a figure-8 meanwhile.
+    func recalibrateCompass() {
+        guard !recalibratingCompass else { return }
+        locationManager.restartHeading()
+        compassHealth.noteRecalibrating(at: Date())
+        recalibratingCompass = true
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            self?.recalibratingCompass = false
+        }
     }
 
     // MARK: - Audio cues
@@ -376,7 +455,11 @@ final class AppModel: ObservableObject {
     }
     /// The device's real compass heading once it's reliable, else 0 (screen-up as a
     /// stand-in "north") — matches the old fixed behaviour until a real heading arrives.
-    var currentHeading: CLLocationDirection { locationManager.hasReliableHeading ? locationManager.heading : 0 }
+    var currentHeading: CLLocationDirection {
+        guard locationManager.hasReliableHeading else { return 0 }
+        guard usingGPSHeading else { return locationManager.heading }
+        return (locationManager.heading + headingCorrection + 360).truncatingRemainder(dividingBy: 360)
+    }
 
     /// Idle: not guiding, and no place selected to point at. The dial goes
     /// north-up and flat, with the cardinal markers emphasized, so it's unmistakably at rest.

@@ -46,6 +46,19 @@ struct DialState: Equatable {
     }
 }
 
+/// Hosts the dial and lets *it* — not the whole compass screen — react to heading and position changes:
+/// observing the location manager here means a new heading re-evaluates this tiny wrapper (it just
+/// builds a `DialState`), and the dial itself only redraws if something it shows actually changed.
+struct DialHost: View {
+    let app: AppModel
+    @ObservedObject var location: LocationManager
+    let k: CGFloat
+
+    var body: some View {
+        DialView(state: DialState(app: app), k: k).equatable()
+    }
+}
+
 struct DialView: View, Equatable {
     let state: DialState
     let k: CGFloat

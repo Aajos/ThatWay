@@ -57,7 +57,15 @@ final class RoutingManager: ObservableObject {
     /// which instruction is current and how far off it is — comes from this, so it's measured
     /// along the actual road rather than as a straight line, and can't be skipped by a fast
     /// traveller stepping over a proximity circle between two location checks.
-    @Published private(set) var progressAlong: Double = 0
+    ///
+    /// Deliberately not `@Published`: it moves every second under dead reckoning, but everything it
+    /// feeds (distances rounded to 10 m, the current card, ETA minutes) changes far less often, and each
+    /// publish re-evaluates the whole compass screen. `advanceProgress` publishes by hand when a real
+    /// fix lands, the current card changes, or the readout has moved `publishQuantum` metres.
+    private(set) var progressAlong: Double = 0
+    private var lastPublishedProgress: Double = 0
+    private var lastPublishedCard: Int?
+    static let publishQuantum: Double = 4
     private(set) var routeLength: Double = 0
     /// How far along the route the last *real* fix put the traveller (never goes backward).
     /// `progressAlong` is this plus whatever dead-reckoned distance `projectionExtra` allows.
@@ -211,6 +219,8 @@ final class RoutingManager: ObservableObject {
         routeLength = 0
         currentStepIndex = 0
         progressAlong = 0
+        lastPublishedProgress = 0
+        lastPublishedCard = nil
         fixedProgress = 0
         projectionExtra = 0
         lastSegmentIndex = 0
@@ -260,7 +270,15 @@ final class RoutingManager: ObservableObject {
         if fixAdvanced { fixedProgress = located.along }
         let target = projectedProgress(base: fixedProgress, extra: projectionExtra, arrivalMargin: projectionArrivalMargin)
         // A new real fix always lands; a projection-only change under a metre isn't worth a redraw.
-        if target != progressAlong, fixAdvanced || abs(target - progressAlong) >= 1 { progressAlong = target }
+        if target != progressAlong, fixAdvanced || abs(target - progressAlong) >= 1 {
+            progressAlong = target
+            let card = currentCardIndex
+            if fixAdvanced || card != lastPublishedCard || abs(target - lastPublishedProgress) >= Self.publishQuantum {
+                lastPublishedProgress = target
+                lastPublishedCard = card
+                objectWillChange.send()
+            }
+        }
         if let index = steps.lastIndex(where: { $0.startAlong <= progressAlong }), index > currentStepIndex {
             currentStepIndex = index
         }
@@ -402,6 +420,8 @@ final class RoutingManager: ObservableObject {
         totalDuration = finalRoute.duration
         currentStepIndex = 0
         progressAlong = 0
+        lastPublishedProgress = 0
+        lastPublishedCard = nil
         fixedProgress = 0
         projectionExtra = 0
         lastSegmentIndex = 0

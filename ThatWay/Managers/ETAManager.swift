@@ -14,8 +14,10 @@ import Combine
 
 @MainActor
 final class ETAManager: ObservableObject {
-    @Published private(set) var remainingSeconds: TimeInterval?
-    @Published private(set) var arrival: Date?
+    // Plain properties, not @Published: nothing observes this object (the compass screen re-reads
+    // it whenever AppModel republishes), so a publisher here only cost two Combine sends a second.
+    private(set) var remainingSeconds: TimeInterval?
+    private(set) var arrival: Date?
 
     /// Actual pace ÷ expected pace, smoothed: 1 = on the road's expected speed, >1 = slower.
     private var paceFactor = 1.0
@@ -58,14 +60,14 @@ final class ETAManager: ObservableObject {
         arrival = Date().addingTimeInterval(seconds)
     }
 
+    // Creating a DateFormatter is expensive and this is read several times per redraw.
+    private static let clockFormatter: DateFormatter = { let f = DateFormatter(); f.dateFormat = "h:mm"; return f }()
+    private static let periodFormatter: DateFormatter = { let f = DateFormatter(); f.dateFormat = "a"; return f }()
+
     /// "3:42" and "PM" — split so the AM/PM can be set small next to the time.
     var arrivalClock: (time: String, period: String)? {
         guard let arrival else { return nil }
-        let clock = DateFormatter()
-        clock.dateFormat = "h:mm"
-        let period = DateFormatter()
-        period.dateFormat = "a"
-        return (clock.string(from: arrival), period.string(from: arrival).lowercased())
+        return (Self.clockFormatter.string(from: arrival), Self.periodFormatter.string(from: arrival).lowercased())
     }
 
     var minutesLeftText: String? {

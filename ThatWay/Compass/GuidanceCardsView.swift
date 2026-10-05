@@ -38,7 +38,7 @@ extension GuidanceCard {
 }
 
 private struct CardIcon: View {
-    let card: GuidanceCard
+    let symbol: String
     let theme: AppTheme
     var highlighted = true
     var scale: CGFloat = 1
@@ -47,11 +47,75 @@ private struct CardIcon: View {
         ZStack {
             RoundedRectangle(cornerRadius: 12 * scale)
                 .fill(highlighted ? theme.tint(0.16) : theme.ink.opacity(0.08))
-            Image(systemName: card.symbolName)
+            Image(systemName: symbol)
                 .font(.system(size: 19 * scale, weight: .bold))
                 .foregroundStyle(highlighted ? theme.accent : theme.ink.opacity(0.7))
         }
         .frame(width: 42 * scale, height: 42 * scale)
+    }
+}
+
+// MARK: - Plain values the stacks draw
+
+/// Everything one card shows, as values — so a card view can be skipped when none of it changed.
+struct CardFace: Equatable {
+    let id: Int
+    let symbol: String
+    let title: String
+    let road: String
+    let distance: String
+
+    @MainActor
+    init(_ card: GuidanceCard, app: AppModel) {
+        id = card.id
+        symbol = card.symbolName
+        title = card.shortTitle
+        road = card.kind == .arrive ? app.dest : card.shortRoad
+        distance = app.fmt(app.routingManager.distanceTo(card))
+    }
+}
+
+/// What the active-instruction stack shows. The stack takes this instead of observing the whole
+/// `AppModel`, and is `Equatable`: a GPS fix, a heading change or the once-a-second dead-reckoned
+/// update that doesn't change any text on the cards no longer re-renders them.
+struct GuidanceStackState: Equatable {
+    var themeID: ThemeID
+    var front: CardFace?
+    var phase: String
+    var phaseHighlighted: Bool
+    var peeks: [CardFace]
+    var expanded: Bool
+
+    @MainActor
+    init(app: AppModel, showsPeeks: Bool) {
+        let routing = app.routingManager
+        let cards = routing.cards
+        let index = routing.currentCardIndex
+        themeID = app.theme
+        front = index.map { CardFace(cards[$0], app: app) }
+        phase = app.currentPhaseText
+        phaseHighlighted = app.currentPhaseHighlighted
+        peeks = showsPeeks && index != nil
+            ? (1...2).compactMap { d in (index! + d < cards.count) ? CardFace(cards[index! + d], app: app) : nil }
+            : []
+        expanded = app.cardsExpanded
+    }
+}
+
+/// What the "Up next" stack under the compass shows.
+struct NextStackState: Equatable {
+    var themeID: ThemeID
+    var faces: [CardFace]
+    var expanded: Bool
+
+    @MainActor
+    init(app: AppModel) {
+        let routing = app.routingManager
+        let cards = routing.cards
+        let index = routing.currentCardIndex
+        themeID = app.theme
+        faces = index == nil ? [] : (1...3).compactMap { d in (index! + d < cards.count) ? CardFace(cards[index! + d], app: app) : nil }
+        expanded = app.cardsExpanded
     }
 }
 
@@ -66,12 +130,12 @@ private func expand(_ app: AppModel) {
 /// A behind-the-front card in a stack: just the card's silhouette plus, when it's the first one
 /// behind, a hint of its content — scaled and lowered by `depth` so the stack reads as layers.
 private struct PeekCard: View {
-    @EnvironmentObject var app: AppModel
-    let card: GuidanceCard
+    let face: CardFace
     let depth: Int
     let theme: AppTheme
     let namespace: Namespace.ID
     let height: CGFloat
+    let expanded: Bool
     /// Which way the stack fans: down (the usual — behind cards peek out below) or up.
     var showsContent = false
     var scale: CGFloat = 1
@@ -83,20 +147,19 @@ private struct PeekCard: View {
         let f = fontScale ?? scale
         HStack(spacing: 14) {
             if showsContent {
-                CardIcon(card: card, theme: theme, highlighted: false, scale: scale)
+                CardIcon(symbol: face.symbol, theme: theme, highlighted: false, scale: scale)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(card.shortTitle)
+                    Text(face.title)
                         .font(.nunito(14 * f, .extraBold)).foregroundStyle(theme.ink)
                         .lineLimit(1).minimumScaleFactor(0.6)
-                    let road = card.kind == .arrive ? app.dest : card.shortRoad
-                    if !road.isEmpty {
-                        Text(road)
+                    if !face.road.isEmpty {
+                        Text(face.road)
                             .font(.nunito(11.5 * f, .semibold)).foregroundStyle(theme.ink.opacity(0.75))
                             .lineLimit(1).minimumScaleFactor(0.6)
                     }
                 }
                 Spacer(minLength: 4)
-                Text(app.fmt(app.routingManager.distanceTo(card)))
+                Text(face.distance)
                     .font(.nunito(15 * f, .black)).foregroundStyle(theme.ink.opacity(0.85))
                     .lineLimit(1).minimumScaleFactor(0.7)
             } else {
@@ -109,7 +172,7 @@ private struct PeekCard: View {
             RoundedRectangle(cornerRadius: 20)
                 .fill(theme.screen)
                 .overlay(RoundedRectangle(cornerRadius: 20).fill(theme.surface(0.05)))
-                .matchedGeometryEffect(id: card.id, in: namespace, isSource: !app.cardsExpanded)
+                .matchedGeometryEffect(id: face.id, in: namespace, isSource: !expanded)
         )
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.borderColor))
         .scaleEffect(1 - CGFloat(max(0, depth - 1)) * 0.05, anchor: .top)
@@ -122,8 +185,11 @@ private struct PeekCard: View {
 /// The active instruction. Far from the destination it sits above the compass on its own; in the
 /// last 500m (`showsPeeks`) it goes back to the bottom of the screen with the next two stacked
 /// behind it.
-struct GuidanceCardStack: View {
-    @EnvironmentObject var app: AppModel
+struct GuidanceCardStack: View, Equatable {
+    let state: GuidanceStackState
+    /// Not observed — only used to run the tap/END actions, so the stack never redraws just because
+    /// something else in the model changed.
+    let app: AppModel
     let theme: AppTheme
     let namespace: Namespace.ID
     var showsPeeks = true
@@ -132,6 +198,10 @@ struct GuidanceCardStack: View {
     /// 1 on a full-size phone; down to ~0.72 on a short screen like the iPhone SE.
     var density: CGFloat = 1
 
+    static func == (a: GuidanceCardStack, b: GuidanceCardStack) -> Bool {
+        a.state == b.state && a.showsPeeks == b.showsPeeks && a.opensOnPullDown == b.opensOnPullDown && a.density == b.density
+    }
+
     /// The cards are 1.5× their original size for readability at a glance.
     private var scale: CGFloat { 1.5 * density }
     /// Text keeps its full size on a short screen — only the card's height and icon shrink.
@@ -139,25 +209,20 @@ struct GuidanceCardStack: View {
     private var cardHeight: CGFloat { 84 * scale }
 
     var body: some View {
-        let routing = app.routingManager
-        let cards = routing.cards
-        let index = routing.currentCardIndex
-        let peeks: [(card: GuidanceCard, depth: Int)] = showsPeeks && index != nil
-            ? (1...2).compactMap { d in (index! + d < cards.count) ? (cards[index! + d], d + 1) : nil }
-            : []
-
+        let _ = Perf.hit("body.cards")
         ZStack(alignment: .top) {
-            ForEach(peeks, id: \.card.id) { item in
-                PeekCard(card: item.card, depth: item.depth, theme: theme, namespace: namespace, height: cardHeight, scale: scale, fontScale: 1.5)
+            ForEach(Array(state.peeks.enumerated()), id: \.element.id) { offset, face in
+                PeekCard(face: face, depth: offset + 2, theme: theme, namespace: namespace, height: cardHeight,
+                         expanded: state.expanded, scale: scale, fontScale: 1.5)
                     .transition(.opacity)
             }
-            front(card: index.map { cards[$0] })
-                .id(index.map { cards[$0].id } ?? -1)
+            front(face: state.front)
+                .id(state.front?.id ?? -1)
                 .transition(.asymmetric(insertion: .opacity, removal: .opacity.combined(with: .scale(scale: 0.94))))
                 .zIndex(20)
         }
         .frame(minHeight: cardHeight + (showsPeeks ? 22 * density : 0), alignment: .top)
-        .animation(cardSpring, value: index)
+        .animation(cardSpring, value: state.front?.id)
         .contentShape(Rectangle())
         .onTapGesture { expand(app) }
         .gesture(
@@ -169,29 +234,28 @@ struct GuidanceCardStack: View {
         )
     }
 
-    private func front(card: GuidanceCard?) -> some View {
+    private func front(face: CardFace?) -> some View {
         HStack(spacing: 14) {
-            CardIcon(card: card ?? arrivedPlaceholder, theme: theme, scale: scale)
+            CardIcon(symbol: face?.symbol ?? "flag.checkered", theme: theme, scale: scale)
             VStack(alignment: .leading, spacing: 3) {
-                Text(card?.shortTitle ?? "Arrived")
+                Text(face?.title ?? "Arrived")
                     .font(.nunito(15 * fontScale, .extraBold)).foregroundStyle(theme.ink)
                     .lineLimit(2).minimumScaleFactor(0.6)
-                let road = card?.kind == .arrive ? app.dest : (card?.shortRoad ?? "")
-                if !road.isEmpty {
+                if let road = face?.road, !road.isEmpty {
                     Text(road)
                         .font(.nunito(12 * fontScale, .bold)).foregroundStyle(theme.ink.opacity(0.85))
                         .lineLimit(2).minimumScaleFactor(0.6)
                 }
-                Text(app.currentPhaseText)
-                    .font(.nunito(10 * fontScale, app.currentPhaseHighlighted ? .black : .semibold))
-                    .foregroundStyle(app.currentPhaseHighlighted ? theme.accent : theme.textSecondary)
-                    .glow(app.currentPhaseHighlighted ? theme.accent.opacity(0.55) : .clear, radius: 6, theme: theme)
+                Text(state.phase)
+                    .font(.nunito(10 * fontScale, state.phaseHighlighted ? .black : .semibold))
+                    .foregroundStyle(state.phaseHighlighted ? theme.accent : theme.textSecondary)
+                    .glow(state.phaseHighlighted ? theme.accent.opacity(0.55) : .clear, radius: 6, theme: theme)
                     .lineLimit(1).minimumScaleFactor(0.7)
             }
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 10) {
-                if card != nil {
-                    Text(app.fmt(app.distanceToManeuver))
+                if let face {
+                    Text(face.distance)
                         .font(.nunito(17 * fontScale, .black)).foregroundStyle(theme.accent)
                         .lineLimit(1).minimumScaleFactor(0.7)
                 }
@@ -212,40 +276,33 @@ struct GuidanceCardStack: View {
             RoundedRectangle(cornerRadius: 24)
                 .fill(theme.screen)
                 .overlay(RoundedRectangle(cornerRadius: 24).fill(theme.surface(0.07)))
-                .matchedGeometryEffect(id: card?.id ?? -1, in: namespace, isSource: !app.cardsExpanded)
+                .matchedGeometryEffect(id: face?.id ?? -1, in: namespace, isSource: !state.expanded)
         )
         .overlay(RoundedRectangle(cornerRadius: 24).stroke(theme.outline(0.35)))
-    }
-
-    private var arrivedPlaceholder: GuidanceCard {
-        GuidanceCard(id: -1, kind: .arrive, title: "", shortTitle: "", shortRoad: "", roadName: "", turn: .straight, exitNumber: nil,
-                     coordinate: app.currentPosition, exitCoordinate: app.currentPosition,
-                     startAlong: 0, completeAlong: 0, legLength: 0)
     }
 }
 
 /// The stack under the compass while the active card sits above it: the very next instruction,
 /// with the ones after it layered behind. When the active instruction is done the next card here
 /// slides up into the active slot, the ones behind move forward, and a new one appears at the back.
-struct NextCardsStack: View {
-    @EnvironmentObject var app: AppModel
+struct NextCardsStack: View, Equatable {
+    let state: NextStackState
+    let app: AppModel
     let theme: AppTheme
     let namespace: Namespace.ID
 
     var density: CGFloat = 1
+
+    static func == (a: NextCardsStack, b: NextCardsStack) -> Bool { a.state == b.state && a.density == b.density }
+
     private var scale: CGFloat { 1.5 * density }
     private var cardHeight: CGFloat { 68 * scale }
     private var stackHeight: CGFloat { 68 * scale + 30 * density }
 
     var body: some View {
-        let routing = app.routingManager
-        let cards = routing.cards
-        let index = routing.currentCardIndex
-        let visible: [(card: GuidanceCard, depth: Int)] = index == nil ? [] :
-            (1...3).compactMap { d in (index! + d < cards.count) ? (cards[index! + d], d) : nil }
-
+        let _ = Perf.hit("body.cards")
         VStack(alignment: .leading, spacing: 2) {
-            if !visible.isEmpty {
+            if !state.faces.isEmpty {
                 Text("Up next:")
                     .font(.nunito(14, .extraBold))
                     .tracking(0.4)
@@ -254,15 +311,15 @@ struct NextCardsStack: View {
                     .transition(.opacity)
             }
             ZStack(alignment: .top) {
-                ForEach(visible, id: \.card.id) { item in
-                    PeekCard(card: item.card, depth: item.depth, theme: theme, namespace: namespace,
-                             height: cardHeight, showsContent: item.depth == 1, scale: scale, fontScale: 1.5)
+                ForEach(Array(state.faces.enumerated()), id: \.element.id) { offset, face in
+                    PeekCard(face: face, depth: offset + 1, theme: theme, namespace: namespace, height: cardHeight,
+                             expanded: state.expanded, showsContent: offset == 0, scale: scale, fontScale: 1.5)
                         .transition(.opacity)
                 }
             }
             .frame(height: stackHeight, alignment: .top)
         }
-        .animation(cardSpring, value: index)
+        .animation(cardSpring, value: state.faces.first?.id)
         .contentShape(Rectangle())
         .onTapGesture { expand(app) }
         .gesture(
@@ -353,7 +410,7 @@ struct GuidanceCurtain: View {
         let isPast = offset < currentIndex
         let isCurrent = offset == currentIndex
         return HStack(spacing: 12) {
-            CardIcon(card: card, theme: theme, highlighted: isCurrent)
+            CardIcon(symbol: card.symbolName, theme: theme, highlighted: isCurrent)
             VStack(alignment: .leading, spacing: 3) {
                 Text(card.title)
                     .font(.nunito(isCurrent ? 15 : 14, .extraBold)).foregroundStyle(theme.ink)
