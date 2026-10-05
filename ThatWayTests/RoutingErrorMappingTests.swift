@@ -11,11 +11,12 @@
 import Testing
 import CoreLocation
 @testable import ThatWay
+import ThatWayCore
 
 extension OSRMParsingTests {
     private func provider(statusCode: Int, fixture: String, headers: [String: String] = [:]) -> OSRMRoutingProvider {
         MockURLProtocol.handler = { request in Fixture.response(fixture, url: request.url!, statusCode: statusCode, headers: headers) }
-        return OSRMRoutingProvider(session: MockURLProtocol.makeSession())
+        return OSRMRoutingProvider.app(session: MockURLProtocol.makeSession())
     }
 
     @Test func noRouteCodeMapsToNoRouteError() async throws {
@@ -62,7 +63,7 @@ extension OSRMParsingTests {
         MockURLProtocol.handler = { request in
             (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, "not json".data(using: .utf8)!)
         }
-        let p = OSRMRoutingProvider(session: MockURLProtocol.makeSession())
+        let p = OSRMRoutingProvider.app(session: MockURLProtocol.makeSession())
         do {
             _ = try await p.route(from: .init(latitude: 0, longitude: 0), to: .init(latitude: 1, longitude: 1), profile: .driving)
             Issue.record("expected invalidResponse to be thrown")

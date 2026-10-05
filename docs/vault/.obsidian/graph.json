@@ -1,0 +1,41 @@
+{
+  "colorGroups": [
+    {
+      "query": "tag:#risk/high",
+      "color": {
+        "a": 1,
+        "rgb": 15746620
+      }
+    },
+    {
+      "query": "tag:#status/spike",
+      "color": {
+        "a": 1,
+        "rgb": 3968240
+      }
+    },
+    {
+      "query": "tag:#status/setting-only",
+      "color": {
+        "a": 1,
+        "rgb": 15777320
+      }
+    },
+    {
+      "query": "tag:#flow",
+      "color": {
+        "a": 1,
+        "rgb": 3983510
+      }
+    },
+    {
+      "query": "tag:#area",
+      "color": {
+        "a": 1,
+        "rgb": 11184810
+      }
+    }
+  ],
+  "showTags": false,
+  "showArrow": true
+}

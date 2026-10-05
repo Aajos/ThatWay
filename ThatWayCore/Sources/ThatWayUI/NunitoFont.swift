@@ -1,19 +1,25 @@
 //
 //  NunitoFont.swift
-//  ThatWay
+//  ThatWayUI
 //
-//  Loads the bundled Nunito variable font and uses its named weight instances
-//  (they ship inside the variable font as their own PostScript names — Nunito-Regular,
-//  Nunito-SemiBold, Nunito-Bold, Nunito-ExtraBold, Nunito-Black) matching the design's
-//  type scale. Built on `Font.custom(_:size:relativeTo:)` rather than a raw CoreText
-//  instance so every label in the app automatically scales with the system's Dynamic
-//  Type accessibility setting — no per-view plumbing required.
+//  The bundled Nunito variable font and its named weight instances (Nunito-Regular … Nunito-Black).
+//  The font file ships inside this package and is registered at launch by `ThatWayFonts.register()`
+//  (call it once from each app's init), so the iPhone and the watch use exactly the same font.
+//  Built on `Font.custom(_:size:relativeTo:)` so labels scale with Dynamic Type.
 //
 
 import SwiftUI
-import UIKit
+import CoreText
 
-enum NunitoWeight: CGFloat {
+public enum ThatWayFonts {
+    /// Registers the bundled Nunito font for this process. Safe to call more than once.
+    public static func register() {
+        guard let url = Bundle.module.url(forResource: "Nunito", withExtension: "ttf") else { return }
+        CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+    }
+}
+
+public enum NunitoWeight: CGFloat {
     case regular = 400
     case semibold = 600
     case bold = 700
@@ -21,7 +27,7 @@ enum NunitoWeight: CGFloat {
     case black = 900
 
     /// The PostScript name of this weight's named instance inside the variable font.
-    var postScriptName: String {
+    public var postScriptName: String {
         switch self {
         case .regular: return "Nunito-Regular"
         case .semibold: return "Nunito-SemiBold"
@@ -42,22 +48,19 @@ enum NunitoWeight: CGFloat {
     }
 }
 
-enum Nunito {
-    static func font(_ size: CGFloat, _ weight: NunitoWeight) -> Font {
-        // Nunito.ttf is registered at launch via Info.plist's UIAppFonts — no runtime
-        // CTFontManagerRegisterFontsForURL call needed (and calling it again here would
-        // just report "already registered" as failure, which used to make this silently
-        // fall back to a plain fixed-size system font that ignores Dynamic Type entirely).
-        // Checking UIFont directly instead confirms the named instance is actually usable.
-        guard UIFont(name: weight.postScriptName, size: size) != nil else {
+public enum Nunito {
+    public static func font(_ size: CGFloat, _ weight: NunitoWeight) -> Font {
+        // `CTFontCreateWithName` quietly substitutes a default font when the name isn't registered, so
+        // confirm the named instance is really the one we asked for before using it.
+        let ct = CTFontCreateWithName(weight.postScriptName as CFString, size, nil)
+        guard (CTFontCopyPostScriptName(ct) as String) == weight.postScriptName else {
             return .system(size: size, weight: weight.systemFallback)
         }
         return .custom(weight.postScriptName, size: size, relativeTo: relativeStyle(for: size))
     }
 
     /// Picks a Dynamic Type text style whose own scaling curve roughly matches how a
-    /// label of this base size ought to grow — so a tiny caption and a big headline
-    /// don't scale by the exact same ratio as accessibility sizes go up.
+    /// label of this base size ought to grow.
     private static func relativeStyle(for size: CGFloat) -> Font.TextStyle {
         switch size {
         case ..<11: return .caption2
@@ -74,7 +77,7 @@ enum Nunito {
     }
 }
 
-extension Font {
+public extension Font {
     static func nunito(_ size: CGFloat, _ weight: NunitoWeight) -> Font {
         Nunito.font(size, weight)
     }

@@ -7,6 +7,7 @@ import Testing
 import AVFoundation
 import CoreLocation
 @testable import ThatWay
+import ThatWayCore
 
 struct AudioManagerTests {
     @Test func announcementPointsDependOnTravelMode() {

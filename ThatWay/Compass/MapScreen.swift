@@ -9,6 +9,7 @@
 
 import SwiftUI
 import MapKit
+import ThatWayUI
 
 struct MapScreen: View {
     @EnvironmentObject var app: AppModel

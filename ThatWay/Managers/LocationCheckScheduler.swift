@@ -11,6 +11,7 @@
 
 import Foundation
 import Combine
+import ThatWayCore
 
 /// Owns *when* a location-driven guidance check happens — not the check itself, which stays
 /// with RoutingManager/AppModel. This keeps the polling policy (intervals, start/stop,

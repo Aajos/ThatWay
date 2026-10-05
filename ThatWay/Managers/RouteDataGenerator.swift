@@ -11,6 +11,7 @@
 import Foundation
 import CoreLocation
 import Combine
+import ThatWayCore
 
 /// One pre-computed sample point along the route, roughly every 10-20m of ground covered.
 struct GuidanceWaypoint: Codable {

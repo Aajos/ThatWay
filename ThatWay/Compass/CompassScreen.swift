@@ -5,6 +5,8 @@
 
 import SwiftUI
 import MapKit
+import ThatWayCore
+import ThatWayUI
 
 private enum Spacing {
     static let container: CGFloat = 16

@@ -16,9 +16,5 @@
 		<key>Guidance</key>
 		<string>Precise Location lets ThatWay point the compass and call out turns at the right moment. It is only used while you are using the app or guiding a trip.</string>
 	</dict>
-	<key>UIAppFonts</key>
-	<array>
-		<string>Nunito.ttf</string>
-	</array>
 </dict>
 </plist>

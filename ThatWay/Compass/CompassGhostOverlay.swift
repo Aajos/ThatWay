@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import ThatWayUI
 
 struct CompassGhostOverlay: View {
     let theme: AppTheme

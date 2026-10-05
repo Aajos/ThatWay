@@ -11,6 +11,8 @@
 //
 
 import SwiftUI
+import ThatWayCore
+import ThatWayUI
 
 extension GuidanceCard {
     /// The glyph for this card — the manoeuvre's own shape, so a slight bend, a full turn and a

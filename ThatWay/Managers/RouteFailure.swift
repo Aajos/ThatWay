@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import ThatWayCore
 
 enum RouteFailure: Equatable {
     case offline

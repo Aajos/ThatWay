@@ -1,6 +1,6 @@
 //
 //  OSRMRoutingProvider.swift
-//  ThatWay
+//  ThatWayCore
 //
 //  The only file in the app that knows OSRM's JSON shape. Translates it into the app's own
 //  `Route`/`RouteStep` model (RouteModels.swift) and `RoutingError` cases — everything else,
@@ -10,26 +10,28 @@
 import CoreLocation
 import Foundation
 
-final class OSRMRoutingProvider: RoutingProvider {
+public final class OSRMRoutingProvider: RoutingProvider {
     private let session: URLSession
+    private let baseURL: (TravelProfile) -> String
 
-    /// `session` is injectable so tests can swap in a `URLProtocol`-mocked one — production
-    /// code gets an ephemeral session (no on-disk cache of where anyone has routed) with a
-    /// 5 second timeout.
-    init(session: URLSession? = nil) {
+    /// `baseURL` says which OSRM host serves each profile, `userAgent` identifies the app (the public servers ask for it).
+    /// `session` is injectable so tests can swap in a `URLProtocol`-mocked one — production code gets an ephemeral
+    /// session (no on-disk cache of where anyone has routed) with a 5 second timeout.
+    public init(baseURL: @escaping (TravelProfile) -> String, userAgent: String, session: URLSession? = nil) {
+        self.baseURL = baseURL
         if let session {
             self.session = session
         } else {
             let configuration = URLSessionConfiguration.ephemeral
             configuration.timeoutIntervalForRequest = 5
-            configuration.httpAdditionalHeaders = ["User-Agent": Config.userAgent]
+            configuration.httpAdditionalHeaders = ["User-Agent": userAgent]
             self.session = URLSession(configuration: configuration)
         }
     }
 
-    func route(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D, profile: TravelProfile) async throws -> Route {
+    public func route(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D, profile: TravelProfile) async throws -> Route {
         let coordinatePath = "\(origin.longitude),\(origin.latitude);\(destination.longitude),\(destination.latitude)"
-        guard var components = URLComponents(string: "\(profile.baseURL)/\(coordinatePath)") else {
+        guard var components = URLComponents(string: "\(baseURL(profile))/\(coordinatePath)") else {
             throw RoutingError.invalidResponse
         }
         components.queryItems = [

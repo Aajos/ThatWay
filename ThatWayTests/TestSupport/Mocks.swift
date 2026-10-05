@@ -5,6 +5,7 @@
 
 import CoreLocation
 @testable import ThatWay
+import ThatWayCore
 
 final class MockConnectivityMonitor: ConnectivityMonitoring {
     var isConnected: Bool

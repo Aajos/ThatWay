@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import ThatWayUI
 
 struct StoreScreen: View {
     @EnvironmentObject var app: AppModel

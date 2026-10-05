@@ -19,6 +19,7 @@
 
 import Foundation
 import CoreLocation
+import ThatWayCore
 
 struct CompassHealth {
     enum Status: Equatable { case unknown, ok, suspect }
@@ -126,15 +127,8 @@ struct CompassHealth {
     }
 
     /// Signed turn from `b` to `a` in degrees, -180...180 (positive = clockwise).
-    static func signedDifference(_ a: CLLocationDirection, from b: CLLocationDirection) -> Double {
-        var d = (a - b).truncatingRemainder(dividingBy: 360)
-        if d > 180 { d -= 360 } else if d <= -180 { d += 360 }
-        return d
-    }
+    static func signedDifference(_ a: CLLocationDirection, from b: CLLocationDirection) -> Double { AngleMath.signedDifference(a, from: b) }
 
     /// Smallest angle between two bearings, 0...180.
-    static func difference(_ a: CLLocationDirection, _ b: CLLocationDirection) -> CLLocationDirection {
-        let d = (a - b).truncatingRemainder(dividingBy: 360)
-        return abs(d > 180 ? d - 360 : d < -180 ? d + 360 : d)
-    }
+    static func difference(_ a: CLLocationDirection, _ b: CLLocationDirection) -> CLLocationDirection { AngleMath.difference(a, b) }
 }

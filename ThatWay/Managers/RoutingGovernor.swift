@@ -15,6 +15,7 @@
 import Combine
 import CoreLocation
 import Foundation
+import ThatWayCore
 
 struct RoutingConfig {
     var minRequestInterval: TimeInterval = 1.1

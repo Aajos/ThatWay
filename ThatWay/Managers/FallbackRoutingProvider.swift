@@ -9,6 +9,7 @@
 //
 
 import CoreLocation
+import ThatWayCore
 
 final class FallbackRoutingProvider: RoutingProvider {
     private let providers: [RoutingProvider]

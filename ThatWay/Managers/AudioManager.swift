@@ -18,6 +18,7 @@
 import Foundation
 import AVFoundation
 import Combine
+import ThatWayCore
 
 enum AudioGuidanceStyle: String, Codable, CaseIterable {
     case off, tone, voice

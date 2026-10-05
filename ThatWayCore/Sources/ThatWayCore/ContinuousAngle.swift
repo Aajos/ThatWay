@@ -1,6 +1,6 @@
 //
 //  ContinuousAngle.swift
-//  ThatWay
+//  ThatWayCore
 //
 //  Compass angles arrive wrapped (-180...180 or 0...360). Animating a *wrapped* angle makes the
 //  dial spin the long way round whenever the value crosses the wrap point — at one specific
@@ -11,14 +11,14 @@
 
 import Foundation
 
-struct ContinuousAngle: Equatable {
-    private(set) var value: Double
+public struct ContinuousAngle: Equatable {
+    public private(set) var value: Double
 
-    init(_ wrapped: Double = 0) { value = wrapped }
+    public init(_ wrapped: Double = 0) { value = wrapped }
 
     /// Moves to `wrapped` by the shortest turn. Idempotent: updating with the same reading again
     /// leaves the value where it is.
-    mutating func update(to wrapped: Double) {
-        value += CompassHealth.signedDifference(wrapped, from: value)
+    public mutating func update(to wrapped: Double) {
+        value += AngleMath.signedDifference(wrapped, from: value)
     }
 }

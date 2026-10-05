@@ -1,6 +1,6 @@
 //
 //  RouteModels.swift
-//  ThatWay
+//  ThatWayCore
 //
 //  The app's own route model — what every consumer (compass, cards, polyline, persistence)
 //  reads. Nothing here knows OSRM exists; `OSRMRoutingProvider` is the only file that
@@ -27,18 +27,21 @@ extension CLLocationCoordinate2D: @retroactive Codable {
     }
 }
 
-enum TurnSide: Codable { case left, right, straight }
-enum TurnSeverity: Codable { case slight, normal, sharp, uTurn }
+public enum TurnSide: Codable { case left, right, straight }
+public enum TurnSeverity: Codable { case slight, normal, sharp, uTurn }
+
+public enum TurnDir { case left, right, straight }
 
 /// What a manoeuvre actually looks like to the traveller: which way, and how hard. For a
 /// roundabout this describes the *exit* relative to the way you approach it (left, straight,
 /// right) — never the entry, which is always "turn into the circle".
-struct TurnShape: Codable {
-    var side: TurnSide
-    var severity: TurnSeverity
-    static let straight = TurnShape(side: .straight, severity: .normal)
+public struct TurnShape: Codable {
+    public var side: TurnSide
+    public var severity: TurnSeverity
+    public init(side: TurnSide, severity: TurnSeverity) { self.side = side; self.severity = severity }
+    public static let straight = TurnShape(side: .straight, severity: .normal)
 
-    var dir: TurnDir {
+    public var dir: TurnDir {
         switch side {
         case .left: return .left
         case .right: return .right
@@ -47,15 +50,16 @@ struct TurnShape: Codable {
     }
 }
 
-enum ManeuverKind { case depart, turn, roundabout, fork, merge, ramp, keepGoing, arrive }
+public enum ManeuverKind { case depart, turn, roundabout, fork, merge, ramp, keepGoing, arrive }
 
 /// One bearing at a real intersection, and whether it's legal to turn onto (OSRM's own `entry`
 /// flag) — a plain struct standing in for what was a `(bearing:entry:)` tuple before `Route`
 /// needed to be `Codable` (tuples can't be); field names match exactly, so nothing reading
 /// `.bearing`/`.entry` had to change.
-struct RouteBearing: Codable {
-    let bearing: CLLocationDirection
-    let entry: Bool
+public struct RouteBearing: Codable {
+    public let bearing: CLLocationDirection
+    public let entry: Bool
+    public init(bearing: CLLocationDirection, entry: Bool) { self.bearing = bearing; self.entry = entry }
 }
 
 /// One real intersection the route passes through along a step's road segment — whether the
@@ -66,60 +70,83 @@ struct RouteBearing: Codable {
 /// can filter out "other" roads that are really just the same road's own curve re-entering the
 /// graph (a roundabout's arc, a divided road's other carriageway) rather than a genuinely
 /// different one.
-struct RouteIntersection: Codable {
-    let coordinate: CLLocationCoordinate2D
-    let otherBearings: [RouteBearing]
-    let outBearing: CLLocationDirection?
+public struct RouteIntersection: Codable {
+    public let coordinate: CLLocationCoordinate2D
+    public let otherBearings: [RouteBearing]
+    public let outBearing: CLLocationDirection?
+    public init(coordinate: CLLocationCoordinate2D, otherBearings: [RouteBearing], outBearing: CLLocationDirection?) {
+        self.coordinate = coordinate; self.otherBearings = otherBearings; self.outBearing = outBearing
+    }
 }
 
 /// One turn-by-turn instruction: what to say, how far it covers, and the bearing to
 /// walk/drive along for its own segment (from where the step starts to where it ends).
-struct RouteStep: Identifiable, Codable {
-    let id: UUID
-    let instruction: String
-    let distance: CLLocationDistance
-    let duration: TimeInterval
-    let name: String
-    let maneuverType: String
-    let maneuverModifier: String?
+public struct RouteStep: Identifiable, Codable {
+    public let id: UUID
+    public let instruction: String
+    public let distance: CLLocationDistance
+    public let duration: TimeInterval
+    public let name: String
+    public let maneuverType: String
+    public let maneuverModifier: String?
     /// Where this step's own road segment begins and ends.
-    let startCoordinate: CLLocationCoordinate2D
-    let endCoordinate: CLLocationCoordinate2D
+    public let startCoordinate: CLLocationCoordinate2D
+    public let endCoordinate: CLLocationCoordinate2D
     /// The heading to point the compass along for this step, computed from
     /// `startCoordinate` to `endCoordinate` via `CompassManager.bearing`.
-    let bearing: CLLocationDirection
+    public let bearing: CLLocationDirection
     /// Every real intersection along this step's own road — not just its final manoeuvre
     /// point — straight from the route's own per-step intersection list.
-    let intersections: [RouteIntersection]
+    public let intersections: [RouteIntersection]
     /// Metres along the whole route where this step's manoeuvre happens / where the next
     /// begins — how progress is measured, instead of a proximity radius that a fast
     /// traveller can step right over between two location checks.
-    let startAlong: Double
-    let endAlong: Double
+    public let startAlong: Double
+    public let endAlong: Double
     /// Indices into the owning `Route.geometry` where this step's own road segment starts
     /// and ends — an engine-agnostic companion to `startAlong`/`endAlong`'s distance scale.
-    let startIndex: Int
-    let endIndex: Int
-    let turn: TurnShape
-    let exitNumber: Int?
+    public let startIndex: Int
+    public let endIndex: Int
+    public let turn: TurnShape
+    public let exitNumber: Int?
     /// True-north degrees immediately after this manoeuvre completes — a roundabout's real
     /// exit bearing, or (for `depart`) the initial heading to show as "head north" etc.
-    let exitBearing: CLLocationDirection?
+    public let exitBearing: CLLocationDirection?
 
-    var turnDirection: TurnDir { turn.dir }
+    public var turnDirection: TurnDir { turn.dir }
+
+    public init(
+        id: UUID, instruction: String, distance: CLLocationDistance, duration: TimeInterval, name: String,
+        maneuverType: String, maneuverModifier: String?, startCoordinate: CLLocationCoordinate2D, endCoordinate: CLLocationCoordinate2D,
+        bearing: CLLocationDirection, intersections: [RouteIntersection], startAlong: Double, endAlong: Double,
+        startIndex: Int, endIndex: Int, turn: TurnShape, exitNumber: Int?, exitBearing: CLLocationDirection?
+    ) {
+        self.id = id; self.instruction = instruction; self.distance = distance; self.duration = duration; self.name = name
+        self.maneuverType = maneuverType; self.maneuverModifier = maneuverModifier
+        self.startCoordinate = startCoordinate; self.endCoordinate = endCoordinate; self.bearing = bearing
+        self.intersections = intersections; self.startAlong = startAlong; self.endAlong = endAlong
+        self.startIndex = startIndex; self.endIndex = endIndex; self.turn = turn
+        self.exitNumber = exitNumber; self.exitBearing = exitBearing
+    }
 }
 
 /// A fetched route, independent of whichever `RoutingProvider` produced it: full-resolution
 /// geometry plus turn-by-turn steps. `Codable` so `RoutePersistence` can save/restore the
 /// active trip across a relaunch with no extra plumbing.
-struct Route: Codable {
-    let geometry: [CLLocationCoordinate2D]
-    let distance: CLLocationDistance
-    let duration: TimeInterval
-    let steps: [RouteStep]
+public struct Route: Codable {
+    public let geometry: [CLLocationCoordinate2D]
+    public let distance: CLLocationDistance
+    public let duration: TimeInterval
+    public let steps: [RouteStep]
     /// OSRM's per-segment road data (one entry per consecutive geometry vertex pair), scaled so
     /// they sum to `duration` — empty when the engine didn't provide annotations, or they didn't
     /// line up with `geometry`. Powers `ETAManager`; not present for every engine.
-    let segmentDurations: [Double]
-    let segmentSpeeds: [Double]
+    public let segmentDurations: [Double]
+    public let segmentSpeeds: [Double]
+
+    public init(geometry: [CLLocationCoordinate2D], distance: CLLocationDistance, duration: TimeInterval, steps: [RouteStep],
+                segmentDurations: [Double], segmentSpeeds: [Double]) {
+        self.geometry = geometry; self.distance = distance; self.duration = duration; self.steps = steps
+        self.segmentDurations = segmentDurations; self.segmentSpeeds = segmentSpeeds
+    }
 }

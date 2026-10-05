@@ -11,6 +11,7 @@
 
 import Foundation
 import Combine
+import ThatWayCore
 
 @MainActor
 final class ETAManager: ObservableObject {

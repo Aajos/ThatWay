@@ -10,6 +10,7 @@ import Testing
 import Foundation
 import CoreLocation
 @testable import ThatWay
+import ThatWayCore
 
 @MainActor
 struct RoutingGovernorPolicyTests {

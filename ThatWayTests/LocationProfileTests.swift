@@ -6,6 +6,7 @@
 import Testing
 import CoreLocation
 @testable import ThatWay
+import ThatWayCore
 
 struct LocationProfileTests {
     private func make(_ mode: TravelMode, guiding: Bool = true, destination: Bool = true, toTurn: Double? = 1000, stationary: Bool = false, lowPower: Bool = false) -> LocationProfile {

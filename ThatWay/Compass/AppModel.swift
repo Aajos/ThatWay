@@ -9,6 +9,8 @@ import SwiftUI
 import Combine
 import CoreLocation
 import MapKit
+import ThatWayCore
+import ThatWayUI
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -87,6 +89,7 @@ final class AppModel: ObservableObject {
     init(routingManager: RoutingManager? = nil) {
         self.routingManager = routingManager ?? RoutingManager()
         audioManager.style = audioStyle
+        watchLink.start(mode: travelMode)
         startTick()
         // With the screen off the tick is paused, so guidance state keeps moving from location
         // updates instead (delivered a moment after the value changes, hence the main-queue hop).
@@ -368,6 +371,8 @@ final class AppModel: ObservableObject {
             if !testLogging { tripLog.end(reason: "loggingOff", arrived: arrived, progressMetres: routingManager.progressAlong) }
         }
     }
+    /// Tells the paired watch the travel mode (it refuses to guide while this is Drive).
+    private let watchLink = WatchLink()
     private(set) lazy var tripLog = TripLogger(live: { [unowned self] in
         .init(fixes: locationManager.fixCount, headings: locationManager.headingCount, screenOn: sceneActive)
     })
@@ -750,6 +755,7 @@ final class AppModel: ObservableObject {
             guard oldValue != travelMode else { return }
             AppModel.saveTravelMode(travelMode)
             tripLog.count("modeChange")
+            watchLink.send(travelMode)
             updateBackgroundTracking()
             scheduleModeChangeReroute()
         }

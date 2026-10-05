@@ -14,6 +14,7 @@
 //
 
 import Foundation
+import ThatWayCore
 
 enum CompassTilt {
     /// Fractions of the maximum front tilt for steps 0...4 (0 = just after a turn).

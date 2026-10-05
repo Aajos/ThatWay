@@ -9,6 +9,7 @@
 import Testing
 import CoreLocation
 @testable import ThatWay
+import ThatWayCore
 
 struct DeadReckoningMathTests {
     @Test func walkingSpeedCoversSpeedTimesAge() {

@@ -23,6 +23,8 @@
 
 import SwiftUI
 import CoreLocation
+import ThatWayCore
+import ThatWayUI
 
 /// Adaptive look-ahead distance, kept separate from rendering so the thresholds are easy
 /// to read and verify on their own.

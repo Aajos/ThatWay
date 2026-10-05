@@ -6,6 +6,7 @@
 import Testing
 import CoreLocation
 @testable import ThatWay
+import ThatWayCore
 
 struct FallbackRoutingProviderTests {
     private let origin = CLLocationCoordinate2D(latitude: 0, longitude: 0)

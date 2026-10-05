@@ -8,6 +8,7 @@
 
 import SwiftUI
 import AuthenticationServices
+import ThatWayUI
 
 struct AuthScreen: View {
     @EnvironmentObject var app: AppModel

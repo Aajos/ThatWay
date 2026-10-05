@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import ThatWayUI
 
 struct RootView: View {
     @StateObject private var app = AppModel()

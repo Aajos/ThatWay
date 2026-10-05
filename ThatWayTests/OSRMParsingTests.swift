@@ -6,6 +6,7 @@
 import Testing
 import CoreLocation
 @testable import ThatWay
+import ThatWayCore
 
 // Serialized: every test in this suite sets the shared `MockURLProtocol.handler` static, which
 // races under Swift Testing's default parallel execution.
@@ -13,7 +14,7 @@ import CoreLocation
 struct OSRMParsingTests {
     private func makeProvider(fixture: String) -> OSRMRoutingProvider {
         MockURLProtocol.handler = { request in Fixture.response(fixture, url: request.url!) }
-        return OSRMRoutingProvider(session: MockURLProtocol.makeSession())
+        return OSRMRoutingProvider.app(session: MockURLProtocol.makeSession())
     }
 
     @Test func parsesSimpleDriveIntoRoute() async throws {

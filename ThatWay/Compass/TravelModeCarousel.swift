@@ -9,6 +9,8 @@
 
 import SwiftUI
 import UIKit
+import ThatWayCore
+import ThatWayUI
 
 private final class CarouselHaptics {
     let selection = UISelectionFeedbackGenerator()

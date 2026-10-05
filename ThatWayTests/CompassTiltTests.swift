@@ -5,6 +5,7 @@
 
 import Testing
 @testable import ThatWay
+import ThatWayCore
 
 struct CompassTiltTests {
     @Test func frontTiltHasFiveStepsFromMaxToNone() {

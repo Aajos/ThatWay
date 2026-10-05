@@ -10,6 +10,7 @@
 import Combine
 import CoreLocation
 import Foundation
+import ThatWayCore
 
 /// One guidance card — one instruction for the whole trip, built up front the moment a route
 /// arrives so the full list can be read (and scrolled) before setting off. A roundabout is a
@@ -122,7 +123,7 @@ final class RoutingManager: ObservableObject {
     var remainingDistance: Double { max(0, routeLength - progressAlong) }
 
     init(provider: RoutingProvider? = nil) {
-        let resolvedProvider = provider ?? FallbackRoutingProvider(providers: [OSRMRoutingProvider()])
+        let resolvedProvider = provider ?? FallbackRoutingProvider(providers: [OSRMRoutingProvider.app()])
         governor = RoutingGovernor(provider: resolvedProvider)
         governor.$currentFailure.receive(on: DispatchQueue.main).sink { [weak self] in self?.currentFailure = $0 }.store(in: &cancellables)
         governor.$nextRetryAt.receive(on: DispatchQueue.main).sink { [weak self] in self?.nextRetryAt = $0 }.store(in: &cancellables)

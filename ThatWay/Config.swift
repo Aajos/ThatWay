@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import ThatWayCore
 
 enum Config {
     /// Kill switch for everything that depends on the AWS backend (Cognito + API Gateway +
@@ -45,11 +46,7 @@ enum Config {
     /// non-commercial use-cases. Do not exceed 1 request per second. No guarantees wrt. uptime,
     /// latency, or data updates." None of this is a production host — swap these, not the code
     /// that reads them, when a real one is chosen.
-    private static let osrmBaseURLs: [TravelProfile: String] = [
-        .driving: "https://routing.openstreetmap.de/routed-car/route/v1/driving",
-        .walking: "https://routing.openstreetmap.de/routed-foot/route/v1/driving",
-        .cycling: "https://routing.openstreetmap.de/routed-bike/route/v1/driving",
-    ]
+    // The host table itself lives in ThatWayCore (`OSRMHosts`) so the watch routes against the same hosts.
 
     /// Every profile above has been empirically verified to return genuinely different results
     /// from the others (see the comment on `osrmBaseURLs`) — flipping this to `false` for a
@@ -58,7 +55,7 @@ enum Config {
     private static let verifiedProfiles: Set<TravelProfile> = [.driving, .walking, .cycling]
 
     static func osrmBaseURL(for profile: TravelProfile) -> String {
-        osrmBaseURLs[profile] ?? osrmBaseURLs[.driving]!
+        OSRMHosts.baseURL(for: profile)
     }
 
     static func profileVerified(_ profile: TravelProfile) -> Bool {

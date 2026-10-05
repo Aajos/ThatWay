@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import ThatWayUI
 
 struct ProfileScreen: View {
     @EnvironmentObject var app: AppModel

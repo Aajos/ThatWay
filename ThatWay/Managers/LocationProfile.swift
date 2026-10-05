@@ -14,6 +14,7 @@
 
 import Foundation
 import CoreLocation
+import ThatWayCore
 
 struct LocationProfile: Equatable {
     var accuracy: CLLocationAccuracy

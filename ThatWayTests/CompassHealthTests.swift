@@ -6,6 +6,7 @@
 import Testing
 import Foundation
 @testable import ThatWay
+import ThatWayCore
 
 struct CompassHealthTests {
     private let t0 = Date(timeIntervalSinceReferenceDate: 1_000_000)

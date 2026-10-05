@@ -8,6 +8,7 @@
 
 import CoreLocation
 import Foundation
+import ThatWayCore
 
 struct PersistedTrip: Codable {
     let route: Route

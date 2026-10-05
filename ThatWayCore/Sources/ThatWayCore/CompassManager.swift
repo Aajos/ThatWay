@@ -1,6 +1,6 @@
 //
 //  CompassManager.swift
-//  ThatWay
+//  ThatWayCore
 //
 //  Pure coordinate math: bearing and distance between two points, and the
 //  needle math for pointing a compass at a target while the device turns.
@@ -8,14 +8,14 @@
 
 import CoreLocation
 
-enum DistanceUnit {
+public enum DistanceUnit {
     case metric, imperial
 }
 
-enum CompassManager {
+public enum CompassManager {
     /// Initial great-circle bearing from `origin` to `destination`, in degrees
     /// clockwise from true north, normalized to [0, 360).
-    static func bearing(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) -> CLLocationDirection {
+    public static func bearing(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) -> CLLocationDirection {
         let lat1 = origin.latitude.radians
         let lon1 = origin.longitude.radians
         let lat2 = destination.latitude.radians
@@ -30,7 +30,7 @@ enum CompassManager {
     }
 
     /// Great-circle distance between two coordinates, in metres.
-    static func distance(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) -> CLLocationDistance {
+    public static func distance(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) -> CLLocationDistance {
         CLLocation(latitude: origin.latitude, longitude: origin.longitude)
             .distance(from: CLLocation(latitude: destination.latitude, longitude: destination.longitude))
     }
@@ -40,7 +40,7 @@ enum CompassManager {
     /// simulated traveller smoothly along real route geometry rather than cutting corners
     /// straight toward the next waypoint. Clamps to the last point once `distance` exceeds
     /// the polyline's total length.
-    static func pointAlong(_ polyline: [CLLocationCoordinate2D], distance: CLLocationDistance) -> CLLocationCoordinate2D? {
+    public static func pointAlong(_ polyline: [CLLocationCoordinate2D], distance: CLLocationDistance) -> CLLocationCoordinate2D? {
         guard let first = polyline.first else { return nil }
         guard polyline.count > 1 else { return first }
         var remaining = max(0, distance)
@@ -64,15 +64,15 @@ enum CompassManager {
     /// The closest point on a polyline to `location`, together with how far away it is and
     /// which segment it falls on. Used to trim a route line down to "what's left ahead" as
     /// the traveller moves, and to detect drifting off the planned route entirely.
-    struct NearestPointResult {
-        let point: CLLocationCoordinate2D
-        let distance: CLLocationDistance
+    public struct NearestPointResult {
+        public let point: CLLocationCoordinate2D
+        public let distance: CLLocationDistance
         /// Index of the segment's start point — the remaining path continues from
         /// `polyline[segmentIndex + 1]` onward.
-        let segmentIndex: Int
+        public let segmentIndex: Int
     }
 
-    static func nearestPoint(on polyline: [CLLocationCoordinate2D], to location: CLLocationCoordinate2D) -> NearestPointResult? {
+    public static func nearestPoint(on polyline: [CLLocationCoordinate2D], to location: CLLocationCoordinate2D) -> NearestPointResult? {
         guard let first = polyline.first else { return nil }
         guard polyline.count > 1 else {
             return NearestPointResult(point: first, distance: distance(from: location, to: first), segmentIndex: 0)
@@ -108,7 +108,7 @@ enum CompassManager {
 
     /// The angle to rotate a needle, relative to the top of the screen, so it points
     /// at `bearing` while the device is currently facing `heading`. Normalized to (-180, 180].
-    static func relativeBearing(heading: CLLocationDirection, bearing: CLLocationDirection) -> Double {
+    public static func relativeBearing(heading: CLLocationDirection, bearing: CLLocationDirection) -> Double {
         var delta = (bearing - heading).truncatingRemainder(dividingBy: 360)
         if delta <= -180 { delta += 360 }
         if delta > 180 { delta -= 360 }
@@ -116,7 +116,7 @@ enum CompassManager {
     }
 
     /// A short compass-point label (N, NE, E, ...) for a heading/bearing in degrees.
-    static func compassPoint(for degrees: CLLocationDirection) -> String {
+    public static func compassPoint(for degrees: CLLocationDirection) -> String {
         let points = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
                       "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
         let normalized = (degrees.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360)
@@ -124,7 +124,7 @@ enum CompassManager {
         return points[index]
     }
 
-    static func formattedDistance(_ metres: CLLocationDistance, unit: DistanceUnit = .metric) -> String {
+    public static func formattedDistance(_ metres: CLLocationDistance, unit: DistanceUnit = .metric) -> String {
         switch unit {
         case .metric:
             return metres >= 1000
@@ -140,7 +140,7 @@ enum CompassManager {
     }
 }
 
-extension Double {
+public extension Double {
     var radians: Double { self * .pi / 180 }
     var degrees: Double { self * 180 / .pi }
 }
