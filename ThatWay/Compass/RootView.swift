@@ -10,11 +10,41 @@ import SwiftUI
 
 struct RootView: View {
     @StateObject private var app = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
             app.currentTheme.screen.ignoresSafeArea()
 
+            if !Config.backendEnabled {
+                // See Config.backendEnabled — the AWS backend isn't provisioned yet, so skip
+                // the sign-in gate entirely rather than block the rest of the app on it.
+                signedInContent
+            } else {
+                switch app.authManager.authState {
+                case .restoring:
+                    EmptyView()
+                case .signedOut, .needsConfirmation, .needsAppleUsername:
+                    AuthScreen()
+                case .signedIn:
+                    signedInContent
+                }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in app.setSceneActive(phase == .active) }
+        .environmentObject(app)
+        .environmentObject(app.routingManager)
+        .environmentObject(app.routeDataGenerator)
+        .environmentObject(app.authManager)
+        .environmentObject(app.friendsManager)
+        .animation(.easeInOut(duration: 0.25), value: app.avatarSheet)
+        .animation(.easeInOut(duration: 0.5), value: app.theme)
+        .preferredColorScheme(app.currentTheme.light ? .light : .dark)
+    }
+
+    @ViewBuilder
+    private var signedInContent: some View {
+        ZStack {
             Group {
                 switch app.screen {
                 case .compass: CompassScreen()
@@ -34,12 +64,9 @@ struct RootView: View {
                 AvatarSheet().transition(.move(edge: .bottom))
             }
         }
-        .environmentObject(app)
-        .environmentObject(app.routingManager)
-        .environmentObject(app.routeDataGenerator)
-        .animation(.easeInOut(duration: 0.25), value: app.avatarSheet)
-        .animation(.easeInOut(duration: 0.5), value: app.theme)
-        .preferredColorScheme(app.currentTheme.light ? .light : .dark)
+        // On a wide screen (iPad, an unfolded foldable) the app stays a phone-width column in the
+        // middle rather than stretching every control to fit.
+        .frame(maxWidth: 480)
     }
 }
 
@@ -55,7 +82,7 @@ private struct TabBar: View {
                         Image(systemName: s.symbolName)
                             .font(.system(size: 19, weight: .semibold))
                             .foregroundStyle(app.screen == s ? theme.accent : theme.ink)
-                        Text(s.label).font(.nunito(10, .extraBold)).tracking(0.6).foregroundStyle(theme.ink)
+                        Text(s.label).font(.nunito(11, .extraBold)).tracking(0.6).foregroundStyle(theme.ink)
                     }
                     .opacity(app.screen == s ? 1 : 0.34)
                     .frame(width: 74)
@@ -67,6 +94,7 @@ private struct TabBar: View {
         .padding(.top, 8)
         .frame(maxWidth: .infinity)
         .frame(height: 82)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .background(
             LinearGradient(colors: [.clear, theme.screen], startPoint: .top, endPoint: .init(x: 0.5, y: 0.42))
                 .ignoresSafeArea(edges: .bottom)

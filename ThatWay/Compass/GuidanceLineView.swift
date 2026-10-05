@@ -50,9 +50,11 @@ struct GuidanceLineView: View {
     let steps: [RouteStep]
     let currentLocation: CLLocationCoordinate2D
     let speedKmh: Double
-    let activity: GuidanceActivity
+    let activity: TravelMode
     let destination: CLLocationCoordinate2D?
     let color: Color
+    /// Light themes: a dark standstill line (white would vanish) and no glow.
+    var light: Bool = false
     /// The compass dial's real on-screen centre, in the shared "compassScreen" coordinate
     /// space — the line always extends exactly to this point, mathematically, rather than
     /// a fixed pixel guess. Nil only for the first frame or two before CompassScreen's own
@@ -74,6 +76,11 @@ struct GuidanceLineView: View {
     /// rather than jumping, so a zoom change reads as a smooth push in/out.
     @State private var smoothedLookAhead: CLLocationDistance?
     @State private var easeTask: Task<Void, Never>?
+    /// Which baked waypoint the ribbon was anchored to last frame — carried forward so the
+    /// next frame's search can stay windowed around it (see `nearestWaypoint`). Reset to 0
+    /// whenever a fresh bake replaces `guidanceData` entirely.
+    @State private var lastNearestIndex: Int = 0
+    @State private var lastBakeDate: Date?
 
     /// Used only before `dialCenter` has been reported at all (the very first layout
     /// pass) — everything after that extends to the dial's real measured centre instead.
@@ -106,19 +113,13 @@ struct GuidanceLineView: View {
     /// this many degrees of the exit you're actually meant to take — further away and it's
     /// obviously a different exit, not a plausible slip.
     private static let roundaboutExitConfusionThreshold: CLLocationDirection = 45
-    /// Minimum real-world gap between tier-2 ambient ticks — OSRM's own graph nodes can sit
-    /// only a few metres apart, so without this a dense run of them would redraw the same
-    /// "still tracking" signal over and over instead of reading as a steady heartbeat.
-    private static let tier2MinSpacingWalking: CLLocationDistance = 40
-    private static let tier2MinSpacingDriving: CLLocationDistance = 60
-
     /// Discrete activity colour for the route ribbon: blue while driving, green while
     /// walking, white once speed drops to a standstill — distinct from `AppModel.routeColor`
     /// (a continuous walk→run→drive blend used elsewhere), since this ribbon should read as
     /// one of three clear states rather than smoothly interpolate.
     private var polylineColor: Color {
-        if speedKmh <= 2 { return .white }
-        return activity == .driving ? Color(hex: "3B82F6") : Color(hex: "2FCF9B")
+        if speedKmh <= 2 { return light ? Color(hex: "1D1A16") : .white }
+        return activity == .drive ? Color(hex: "3B82F6") : Color(hex: "2FCF9B")
     }
 
     var body: some View {
@@ -244,7 +245,7 @@ struct GuidanceLineView: View {
                         glowContext.addFilter(.blur(radius: Self.tunnelGlowBlurRadius))
                         glowContext.stroke(
                             model.path,
-                            with: .color(polylineColor.opacity(Self.tunnelGlowOpacity)),
+                            with: .color(polylineColor.opacity(light ? 0 : Self.tunnelGlowOpacity)),
                             style: StrokeStyle(lineWidth: Self.tunnelGlowWidth, lineCap: .round, lineJoin: .round)
                         )
                     }
@@ -332,6 +333,9 @@ struct GuidanceLineView: View {
         /// pushed in — and the look-ahead the zoom is heading toward.
         let zoomFactor: CGFloat
         let targetLookAhead: CLLocationDistance
+        /// Index into `GuidanceData.waypoints` the ribbon anchored to this frame — carried
+        /// back to the view so next frame's search starts windowed around it.
+        let nearestIndex: Int
     }
 
     /// Cheap fingerprint of everything that actually changes the rendered geometry — a new
@@ -370,9 +374,47 @@ struct GuidanceLineView: View {
     }
 
     private func rebuildModel(data: GuidanceData, size: CGSize, dialCenterLocal: CGPoint?, dialTopLocal: CGFloat?, log: Bool) {
-        let model = Self.buildRenderModel(data: data, steps: steps, currentLocation: currentLocation, speedKmh: speedKmh, activity: activity, size: size, dialCenterLocal: dialCenterLocal, dialTopLocal: dialTopLocal, fallbackExtension: Self.fallbackExtension, lookAheadOverride: smoothedLookAhead, log: log)
+        // A fresh bake (reroute) replaces the waypoint array entirely — the old anchor index
+        // means nothing against it, so start the windowed search over from the top.
+        if lastBakeDate != data.generatedAt {
+            lastBakeDate = data.generatedAt
+            lastNearestIndex = 0
+        }
+        let model = Self.buildRenderModel(data: data, steps: steps, currentLocation: currentLocation, speedKmh: speedKmh, activity: activity, size: size, dialCenterLocal: dialCenterLocal, dialTopLocal: dialTopLocal, fallbackExtension: Self.fallbackExtension, lookAheadOverride: smoothedLookAhead, lastNearestIndex: lastNearestIndex, log: log)
         renderModel = model
+        if let model { lastNearestIndex = model.nearestIndex }
         if smoothedLookAhead == nil { smoothedLookAhead = model?.targetLookAhead }
+    }
+
+    /// Finds the baked waypoint nearest the traveller, searched in a window around where the
+    /// ribbon was anchored last frame — mirrors `RoutingManager.locate()`'s own windowed
+    /// search exactly, and for the same reason: a final-approach road that curves back near
+    /// itself (a loop path, a cul-de-sac, a roundabout) can put a waypoint from much further
+    /// along the route spatially closer than the traveller's real next waypoint, and an
+    /// unwindowed global nearest-search will snap to it, dragging the whole ribbon through
+    /// points out of route order — the twists this is fixing, not points the real road has.
+    nonisolated private static func nearestWaypoint(
+        in waypoints: [GuidanceWaypoint], to location: CLLocationCoordinate2D, lastIndex: Int
+    ) -> (waypoint: GuidanceWaypoint, index: Int)? {
+        guard !waypoints.isEmpty else { return nil }
+        let low = max(0, min(waypoints.count - 1, lastIndex - 5))
+        let high = max(0, min(waypoints.count - 1, lastIndex + 20))
+        var bestIndex = low
+        var bestDistance = CLLocationDistance.greatestFiniteMagnitude
+        for i in low...high {
+            let d = CompassManager.distance(from: location, to: waypoints[i].coordinate)
+            if d < bestDistance { bestDistance = d; bestIndex = i }
+        }
+        // Only a *global* search this much closer overrides the windowed result — covers a
+        // fresh bake or a reroute jumping the traveller somewhere the window doesn't reach,
+        // without reopening the door to the loop-back snap this window exists to prevent.
+        if bestDistance > 60 {
+            for (i, waypoint) in waypoints.enumerated() where i < low || i > high {
+                let d = CompassManager.distance(from: location, to: waypoint.coordinate)
+                if d < bestDistance { bestDistance = d; bestIndex = i }
+            }
+        }
+        return (waypoints[bestIndex], bestIndex)
     }
 
     /// One route waypoint projected into a forward/lateral frame centred on the traveller,
@@ -399,29 +441,38 @@ struct GuidanceLineView: View {
         steps: [RouteStep],
         currentLocation: CLLocationCoordinate2D,
         speedKmh: Double,
-        activity: GuidanceActivity,
+        activity: TravelMode,
         size: CGSize,
         dialCenterLocal: CGPoint?,
         dialTopLocal: CGFloat?,
         fallbackExtension: CGFloat,
         lookAheadOverride: CLLocationDistance?,
+        lastNearestIndex: Int,
         log: Bool
     ) -> RouteRenderModel? {
-        guard let nearest = data.waypoints.min(by: {
-            CompassManager.distance(from: currentLocation, to: $0.coordinate)
-                < CompassManager.distance(from: currentLocation, to: $1.coordinate)
-        }) else { return nil }
+        guard let (nearest, nearestIndex) = nearestWaypoint(in: data.waypoints, to: currentLocation, lastIndex: lastNearestIndex) else { return nil }
 
         let baselineLookAhead = GuidanceLookAhead.distance(speedKmh: speedKmh, distanceToNextTurn: nearest.distanceToNextTurn)
         let referenceBearing = nearest.bearing
-        let candidates = data.waypoints.filter { $0.distanceFromStart >= nearest.distanceFromStart }
+        // Sliced by index, not re-filtered by `distanceFromStart >=` — a final-approach road
+        // that curves back near itself can put an *earlier*, already-passed waypoint spatially
+        // close to a later one without their distanceFromStart values actually being out of
+        // order, so slicing by the anchor's own index is what actually guarantees "everything
+        // from here onward in route order", not just "everything with a bigger number".
+        let candidates = Array(data.waypoints[nearestIndex...])
 
-        // Projects any coordinate into (forward, lateral) metres relative to the
-        // traveller's current position, "forward" meaning along `referenceBearing".
+        // Projects any coordinate into (forward, lateral) metres relative to the *snapped*
+        // nearest waypoint — never the raw `currentLocation` GPS fix. Bearing-from-a-point is
+        // numerically unstable for points close to it: a few metres of ordinary GPS noise
+        // (worse under tree cover — exactly where this gets tested) swings the computed
+        // bearing to every nearby waypoint by a lot, which showed up as the rendered ribbon
+        // visibly wobbling/twisting on real devices even though the baked route geometry
+        // itself never moves. Anchoring on the fixed, pre-computed `nearest.coordinate`
+        // instead makes every point's projection a pure function of stable route geometry.
         func project(_ coordinate: CLLocationCoordinate2D) -> (forward: CLLocationDistance, lateral: CLLocationDistance) {
-            let d = CompassManager.distance(from: currentLocation, to: coordinate)
+            let d = CompassManager.distance(from: nearest.coordinate, to: coordinate)
             guard d > 0 else { return (0, 0) }
-            let bearingToPoint = CompassManager.bearing(from: currentLocation, to: coordinate)
+            let bearingToPoint = CompassManager.bearing(from: nearest.coordinate, to: coordinate)
             let relative = CompassManager.relativeBearing(heading: referenceBearing, bearing: bearingToPoint).radians
             return (d * cos(relative), d * sin(relative))
         }
@@ -462,13 +513,16 @@ struct GuidanceLineView: View {
         }
         let lookAhead = min(baselineLookAhead, max(45, lookAheadOverride ?? zoomTarget))
 
-        func out(_ text: @autoclosure () -> String) { if log { print(text()) } }
+        func out(_ text: @autoclosure () -> String) {
+            #if DEBUG
+            if log { print(text()) }
+            #endif
+        }
 
         out("=== GUIDANCE LINE WORKFLOW ===")
         out("1. INPUT DATA:")
         out("   - Baked waypoints (resampled ~15m apart — this view never sees RoutingManager's raw OSRM polyline directly): \(data.waypoints.count)")
         out("   - OSRM steps (turns): \(steps.count)")
-        out("   - User location: \(currentLocation.latitude), \(currentLocation.longitude)")
         out("   - Baseline look-ahead: \(baselineLookAhead)m; adaptive zoom: \(zoomNote); drawing with \(Int(lookAhead))m")
 
         var projected: [ProjectedWaypoint] = []
@@ -488,12 +542,10 @@ struct GuidanceLineView: View {
         out("   - Points within look-ahead (survived culling): \(projected.count)")
         out("   - Points culled (behind traveller, or past the look-ahead window — this loop stops early so it never even reaches the rest): \(candidates.count - projected.count)")
 
-        // Recentring correction: whatever lateral offset the traveller's real position has
-        // from the route's own nearest point, subtract it from every point so the ribbon
-        // always starts dead-centre on screen — the road's true relative shape beyond that
-        // is preserved exactly, just the whole thing is shifted to start centred.
-        let rawNearLateral = projected[0].lateral
-        let rawNearForward = projected[0].forward
+        // Projecting from `nearest.coordinate` (see `project` above) already puts the ribbon's
+        // own near point at exactly (forward: 0, lateral: 0) — dead-centre on screen — with
+        // no separate recentring step needed; how far the real GPS fix actually sits off that
+        // point is tracked independently, below, only for the off-road fade.
         let maxLateralPixels = min(size.width, 260) * 0.34
         let lateralClamp = max(30, lookAhead * 0.22)
 
@@ -520,13 +572,7 @@ struct GuidanceLineView: View {
             return CGPoint(x: x, y: y)
         }
 
-        let rawNearScreenX = screenPoint(forward: rawNearForward, lateral: rawNearLateral).x
-        let offset = rawNearScreenX - size.width / 2
-        out("[GuidanceLineView] Polyline X offset: \(offset)")
-
-        let corrected = projected.map {
-            ProjectedWaypoint(forward: $0.forward, lateral: $0.lateral - rawNearLateral, corridorRadius: $0.corridorRadius, distanceFromStart: $0.distanceFromStart)
-        }
+        let corrected = projected
         let screenPoints = corrected.map { screenPoint(forward: $0.forward, lateral: $0.lateral) }
 
         let corridorSamples: [CorridorSample] = zip(corrected, screenPoints).map { p, pt in
@@ -597,13 +643,12 @@ struct GuidanceLineView: View {
         // you genuinely can't turn onto renders as nothing at all.
         @discardableResult
         func appendTurnBranch(at turnPoint: RouteIntersection, stepBearing: CLLocationDirection, label: String) -> Int {
-            let (turnForward, turnLateralRaw) = project(turnPoint.coordinate)
+            let (turnForward, turnLateral) = project(turnPoint.coordinate)
             out("   [Branch] \(label):")
             guard turnForward > -5, turnForward <= lookAhead else {
                 out("     - Outside the look-ahead window, skipped")
                 return 0
             }
-            let turnLateral = turnLateralRaw - rawNearLateral
             let turnScreen = screenPoint(forward: turnForward, lateral: turnLateral)
             let currentBearing = turnPoint.outBearing ?? stepBearing
 
@@ -657,13 +702,12 @@ struct GuidanceLineView: View {
         // rather than a bold warning.
         @discardableResult
         func appendRoundaboutExitBranches(at exitPoint: RouteIntersection, actualExitBearing: CLLocationDirection, label: String) -> Int {
-            let (turnForward, turnLateralRaw) = project(exitPoint.coordinate)
+            let (turnForward, turnLateral) = project(exitPoint.coordinate)
             out("   [Roundabout exit] \(label):")
             guard turnForward > -5, turnForward <= lookAhead else {
                 out("     - Outside the look-ahead window, skipped")
                 return 0
             }
-            let turnLateral = turnLateralRaw - rawNearLateral
             let turnScreen = screenPoint(forward: turnForward, lateral: turnLateral)
 
             let rawCount = exitPoint.otherBearings.count
@@ -706,17 +750,16 @@ struct GuidanceLineView: View {
         // which OSRM can pack densely) so it reads as a steady, sparse pulse rather than a
         // cluster of ticks at every graph vertex.
         var lastAmbientForward: CLLocationDistance = -.infinity
-        let tier2MinSpacing = activity == .driving ? Self.tier2MinSpacingDriving : Self.tier2MinSpacingWalking
+        let tier2MinSpacing = activity.tuning.tier2MinSpacing
         var ambientTickCount = 0
 
         @discardableResult
         func appendAmbientTick(at point: RouteIntersection, label: String) -> Int {
-            let (turnForward, turnLateralRaw) = project(point.coordinate)
+            let (turnForward, turnLateral) = project(point.coordinate)
             guard turnForward > -5, turnForward <= lookAhead else { return 0 }
             guard turnForward - lastAmbientForward >= tier2MinSpacing else { return 0 }
             guard let candidate = point.otherBearings.first(where: \.entry) else { return 0 }
             lastAmbientForward = turnForward
-            let turnLateral = turnLateralRaw - rawNearLateral
             let turnScreen = screenPoint(forward: turnForward, lateral: turnLateral)
             let direction = branchDirection(for: candidate.bearing)
             let branchEnd = CGPoint(x: turnScreen.x + direction.x * Self.tier2BranchLength, y: turnScreen.y + direction.y * Self.tier2BranchLength)
@@ -791,11 +834,10 @@ struct GuidanceLineView: View {
 
         out("3. BRANCH LOGIC:")
         for (index, step) in steps.enumerated() {
-            out("   Step \(index): \(step.name.isEmpty ? "(unnamed)" : step.name)")
+            out("   Step \(index)")
             out("     - Type: \(step.maneuverType)")
             out("     - Modifier: \(step.maneuverModifier ?? "none")")
             let location = step.intersections.first?.coordinate ?? step.startCoordinate
-            out("     - Location: \(location.latitude), \(location.longitude)")
             out("     - Branches drawn: \(branchCountByStepIndex[index] ?? 0)")
         }
 
@@ -806,7 +848,7 @@ struct GuidanceLineView: View {
         out("   - Tier 2 (16pt, 70% of tier 1's opacity, ambient — legal but not confusable, or just a real node the route passes without deciding anything there): renders wherever tier 1 doesn't fire but a legal (entry == true) road still exists. A node with no legal road at all renders nothing.")
         out("6. AMBIENT HEARTBEAT:")
         out("   - Tier-2 \"still tracking\" ticks along plain (non-decision) nodes: \(ambientTickCount)")
-        out("   - Minimum spacing enforced: \(Int(tier2MinSpacing))m (\(activity == .driving ? "driving" : "walking")) — throttled by real distance travelled, not by OSRM node count, so a dense run of graph nodes doesn't redraw the same signal repeatedly.")
+        out("   - Minimum spacing enforced: \(Int(tier2MinSpacing))m (\(activity.rawValue)) — throttled by real distance travelled, not by OSRM node count, so a dense run of graph nodes doesn't redraw the same signal repeatedly.")
 
         // The traveller's real straight-line distance from the nearest point on the route
         // — inside its own corridor tolerance counts as "on the road", further out fades
@@ -824,7 +866,8 @@ struct GuidanceLineView: View {
             tailPoint: tailPoint,
             nearPoint: nearPoint,
             zoomFactor: CGFloat(max(1, baselineLookAhead / lookAhead)),
-            targetLookAhead: zoomTarget
+            targetLookAhead: zoomTarget,
+            nearestIndex: nearestIndex
         )
     }
 
@@ -839,7 +882,7 @@ struct GuidanceLineView: View {
             .foregroundStyle(color)
             .frame(width: 20, height: 20)
             .offset(x: 8, y: -14)
-        .shadow(color: color.opacity(0.6), radius: 8)
+        .shadow(color: light ? .clear : color.opacity(0.6), radius: 8)
     }
 }
 

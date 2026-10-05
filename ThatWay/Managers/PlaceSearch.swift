@@ -17,13 +17,13 @@ enum PlaceSearch {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
         request.region = MKCoordinateRegion(center: coordinate, latitudinalMeters: 5000, longitudinalMeters: 5000)
-        print("[PlaceSearch] Searching for \"\(query)\" near \(coordinate.latitude), \(coordinate.longitude)")
+        print("[PlaceSearch] Searching")
         do {
             let response = try await MKLocalSearch(request: request).start()
-            print("[PlaceSearch] \"\(query)\" -> \(response.mapItems.count) result(s)")
+            print("[PlaceSearch] \(response.mapItems.count) result(s)")
             return response.mapItems.first?.placemark.coordinate
         } catch {
-            print("[PlaceSearch] \"\(query)\" failed: \(error.localizedDescription)")
+            print("[PlaceSearch] failed: \(error.localizedDescription)")
             return nil
         }
     }
@@ -37,7 +37,7 @@ enum PlaceSearch {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = trimmed
         request.region = MKCoordinateRegion(center: coordinate, latitudinalMeters: 20_000, longitudinalMeters: 20_000)
-        print("[PlaceSearch] Searching top \(limit) for \"\(trimmed)\" near \(coordinate.latitude), \(coordinate.longitude)")
+        print("[PlaceSearch] Searching top \(limit)")
         do {
             let response = try await MKLocalSearch(request: request).start()
             let origin = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
@@ -47,10 +47,10 @@ enum PlaceSearch {
                 return origin.distance(from: lhsLoc) < origin.distance(from: rhsLoc)
             }
             let top = Array(nearest.prefix(limit))
-            print("[PlaceSearch] \"\(trimmed)\" -> kept \(top.count) of \(response.mapItems.count) result(s)")
+            print("[PlaceSearch] kept \(top.count) of \(response.mapItems.count) result(s)")
             return top
         } catch {
-            print("[PlaceSearch] \"\(trimmed)\" failed: \(error.localizedDescription)")
+            print("[PlaceSearch] failed: \(error.localizedDescription)")
             return []
         }
     }

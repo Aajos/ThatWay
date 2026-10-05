@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 import CoreLocation
 
 extension Color {
@@ -118,13 +119,13 @@ struct AppTheme: Identifiable {
                  dialA: Color(hex: "144058"), dialB: Color(hex: "060E14"),
                  glow: Color(hex: "040C12"), needleRed: Color(hex: "FF6B6B"), needleGray: Color(hex: "5C7F91"),
                  onAccent: Color(hex: "06231B")),
-        AppTheme(id: .paper, name: "Paper", note: "Daylight. Warm cream, muted coral.", light: true,
-                 swatches: [Color(hex: "F8F5F1"), Color(hex: "1D1A16"), Color(hex: "E64D2E")],
-                 accent: Color(hex: "E64D2E"), ink: Color(hex: "1D1A16"),
-                 textSecondary: Color(hex: "7A7A7A"), borderColor: Color(hex: "D0D0D0"),
+        AppTheme(id: .paper, name: "Paper", note: "Daylight. Warm cream, vivid orange.", light: true,
+                 swatches: [Color(hex: "F8F5F1"), Color(hex: "0E0C0A"), Color(hex: "FF7A1F")],
+                 accent: Color(hex: "FF7A1F"), ink: Color(hex: "0E0C0A"),
+                 textSecondary: Color(hex: "6B625A"), borderColor: Color(hex: "3B332C"),
                  screen: Color(hex: "F8F5F1"), worldA: Color(hex: "E3D9C8"), worldB: Color(hex: "EFE9DE"),
-                 dialA: .white.opacity(0.6), dialB: Color(hex: "A39276").opacity(0.25),
-                 glow: Color(hex: "FFFCF4"), needleRed: Color(hex: "E64D2E"), needleGray: Color(hex: "9A9083"),
+                 dialA: Color(hex: "FFFFFF"), dialB: Color(hex: "ECE7DF"),
+                 glow: Color(hex: "FFFCF4"), needleRed: Color(hex: "FF2D1F"), needleGray: Color(hex: "9A9083"),
                  onAccent: .white),
         AppTheme(id: .arcade, name: "Arcade", note: "High contrast, loud glow.", light: false,
                  swatches: [Color(hex: "10031F"), Color(hex: "FF2E88"), Color(hex: "FFE347")],
@@ -137,25 +138,45 @@ struct AppTheme: Identifiable {
     ]
 
     static func byId(_ id: ThemeID) -> AppTheme { all.first { $0.id == id }! }
+
+    // Travel-mode tile colours. Same hues in every theme (green on foot, blue driving, white
+    // when stationary); light themes give the white "still" tile a visible border instead.
+    var modeStill: Color { .white }
+    var modeOnFoot: Color { Color(hex: "2FCF9B") }
+    var modeDrive: Color { Color(hex: "3B82F6") }
+    var modeStillBorder: Color { light ? borderColor : .white }
+
+    func modeTint(_ mode: TravelMode, still: Bool = false) -> Color {
+        if still { return modeStill }
+        return mode.isOnFoot ? modeOnFoot : modeDrive
+    }
 }
 
-/// A friend in the user's social roster. Purely a social/UI element — there's no real
-/// backend for friend locations, so friends don't have a coordinate, don't appear on the
-/// map, and can't be pointed at or routed to (that would mean fabricating a location for a
-/// real-seeming person, which is exactly the kind of mock data this app avoids elsewhere).
-struct Friend: Identifiable {
+/// A friend in the user's social roster — a real account, added via FriendsManager. Friends
+/// still don't have a coordinate and don't appear on the map: there's no location-sharing
+/// backend behind this yet, so tapping one can't point or route to them (that would mean
+/// fabricating a location for a real person, which is exactly the kind of mock data this app
+/// avoids elsewhere).
+struct Friend: Identifiable, Codable, Equatable {
     let id: String
-    let name: String
-    let initials: String
-    let color: Color
+    let username: String
+    /// "ACCEPTED" | "PENDING" | "INCOMING" — matches the backend's `Friends` table exactly.
+    let status: String
+    let requestedAt: String?
+    let acceptedAt: String?
 
-    static let all: [Friend] = [
-        Friend(id: "ay", name: "Ayaan", initials: "AY", color: Color(hex: "FFB4A1")),
-        Friend(id: "ri", name: "Riya", initials: "RI", color: Color(hex: "9FE8CE")),
-        Friend(id: "de", name: "Dev", initials: "DE", color: Color(hex: "F5D98C")),
-        Friend(id: "mi", name: "Mira", initials: "MI", color: Color(hex: "C7B8FF")),
-        Friend(id: "ka", name: "Kabir", initials: "KA", color: Color(hex: "FF9E7A")),
+    var initials: String { String(username.prefix(2)).uppercased() }
+
+    private static let palette: [Color] = [
+        Color(hex: "FFB4A1"), Color(hex: "9FE8CE"), Color(hex: "F5D98C"),
+        Color(hex: "C7B8FF"), Color(hex: "FF9E7A"), Color(hex: "8FD3FF"),
     ]
+
+    /// Deterministic per-account color, standing in for a real avatar image.
+    var color: Color {
+        let index = abs(id.hashValue) % Self.palette.count
+        return Self.palette[index]
+    }
 }
 
 enum TurnDir { case left, right, straight }
@@ -250,8 +271,7 @@ struct NavOptions {
     var haptics = "Strong"
     var share = "Off"
     var units = "Kilometres"
-    var activity = "Automatic"
-    var tilt = "Slight"
+    var tilt = "Hard"
 }
 
 /// Geometry helpers ported 1:1 from the design's math.
@@ -277,4 +297,57 @@ struct RecentPlace: Codable, Hashable, Identifiable {
     var subtitle: String? = nil
     var id: String { "\(name)|\(String(format: "%.4f,%.4f", latitude, longitude))" }
     var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
+}
+
+
+extension Color {
+    /// The bright version of a colour for glowing on a light background: same hue, paler and at
+    /// full brightness, so it blooms as light instead of reading as a darker smear of itself.
+    func luminousGlow() -> Color {
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(self).getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        return Color(hue: h, saturation: min(1, s * 0.5), brightness: 1, opacity: min(1, Double(a) * 1.5))
+    }
+}
+
+extension AppTheme {
+    /// An accent-coloured fill. Light themes need it stronger: the same 14% orange that reads on a
+    /// dark screen is a washed-out pink on white.
+    func tint(_ opacity: Double) -> Color {
+        accent.opacity(light ? min(1, opacity * 1.9) : opacity)
+    }
+
+    /// An accent-coloured outline, bold on light themes.
+    func outline(_ opacity: Double) -> Color {
+        accent.opacity(light ? min(1, opacity * 2.4) : opacity)
+    }
+
+    /// The fill for cards and pills: translucent ink over a dark screen, solid white on a light one
+    /// (ink at 5-7% over cream just reads as grey).
+    func surface(_ darkOpacity: Double) -> Color {
+        light ? Color.white.opacity(0.94) : ink.opacity(darkOpacity)
+    }
+}
+
+extension View {
+    /// A halo around something that should pop. Dark themes bloom in the element's own colour; light
+    /// themes bloom in a brighter, paler version of it, never a darker one.
+    @ViewBuilder
+    func glow(_ color: Color, radius: CGFloat, theme: AppTheme) -> some View {
+        if theme.light {
+            shadow(color: color.luminousGlow(), radius: radius * 1.5)
+        } else {
+            shadow(color: color, radius: radius)
+        }
+    }
+
+    /// The soft lift under a panel: a dark shadow on dark themes, nothing dark on light ones.
+    @ViewBuilder
+    func lift(theme: AppTheme, radius: CGFloat, y: CGFloat = 0, darkOpacity: Double = 0.45) -> some View {
+        if theme.light || !Perf.on("dialfx") {
+            self
+        } else {
+            shadow(color: .black.opacity(darkOpacity), radius: radius, y: y)
+        }
+    }
 }

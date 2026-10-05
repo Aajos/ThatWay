@@ -14,7 +14,9 @@ import MapKit
 final class AppModel: ObservableObject {
     // Navigation
     @Published var screen: AppScreen = .compass
-    @Published var mode: NavMode = .point
+    @Published var mode: NavMode = .point {
+        didSet { updateBackgroundTracking() }
+    }
     @Published var skin: SkinID = .needle
     @Published var theme: ThemeID = .ember
     @Published var lastDark: ThemeID = .ember
@@ -33,19 +35,22 @@ final class AppModel: ObservableObject {
         didSet { AppModel.saveRecents(recentSearches) }
     }
 
-    // Real routing (OSRM) and real location (CoreLocation via LocationManager).
-    // `simulatedPosition` is only a fallback walker — used in place of a real GPS fix when
-    // running in the Simulator without a simulated location, or before permission is
+    // `fallbackPosition` is a fixed, non-moving placeholder used only before the first real GPS
+    // fix (or in the Simulator with no simulated location set). It never moves: all movement
+    // comes from real or Simulator-injected location updates. Everything that needs "where the
+    // user is" should read `currentPosition`,
     // granted — everything that needs "where the user is" should read `currentPosition`,
     // which prefers the real fix. There's no mock destination anymore: the app opens idle,
     // with nothing selected, until a real search result is picked.
     @Published var destinationCoordinate: CLLocationCoordinate2D?
-    @Published var simulatedPosition: CLLocationCoordinate2D = AppModel.mockUserLocation
-    let routingManager = RoutingManager()
+    private let fallbackPosition: CLLocationCoordinate2D = AppModel.mockUserLocation
+    let routingManager: RoutingManager
     let locationManager = LocationManager()
     let routeDataGenerator = RouteDataGenerator()
     let etaManager = ETAManager()
     let locationCheckScheduler = LocationCheckScheduler()
+    let authManager = AuthManager()
+    lazy var friendsManager = FriendsManager(auth: authManager)
 
     /// The position/speed the guidance corridor check last actually looked at — updated
     /// only by `performLocationCheck()`, i.e. once per adaptive poll (10s walking, 3s
@@ -56,13 +61,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var guidanceCheckSpeedKmh: Double = 0
     /// True once within 100m of the destination — shows the completion screen. Reset
     /// whenever a fresh guidance session starts or the destination is dismissed.
-    @Published var arrived = false
+    @Published var arrived = false {
+        didSet { updateBackgroundTracking() }
+    }
 
     static let mockUserLocation = CLLocationCoordinate2D(latitude: -37.8941463, longitude: 145.2916477) // 58 Glenfern Road, Ferntree Gully
 
-    // Idle ambient animation tick — purely cosmetic (drives `sway`, a subtle needle
-    // wobble at rest); never used to fake a position, speed, or distance reading.
-    @Published var t = 0
 
     // Profile
     @Published var vis: Visibility = .friends
@@ -78,68 +82,201 @@ final class AppModel: ObservableObject {
     @Published var opts = NavOptions()
 
 
-    /// Forward tilt (toward a turn) for the "Compass tilt" setting, in degrees: Off, Slight, Hard.
-    var maxTiltDegrees: Double {
-        switch opts.tilt {
-        case "Off": return 0
-        case "Slight": return 15
-        default: return 30
+    private var timer: AnyCancellable?
+
+    init(routingManager: RoutingManager? = nil) {
+        self.routingManager = routingManager ?? RoutingManager()
+        audioManager.style = audioStyle
+        startTick()
+        // With the screen off the tick is paused, so guidance state keeps moving from location
+        // updates instead (delivered a moment after the value changes, hence the main-queue hop).
+        locationManager.$location
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.locationDidUpdate() }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.lowPowerChanged() }
+            .store(in: &cancellables)
+        lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        #if PERF
+        objectWillChange.sink { Perf.hit("appPublish") }.store(in: &cancellables)
+        locationManager.objectWillChange.sink { Perf.hit("locMgrPublish") }.store(in: &cancellables)
+        self.routingManager.objectWillChange.sink { Perf.hit("routingPublish") }.store(in: &cancellables)
+        #endif
+        // Permission / precision changes are rare, and the "location issue" card reads them, so they
+        // republish. (Fixes themselves deliberately don't — see `locationDidUpdate`.)
+        // The compass heading arrives up to ~10×/s and is what turns the dial and needle, but nothing
+        // else republishes while idle (or between the 1 Hz guidance refreshes), so it has to. Capped at
+        // 10 Hz — a fresher redraw than that isn't visible.
+        locationManager.$heading
+            .dropFirst()
+            .throttle(for: .milliseconds(100), scheduler: DispatchQueue.main, latest: true)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        locationManager.$authorizationStatus.dropFirst().sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        locationManager.$isReducedAccuracy.dropFirst().sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        locationManager.requestPermission()
+        restorePersistedTrip()
+        refreshLocationProfile()
+    }
+
+    private var cancellables = Set<AnyCancellable>()
+
+    // MARK: - Power
+
+    /// Low Power Mode: the cosmetic tick slows to 4 Hz and the location profile relaxes (wider
+    /// distance filter, coarser heading, no better than 10 m accuracy).
+    private(set) var lowPower = false
+    /// One tick a second is all anything needs now: the once-a-second guidance refresh. (The needle
+    /// sway and aura breathing are implicit animations inside the dial, so they cost no app CPU.)
+    private var tickInterval: TimeInterval { lowPower ? 2.0 : 1.0 }
+    private var lastLocationAt = Date()
+
+    private func lowPowerChanged() {
+        lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        if sceneActive { startTick() }
+        refreshLocationProfile()
+    }
+
+    /// Picks the CoreLocation accuracy / distance filter / heading filter for what the app is doing
+    /// right now. Cheap and idempotent: `LocationManager.apply` ignores an unchanged profile.
+    private func refreshLocationProfile() {
+        let stationary = Date().timeIntervalSince(lastLocationAt) > LocationProfile.stationaryAfter
+        let profile = LocationProfile.make(
+            mode: travelMode,
+            guiding: guiding && !arrived,
+            hasDestination: destinationCoordinate != nil,
+            distanceToNextTurn: guiding && hasRealRoute && !arrived ? distanceToManeuver : nil,
+            stationary: stationary,
+            lowPower: lowPower
+        )
+        locationManager.apply(profile)
+    }
+
+    // MARK: - Screen on / off
+
+    /// False once the app leaves the foreground (screen locked, another app on top). Guidance
+    /// itself carries on in the background; everything that only exists to animate the screen
+    /// — the 11 Hz cosmetic tick and the compass heading — is switched off until it's back.
+    private(set) var sceneActive = true
+    private var lastGuidanceRefresh = Date.distantPast
+
+    func setSceneActive(_ active: Bool) {
+        guard active != sceneActive else { return }
+        sceneActive = active
+        updateScreenAwake()
+        if active {
+            startTick()
+            locationManager.setHeadingActive(true)
+            refreshGuidanceState()
+        } else {
+            timer = nil
+            locationManager.setHeadingActive(false)
         }
     }
 
-    private var timer: AnyCancellable?
-
-    init() {
-        timer = Timer.publish(every: 0.09, on: .main, in: .common)
+    private func startTick() {
+        guard Perf.on("tick") else { timer = nil; return }
+        timer = Timer.publish(every: tickInterval, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.tick() }
-        locationManager.requestPermission()
+    }
+
+    private func locationDidUpdate() {
+        Perf.hit("locDeliver")
+        Perf.stamp("locGap")
+        lastLocationAt = Date()
+        // Point mode and idle have no 1 Hz refresh to carry a new position to the screen.
+        if sceneActive, !guiding { objectWillChange.send() }
+        guard !sceneActive, Date().timeIntervalSince(lastGuidanceRefresh) >= 1 else { return }
+        refreshGuidanceState()
+    }
+
+    /// Background location only runs while a trip is being guided and hasn't ended in arrival.
+    private func updateBackgroundTracking() {
+        locationManager.setBackgroundGuidance(guiding && !arrived, activityType: travelMode.locationActivityType)
+        refreshLocationProfile()
+        updateScreenAwake()
+    }
+
+    /// While a trip is being guided and the app is on screen, the display stays on — the compass is
+    /// something you glance at mid-walk, and an auto-locking screen would hide it every 30 seconds.
+    /// Locking the phone yourself still works: guidance carries on in the background with audio cues.
+    private func updateScreenAwake() {
+        let awake = guiding && !arrived && sceneActive
+        if UIApplication.shared.isIdleTimerDisabled != awake { UIApplication.shared.isIdleTimerDisabled = awake }
     }
 
     func tick() {
-        t += 1
-        // Purely cosmetic per-tick work only — the fallback walker's own position needs
-        // smooth 90ms-scale movement to look like real motion in the Simulator. Anything
-        // that actually costs something (corridor/off-route checks, reroute fetches) is no
-        // longer here: it runs exclusively from `locationCheckScheduler`'s adaptive poll,
-        // not on every tick.
-        if guiding, !hasRealLocation, routingManager.hasRoute {
-            advanceFallbackWalker()
-        }
-        // Which instruction is current, and how far off it is, is re-derived from the traveller's
-        // real position along the route about once a second — cheap (a windowed nearest-point
-        // search), and independent of the slower corridor/off-route poll — so the way card can
-        // never lag a long way behind the road.
-        if guiding, routingManager.hasRoute, !arrived, t % 11 == 0 {
-            routingManager.advanceProgress(userLocation: currentPosition)
-            checkArrival()
-            bakeRouteLineIfNeeded()
-            etaManager.update(routing: routingManager, speedKmh: speedKmh, activity: guidanceActivity)
-        }
+        Perf.hit("tick")
+        // Anything that actually costs something (corridor/off-route checks, reroute fetches)
+        // runs exclusively from `locationCheckScheduler`'s adaptive poll, not on every tick.
+        refreshGuidanceState()
     }
 
-    /// How far the simulated traveller has walked along the current route's real geometry
-    /// (`routingManager.routePolyline`), in metres. Reset whenever guidance (re)starts.
-    private var routeProgressMeters: Double = 0
+    /// Which instruction is current, how far off it is, arrival, ETA and the compass tilt stages,
+    /// re-derived from the traveller's real position about once a second — cheap (a windowed
+    /// nearest-point search), and independent of the slower corridor/off-route poll — so the way
+    /// card can never lag a long way behind the road. Driven by the tick while the screen is on
+    /// and by location updates while it's off.
+    private func refreshGuidanceState() {
+        guard Perf.on("refresh") else { return }
+        Perf.hit("refresh")
+        lastGuidanceRefresh = Date()
+        Perf.stamp("refreshGap")
+        updateProjection()
+        if guiding, routingManager.hasRoute, !arrived {
+            if Perf.on("advance") { routingManager.advanceProgress(userLocation: currentPosition) }
+            if Perf.on("arrival") { checkArrival() }
+            if Perf.on("bake") { bakeRouteLineIfNeeded() }
+            if Perf.on("eta") { etaManager.update(routing: routingManager, speedKmh: speedKmh, activity: travelMode) }
+            if Perf.on("audio") { announceIfDue() }
+        }
+        if Perf.on("tilt") { updateTiltStages() }
+        if Perf.on("locprofile") { refreshLocationProfile() }
+    }
 
-    /// A fixed walking pace (m/s) for the fallback traveller below — used only to move it
-    /// along real route geometry when there's no real GPS fix at all. It never feeds the
-    /// UI's displayed speed or activity badge, which always read the real
-    /// `locationManager.speed` (zero when there's no fix), so nothing shown on screen is
-    /// ever a forged reading.
-    private static let fallbackWalkSpeed: Double = 1.4
+    /// Dead reckoning (see `DeadReckoning`): how far the traveller has probably got along the route since
+    /// the last GPS fix. Only guidance *display* state uses it — the cards, distances, ETA, audio cues
+    /// and needle. Off-route detection and arrival always use the real fix.
+    private func updateProjection() {
+        var extra = 0.0
+        if Perf.on("deadreckon"), guiding, !arrived, routingManager.hasRoute, !routingManager.isOffRoute,
+           let fix = locationManager.location {
+            extra = DeadReckoning.extraMetres(
+                speed: fix.speed, course: fix.course, routeBearing: routingManager.currentSegmentBearing,
+                age: Date().timeIntervalSince(fix.timestamp), distanceCap: locationManager.activeDistanceFilter
+            )
+        }
+        routingManager.projectionExtra = extra
+        routingManager.projectionArrivalMargin = travelMode.tuning.arrivalRadius + 1
+    }
 
-    /// Moves the fallback traveller a little further along the route's real geometry each
-    /// tick, for smooth visual motion while developing without a device. This is *only*
-    /// ever position bookkeeping — it does not check the route, flag off-route, or trigger
-    /// a reroute; `performLocationCheck()` does all of that, on its own adaptive schedule.
-    private func advanceFallbackWalker() {
-        let polyline = routingManager.routePolyline
-        guard !polyline.isEmpty else { return }
-        let tickInterval = 0.09
-        routeProgressMeters += Self.fallbackWalkSpeed * tickInterval
-        if let point = CompassManager.pointAlong(polyline, distance: routeProgressMeters) {
-            simulatedPosition = point
+    // MARK: - Audio cues
+
+    private var audioFired = Set<Int>()
+    private var audioCardID: Int?
+
+    /// Plays the tone / spoken cue when the traveller crosses one of the mode's announcement points
+    /// (driving 100/50/15 m, cycling 50/15 m, walking and running 15 m) before the next turn or the
+    /// destination. Each point fires once per instruction; a GPS jump past two of them plays only the
+    /// nearest. Does nothing when audio guidance is off.
+    private func announceIfDue() {
+        guard audioStyle != .off, let card = upcomingCard else { audioCardID = nil; return }
+        if audioCardID != card.id {
+            audioCardID = card.id
+            audioFired = []
+        }
+        guard let point = AudioCuePlan(mode: travelMode).crossedPoint(currentDistance: distanceToManeuver, fired: &audioFired) else { return }
+        switch audioStyle {
+        case .tone:
+            audioManager.playTones(count: AudioCuePlan.toneCount(forDistance: point), pan: AudioPan(turn: card.turn.dir))
+        case .voice:
+            audioManager.speak(VoiceScript().cue(for: card, distanceMetres: Double(point), imperial: opts.units == "Miles"))
+        case .off:
+            break
         }
     }
 
@@ -152,7 +289,7 @@ final class AppModel: ObservableObject {
     private func performLocationCheck() {
         guidanceCheckPosition = currentPosition
         guidanceCheckSpeedKmh = speedKmh
-        routingManager.updateProgress(userLocation: currentPosition, activity: guidanceActivity)
+        routingManager.updateProgress(userLocation: currentPosition, activity: travelMode)
         checkArrival()
         bakeRouteLineIfNeeded()
         // Skips a pointless reroute fetch for a route that's about to be torn down anyway.
@@ -160,11 +297,8 @@ final class AppModel: ObservableObject {
         rerouteIfOffRoute()
     }
 
-    /// How close (metres) counts as "arrived": within 5m of the destination itself — never merely
-    /// "close enough", and never just because the route line has run out.
-    private static let arrivalDistance: CLLocationDistance = 5
 
-    /// Once within `arrivalDistance` of the actual destination: stop polling, drop the now-
+    /// Once within the mode's arrival radius of the actual destination: stop polling, drop the now-
     /// pointless baked guidance data, and show the completion screen — there's nothing left
     /// for guidance to compute once the trip is over.
     private var lastArrivalCheckPosition: CLLocationCoordinate2D?
@@ -174,36 +308,31 @@ final class AppModel: ObservableObject {
         defer { lastArrivalCheckPosition = currentPosition }
         // Checked on the path travelled since the last check, not just where the traveller is
         // now — at 40 km/h a 5m circle is easily stepped over between two one-second checks.
-        var reached = CompassManager.distance(from: currentPosition, to: destinationCoordinate) <= Self.arrivalDistance
+        var reached = CompassManager.distance(from: currentPosition, to: destinationCoordinate) <= travelMode.tuning.arrivalRadius
         if !reached, let previous = lastArrivalCheckPosition,
            CompassManager.distance(from: previous, to: currentPosition) < 200,
            let closest = CompassManager.nearestPoint(on: [previous, currentPosition], to: destinationCoordinate) {
-            reached = closest.distance <= Self.arrivalDistance
+            reached = closest.distance <= travelMode.tuning.arrivalRadius
         }
         guard reached else { return }
         print("[AppModel] Arrived at destination")
         cardsExpanded = false
         arrived = true
+        audioManager.finishGuidance()
         routeDataGenerator.clearGuidanceData()
         locationCheckScheduler.stop()
+        routingManager.cancelFetch()
+        RoutePersistence.clear()
     }
 
-    private var lastRerouteAt: Date?
-    /// Minimum time between reroute fetches. Without this, a persistent off-route reading
-    /// (e.g. a route origin that OSRM snapped to a road some distance from the raw
-    /// coordinate, which no amount of re-fetching fixes) would refire every single tick and
-    /// hammer the routing API in a tight loop.
-    private let rerouteCooldown: TimeInterval = 8
-
     /// If the traveller has drifted off the planned route (a wrong turn, or a real GPS fix
-    /// that's left the road), fetch a fresh route from wherever they actually are now,
-    /// rather than leaving them staring at a line that no longer matches where they're
-    /// going. Guarded on `isLoading` (no piling up while a fetch is in flight) and a cooldown
-    /// (no refetching every tick if the reading stays off-route regardless).
+    /// that's left the road), fetch a fresh route from wherever they actually are now, rather
+    /// than leaving them staring at a line that no longer matches where they're going. Guarded
+    /// only on `isLoading` (no piling up while a fetch is in flight) — the reroute cooldown/cap
+    /// and all retry behaviour now live in `RoutingGovernor`, so a persistent off-route reading
+    /// can't hammer the routing API; it just gets told "not yet" until the cooldown clears.
     private func rerouteIfOffRoute() {
         guard routingManager.isOffRoute, !routingManager.isLoading, let destinationCoordinate else { return }
-        if let last = lastRerouteAt, Date().timeIntervalSince(last) < rerouteCooldown { return }
-        lastRerouteAt = Date()
         print("[AppModel] Off route — fetching a fresh route from the current position")
         // Stopped here and restarted once the new route lands in `fetchRoute` below — the
         // old route's corridor is invalid for the length of the fetch, so there's nothing
@@ -218,10 +347,33 @@ final class AppModel: ObservableObject {
     var guiding: Bool { mode == .guidance }
 
     /// Where the user actually is: the real GPS fix once one's available, else the
-    /// fallback mock walker. Everything that needs "where am I" should read this, not
-    /// `simulatedPosition` directly.
-    var currentPosition: CLLocationCoordinate2D { locationManager.coordinate ?? simulatedPosition }
+    /// fixed fallback placeholder. Everything that needs "where am I" should read this, not
+    /// `fallbackPosition` directly.
+    var currentPosition: CLLocationCoordinate2D { locationManager.coordinate ?? fallbackPosition }
     var hasRealLocation: Bool { locationManager.coordinate != nil }
+
+    /// The simulator with no location set has no fix by design; the fixed placeholder stands in so
+    /// development still works. A real phone never guesses where you are — see `fetchRouteAndWait`.
+    private static let usesFallbackOrigin: Bool = {
+        #if targetEnvironment(simulator)
+        true
+        #else
+        false
+        #endif
+    }()
+
+    /// Something about location access that stops guidance working, for the compass screen to explain.
+    enum LocationIssue { case denied, reducedAccuracy, searching }
+    var locationIssue: LocationIssue? {
+        switch locationManager.authorizationStatus {
+        case .denied, .restricted: return .denied
+        case .notDetermined: return nil
+        default: break
+        }
+        if locationManager.isReducedAccuracy { return .reducedAccuracy }
+        if guiding, !arrived, !hasRealLocation, !Self.usesFallbackOrigin { return .searching }
+        return nil
+    }
     /// The device's real compass heading once it's reliable, else 0 (screen-up as a
     /// stand-in "north") — matches the old fixed behaviour until a real heading arrives.
     var currentHeading: CLLocationDirection { locationManager.hasReliableHeading ? locationManager.heading : 0 }
@@ -231,7 +383,9 @@ final class AppModel: ObservableObject {
     var isIdle: Bool { !guiding && destKind == .none }
     /// A subtle idle-only needle wobble — cosmetic "alive" motion, not a stand-in for any
     /// real position, speed, or direction reading.
-    var sway: Double { sin(Double(t) / 11) * 9 }
+    /// Half-amplitude (degrees) of the needle's gentle sway: a little more when just pointing,
+    /// less while guiding, none when idle or arrived. The sway itself is animated inside the dial.
+    var swayAmplitude: Double { isIdle || arrived ? 0 : (guiding ? 1.35 : 2.7) }
 
     /// True once a real OSRM route has been fetched for the current destination — driving
     /// the turn card and needle with actual turn-by-turn data instead of a straight line.
@@ -247,14 +401,14 @@ final class AppModel: ObservableObject {
     /// loaded and guiding, otherwise a straight line to the destination. Zero when there's
     /// nothing selected — never a simulated countdown.
     var activeDist: Double {
-        if guiding, hasRealRoute { return distanceToManeuver }
+        if guiding, hasRealRoute, !arrived { return distanceToManeuver }
         if let destinationCoordinate { return CompassManager.distance(from: currentPosition, to: destinationCoordinate) }
         return 0
     }
 
     var far: Double {
         if guiding, hasRealRoute { return routingManager.legFraction }
-        return max(0, min(1, activeDist / (guiding ? 500 : 1200)))
+        return max(0, min(1, activeDist / (guiding ? travelMode.tuning.polylineRevealDistance : 1200)))
     }
 
     /// The turn card's headline: the *upcoming* instruction (never the manoeuvre already made),
@@ -262,9 +416,13 @@ final class AppModel: ObservableObject {
     /// being fetched.
     var turnCopy: String {
         if routingManager.isLoading { return "Finding your route…" }
-        if let error = routingManager.errorMessage { return error }
         if guiding, hasRealRoute { return upcomingCard?.title ?? "You've arrived" }
         return dest.isEmpty ? "Head toward your destination" : "Head toward \(dest)"
+    }
+
+    /// The routing profile for the selected mode (walk and run both use walking).
+    var travelProfile: TravelProfile {
+        travelMode.profile
     }
 
     var turnSubtitle: String {
@@ -283,7 +441,7 @@ final class AppModel: ObservableObject {
     /// Whether the real route line is drawn. It only comes in for the last 500m, to pinpoint the
     /// destination and how to reach it — before that, the compass and the cards do the guiding.
     var showsPolyline: Bool {
-        guiding && hasRealRoute && routingManager.remainingDistance <= 500
+        guiding && !arrived && hasRealRoute && routingManager.remainingDistance <= travelMode.tuning.polylineRevealDistance
     }
 
     /// Whether the full-screen card list is pulled up.
@@ -295,7 +453,7 @@ final class AppModel: ObservableObject {
         guard guiding, let card = upcomingCard else { return "" }
         let d = distanceToManeuver
         if card.kind == .arrive { return d > 30 ? "Almost there" : "Here" }
-        if d > 1000 { return "Continue" }
+        if d > travelMode.tuning.farCutoff { return "Continue" }
         if d > 100 { return "Coming up" }
         if d > 30 { return "Get ready" }
         return "Now"
@@ -323,7 +481,7 @@ final class AppModel: ObservableObject {
     /// The arrow beside the distance readout: straight up by default, then a bend in the
     /// upcoming turn's direction, or a U-turn arrow for sharp turns and U-turns.
     var dialArrowSymbol: String {
-        guard let upcoming = upcomingTurn, upcoming.distance <= arrowRange else { return "arrow.up" }
+        guard !arrived, let upcoming = upcomingTurn, upcoming.distance <= arrowRange else { return "arrow.up" }
         let side = upcoming.turn.side == .left ? "left" : "right"
         switch upcoming.turn.severity {
         case .uTurn, .sharp: return "arrow.uturn.\(side)"
@@ -349,100 +507,147 @@ final class AppModel: ObservableObject {
         // right now toward the next turn (guidance with a loaded route) — converging on
         // the real destination itself once the final step is reached — or toward the
         // destination directly otherwise, whenever we have a real coordinate for it.
-        if guiding, hasRealRoute {
+        if guiding, hasRealRoute, !arrived {
             // Aimed at where the instruction actually happens — for a roundabout that's the EXIT
             // (so the needle says left, straight or right, never a hard turn into the circle) —
             // and at the destination itself once the last instruction is behind us.
             let target = upcomingCard?.kind == .arrive ? destinationCoordinate : (upcomingCard?.exitCoordinate ?? destinationCoordinate)
             if let target {
-                let bearing = CompassManager.bearing(from: currentPosition, to: target)
-                return CompassManager.relativeBearing(heading: currentHeading, bearing: bearing) + sway * 0.15
+                let bearing = CompassManager.bearing(from: routingManager.projectedPosition(from: currentPosition), to: target)
+                return CompassManager.relativeBearing(heading: currentHeading, bearing: bearing)
             }
         }
         if let destinationCoordinate {
             let bearing = CompassManager.bearing(from: currentPosition, to: destinationCoordinate)
-            return CompassManager.relativeBearing(heading: currentHeading, bearing: bearing) + sway * (guiding ? 0.15 : 0.3)
+            return CompassManager.relativeBearing(heading: currentHeading, bearing: bearing) 
         }
-        return sway
+        return 0
     }
 
-    /// Fully flat at rest in idle mode — no lean at all, so the dial visibly settles.
-    var tiltDeg: Double { isIdle ? 0 : far * maxTiltDegrees }
-    /// Sideways lean toward the upcoming turn — how the compass tells you what's coming and which
-    /// side to be on (including a road that splits and a lane you must hold). Direction and
-    /// strength come from the same next turn the arrow shows (for a roundabout, its exit):
-    /// - Slight: always a clear hint toward the next turn at any distance, firming up as it nears.
-    /// - Hard: the same hint until 1km out, then a firm lean held right to the turn.
-    /// Positive = toward the right. DialView also slides the dial toward the turn so the lean reads
-    /// as a lean, not just a narrowing.
-    /// The lean stops the side guide lines mark: a Slight lean never goes past 20°, a Hard lean up to 40°.
-    static let slightLeanMax: Double = 20
-    static let hardLeanMax: Double = 40
+    // MARK: - Compass tilt (see CompassTilt.swift for the algorithm)
+
+    /// Angles for the user's "Compass tilt" setting (Off / Slight / Hard).
+    var tiltAngles: CompassTilt.Angles { .forSetting(opts.tilt) }
+
+    /// Held within a leg so GPS jitter can't flicker the dial back to a bigger tilt: both stages
+    /// only ever advance (toward "none" / toward "strong") until the next instruction card.
+    @Published private(set) var frontStep = 0
+    @Published private(set) var sideStage: CompassTilt.SideStage = .none
+    private var tiltLegKey: String?
+
+    /// Recomputes the held tilt stages. Called about once a second and whenever guidance state changes.
+    func updateTiltStages() {
+        // Every @Published write redraws the whole compass screen, even when the value is unchanged,
+        // so each assignment below is guarded. (Measured: this alone was ~2 redraws/s for nothing.)
+        guard guiding, !arrived, hasRealRoute, let card = upcomingCard else {
+            tiltLegKey = nil
+            if frontStep != 0 { frontStep = 0 }
+            if sideStage != .none { sideStage = .none }
+            return
+        }
+        let key = "\(card.id)-\(Int(card.legLength))"
+        let step = CompassTilt.frontStep(legFraction: routingManager.legFraction)
+        let stage = CompassTilt.sideStage(distance: distanceToManeuver)
+        let newFront: Int, newSide: CompassTilt.SideStage
+        if key != tiltLegKey {
+            tiltLegKey = key
+            newFront = step
+            newSide = stage
+        } else {
+            newFront = max(frontStep, step)
+            newSide = max(sideStage, stage)
+        }
+        if newFront != frontStep { frontStep = newFront }
+        if newSide != sideStage { sideStage = newSide }
+    }
+
+    /// Forward/back tilt in degrees. Guidance: max just after a turn, easing to none by the next
+    /// one. Point mode: eases with straight-line distance. Flat when idle or arrived.
+    var tiltDeg: Double {
+        if isIdle || arrived { return 0 }
+        if guiding && hasRealRoute { return CompassTilt.frontAngle(step: frontStep, angles: tiltAngles) }
+        // Point mode has no legs, only a straight line: same five steps by distance, but gentler.
+        return CompassTilt.frontAngle(step: CompassTilt.frontStep(legFraction: far), angles: tiltAngles) * 0.6
+    }
+
+    /// Sideways lean toward the upcoming turn (negative = left). None for straight/roundabout-
+    /// straight/arrive, none until 500m out, mild to 200m, strong inside 200m.
+    var laneDeg: Double {
+        guard guiding, !arrived, hasRealRoute else { return 0 }
+        return CompassTilt.sideAngle(stage: sideStage, side: upcomingTurn?.turn.side, angles: tiltAngles)
+    }
 
     /// How far the dial's leaning-side edge sits from the centre (as a multiple of its radius) at
     /// `degrees` of lean: 1 + 0.16 × degrees/40. DialView slides the dial so its edge lands here, and
-    /// the guide lines are drawn at exactly the Slight and Hard maximums — so they always agree.
+    /// the guide lines are drawn at exactly the mild and strong angles — so they always agree.
     static func leanEdgeFactor(atDegrees degrees: Double) -> Double { 1 + 0.16 * abs(degrees) / 40 }
-
-    var laneDeg: Double {
-        guard let upcoming = upcomingTurn else { return 0 }
-        let severity: Double
-        switch upcoming.turn.severity {
-        case .slight: severity = 0.7
-        case .normal: severity = 1
-        case .sharp: severity = 1.15
-        case .uTurn: severity = 1.25
-        }
-        let sign = upcoming.turn.side == .left ? -1.0 : 1.0
-        switch opts.tilt {
-        case "Off":
-            return 0
-        case "Slight":
-            // Always a hint toward the next turn, firming up as it nears — never past the Slight line.
-            let closeness = 1 - min(1, upcoming.distance / 400)
-            return sign * max(6, min(Self.slightLeanMax, (9 + closeness * 12) * severity))
-        default:
-            // A hint until 1km out, then a firm lean up to the Hard line, held to the turn.
-            if upcoming.distance <= 1000 { return sign * max(22, min(Self.hardLeanMax, 32 * severity)) }
-            return sign * max(6, min(Self.slightLeanMax, 9 * severity))
-        }
-    }
 
     /// Real speed over ground from CoreLocation, in km/h — zero whenever there's no real
     /// GPS fix, never a simulated number.
     var speedKmh: Double { max(0, locationManager.speed) * 3.6 }
     /// `speedKmh` converted to the unit the user picked in Settings.
     var displaySpeed: Double { opts.units == "Miles" ? speedKmh * 0.621371 : speedKmh }
-    /// Under 8 km/h is walking, 8–20 is running, above 20 is driving.
-    var auto: String { speedKmh < 8 ? "WALKING" : speedKmh < 20 ? "RUNNING" : "DRIVING" }
-    var activity: String { opts.activity == "Automatic" ? auto : opts.activity.uppercased() }
-    /// `activity` collapsed to the two-state corridor/polling profile everything guidance-
-    /// related actually keys off — "RUNNING" gets walking's tighter tolerance, since a
-    /// runner drifts about as far from a path as a walker does.
-    var guidanceActivity: GuidanceActivity { activity == "DRIVING" ? .driving : .walking }
-
-    /// True at walking pace or below where "walking" stops being a meaningful label —
-    /// under 2 km/h is standing still (or GPS noise on a stationary phone), not actually
-    /// walking anywhere. Display-only: doesn't affect `activity`/`guidanceActivity`, which
-    /// still need a real walking/running/driving classification for corridor tolerance and
-    /// route colour regardless of whether the label shown right now says "stationary".
+    /// Standing still (or GPS noise on a stationary phone). Display-only: it tints the carousel's
+    /// active tile white and never changes `travelMode`, which is always the user's own choice.
     var isStationary: Bool { speedKmh <= 2 }
-    var activityDisplayLabel: String { isStationary ? "STATIONARY" : activity }
 
-    /// The route line's colour, blended continuously from the real speed rather than
-    /// snapping between fixed colours at the walk/run/drive boundaries — green through
-    /// amber to blue, smoothly, across bands centred on the 8 and 20 km/h thresholds.
+    /// The route line's colour follows the selected mode: on-foot green for walk/run/cycle,
+    /// drive blue for driving.
     var routeColor: Color {
-        let walk = Color(hex: "2FCF9B")
-        let run = Color(hex: "FFB020")
-        let drive = Color(hex: "3B82F6")
-        let kmh = speedKmh
-        switch kmh {
-        case ..<5: return walk
-        case 5..<11: return .lerp(walk, run, (kmh - 5) / 6)
-        case 11..<17: return run
-        case 17..<23: return .lerp(run, drive, (kmh - 17) / 6)
-        default: return drive
+        travelMode.isOnFoot ? Color(hex: "2FCF9B") : Color(hex: "3B82F6")
+    }
+
+    // MARK: - Audio guidance setting (stored only — not wired to any playback yet)
+
+    let audioManager = AudioManager()
+    @Published var audioStyle: AudioGuidanceStyle = AppModel.loadAudioStyle() {
+        didSet {
+            UserDefaults.standard.set(audioStyle.rawValue, forKey: Self.audioStyleKey)
+            audioManager.style = audioStyle
+        }
+    }
+    private static let audioStyleKey = "audioStyle.v1"
+    private static func loadAudioStyle() -> AudioGuidanceStyle {
+        UserDefaults.standard.string(forKey: audioStyleKey).flatMap(AudioGuidanceStyle.init(rawValue:)) ?? .tone
+    }
+
+    // MARK: - Travel mode (manual, authoritative)
+
+    @Published var travelMode: TravelMode = AppModel.loadTravelMode() {
+        didSet {
+            guard oldValue != travelMode else { return }
+            AppModel.saveTravelMode(travelMode)
+            updateBackgroundTracking()
+            scheduleModeChangeReroute()
+        }
+    }
+    /// Set while a mode-change fetch is in flight, so the UI can say "Switching to X route".
+    @Published private(set) var pendingTravelMode: TravelMode?
+    private var modeChangeDebounceTask: Task<Void, Never>?
+    /// How long the selection must stay put before a mode change reroutes. Settable for tests.
+    var modeChangeDebounce: Duration = .milliseconds(600)
+
+    private static let travelModeKey = "travelMode.v1"
+    private static func loadTravelMode() -> TravelMode {
+        UserDefaults.standard.string(forKey: travelModeKey).flatMap(TravelMode.init(rawValue:)) ?? .walk
+    }
+    private static func saveTravelMode(_ mode: TravelMode) {
+        UserDefaults.standard.set(mode.rawValue, forKey: travelModeKey)
+    }
+
+    /// Rapid carousel scrolling restarts the 0.6s timer, so only the settled mode reroutes.
+    /// Uses the initial-request path (retries + diagnosis, no reroute cooldown). In Point mode
+    /// a change only stores the selection.
+    private func scheduleModeChangeReroute() {
+        modeChangeDebounceTask?.cancel()
+        guard guiding, !arrived, let destinationCoordinate else { return }
+        let mode = travelMode
+        modeChangeDebounceTask = Task { [weak self] in
+            try? await Task.sleep(for: self?.modeChangeDebounce ?? .milliseconds(600))
+            guard let self, !Task.isCancelled, self.travelMode == mode, self.guiding, !self.arrived else { return }
+            self.pendingTravelMode = mode
+            await self.fetchRouteAndWait(to: destinationCoordinate, isReroute: false)
+            if self.pendingTravelMode == mode { self.pendingTravelMode = nil }
         }
     }
 
@@ -479,25 +684,40 @@ final class AppModel: ObservableObject {
     /// Map tab, so a route appears as soon as a destination exists. The on-screen route line is
     /// *not* baked here — see `bakeRouteLineIfNeeded()`.
     private func fetchRoute(to destination: CLLocationCoordinate2D?, isReroute: Bool = false) {
+        guard destination != nil else { routingManager.clear(); return }
+        Task { await fetchRouteAndWait(to: destination, isReroute: isReroute) }
+    }
+
+    /// Awaitable core of `fetchRoute`. Also what a mode change uses (with `isReroute: false`, so
+    /// the retry/diagnosis path applies and the reroute cooldown doesn't): the old route stays
+    /// until the new one lands, then cards, polyline and the persisted trip swap together.
+    private func fetchRouteAndWait(to destination: CLLocationCoordinate2D?, isReroute: Bool) async {
         guard let destination else { routingManager.clear(); return }
-        let origin = currentPosition
-        Task {
-            await routingManager.getRoute(from: origin, to: destination)
-            guard guiding, routingManager.hasRoute, !arrived else { return }
-            if isReroute {
-                // The old route line describes a road that's no longer the plan — drop it; the
-                // last-500m line is baked fresh from the new route when it's actually needed.
-                routeDataGenerator.clearGuidanceData()
-                // The reroute fetch is done and the new route is baking — resume polling
-                // against it. `start` is idempotent, so this is also harmless on the very
-                // first fetch (isReroute: false), where the scheduler was already started
-                // synchronously in `startGuidance()` below and just keeps running. Guarded
-                // on `!arrived` above: this fetch could have been in flight when a later
-                // check already detected arrival and stopped the scheduler — without that
-                // guard, this completion would silently restart it right afterward.
-                startLocationChecks()
+        // Never route from a guessed position: until the first real fix arrives, wait for it (the
+        // compass screen says "Finding your location…") rather than start from the placeholder.
+        if !hasRealLocation, !Self.usesFallbackOrigin {
+            objectWillChange.send()
+            while !hasRealLocation {
+                try? await Task.sleep(for: .milliseconds(500))
+                // Gave up waiting, or the destination changed / guidance ended meanwhile.
+                guard guiding, !arrived, destinationCoordinate?.latitude == destination.latitude,
+                      destinationCoordinate?.longitude == destination.longitude else { return }
             }
         }
+        let origin = currentPosition
+        let profile = travelProfile
+        await routingManager.getRoute(from: origin, to: destination, profile: profile, isReroute: isReroute)
+        guard guiding, routingManager.hasRoute, !arrived else { return }
+        if let route = routingManager.currentRoute {
+            if Perf.on("persist") { RoutePersistence.save(PersistedTrip(route: route, destinationCoordinate: destination, destinationName: dest, profile: profile)) }
+        }
+        // The old route line describes a road that's no longer the plan (reroute or mode
+        // switch) — drop it; it's baked fresh from the new route when it's actually needed.
+        // Harmless on the very first fetch, where nothing is baked yet.
+        routeDataGenerator.clearGuidanceData()
+        // `start` is idempotent. Guarded on `!arrived` above so a fetch that outlived an
+        // arrival can't silently restart the scheduler.
+        startLocationChecks()
     }
 
     /// The route line is only ever drawn for the last 500m, so it's only ever *computed* then: the
@@ -511,16 +731,17 @@ final class AppModel: ObservableObject {
         let progress = routingManager.progressAlong
         let remainingSteps = routingManager.steps.filter { $0.endAlong > progress }
         print("[AppModel] Within 500m of the destination — baking the route line (\(Int(routingManager.remainingDistance))m)")
-        routeDataGenerator.generateGuidanceData(polyline: ahead, steps: remainingSteps, activity: guidanceActivity)
+        routeDataGenerator.generateGuidanceData(polyline: ahead, steps: remainingSteps, mode: travelMode)
     }
 
     /// Starts (or resumes) `locationCheckScheduler` for the current mode/activity, and runs
     /// one check immediately rather than waiting out a full interval before the guidance
     /// line has anything real to show.
     private func startLocationChecks() {
+        guard Perf.on("sched") else { return }
         locationCheckScheduler.start(
             mode: mode,
-            activityProvider: { [weak self] in self?.guidanceActivity ?? .walking },
+            activityProvider: { [weak self] in self?.travelMode ?? .walk },
             onCheck: { [weak self] in self?.performLocationCheck() }
         )
     }
@@ -530,25 +751,39 @@ final class AppModel: ObservableObject {
         etaManager.reset()
         lastArrivalCheckPosition = nil
         mode = .guidance
-        routeProgressMeters = 0
-        lastRerouteAt = nil
         arrived = false
-        simulatedPosition = Self.mockUserLocation
         fetchRoute(to: destinationCoordinate)
         startLocationChecks()
         performLocationCheck()
     }
 
     func endGuidance() {
+        audioManager.stop()
         cardsExpanded = false
         etaManager.reset()
         mode = .point
-        routeProgressMeters = 0
         arrived = false
         routeDataGenerator.clearGuidanceData()
         locationCheckScheduler.stop()
+        // A routing failure never stops guidance on its own (see RoutingGovernor) — this is
+        // the one place that does, so it's also the one place that should cancel any retry
+        // loop still running in the background.
+        routingManager.cancelFetch()
+        RoutePersistence.clear()
         // The route itself stays put — the destination is still selected, so the Map tab
         // keeps showing the preview line until the user picks something new or clears it.
+    }
+
+    /// Restores a trip left mid-flight when the app was last closed — skips the network
+    /// entirely, straight from the saved `Route`. Called once at launch.
+    private func restorePersistedTrip() {
+        guard let trip = RoutePersistence.load() else { return }
+        destinationCoordinate = trip.destinationCoordinate
+        dest = trip.destinationName
+        destKind = .place
+        mode = .guidance
+        routingManager.restore(route: trip.route, destination: trip.destinationCoordinate, profile: trip.profile)
+        startLocationChecks()
     }
 
     func setTheme(_ id: ThemeID) {

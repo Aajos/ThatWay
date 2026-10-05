@@ -2,6 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>audio</string>
+	</array>
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>Guidance</key>
+		<string>Precise Location lets ThatWay point the compass and call out turns at the right moment. It is only used while you are using the app or guiding a trip.</string>
+	</dict>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Nunito.ttf</string>

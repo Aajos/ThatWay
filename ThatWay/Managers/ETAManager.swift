@@ -28,10 +28,10 @@ final class ETAManager: ObservableObject {
         paceFactor = 1
     }
 
-    func update(routing: RoutingManager, speedKmh: Double, activity: GuidanceActivity) {
+    func update(routing: RoutingManager, speedKmh: Double, activity: TravelMode) {
         guard routing.hasRoute, routing.routeLength > 0 else { reset(); return }
         let remainingDistance = routing.remainingDistance
-        let useRoadData = activity == .driving && !routing.segmentDurations.isEmpty
+        let useRoadData = activity == .drive && !routing.segmentDurations.isEmpty
         let segment = min(routing.currentSegment, max(0, routing.segmentDurations.count - 1))
 
         // What the road says it takes from here to the end.

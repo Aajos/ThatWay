@@ -46,7 +46,7 @@ private struct CardIcon: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12 * scale)
-                .fill(highlighted ? theme.accent.opacity(0.16) : theme.ink.opacity(0.08))
+                .fill(highlighted ? theme.tint(0.16) : theme.ink.opacity(0.08))
             Image(systemName: card.symbolName)
                 .font(.system(size: 19 * scale, weight: .bold))
                 .foregroundStyle(highlighted ? theme.accent : theme.ink.opacity(0.7))
@@ -75,25 +75,29 @@ private struct PeekCard: View {
     /// Which way the stack fans: down (the usual — behind cards peek out below) or up.
     var showsContent = false
     var scale: CGFloat = 1
+    /// Text size factor, kept separate from the card's geometry `scale` so text stays readable
+    /// when the cards shrink for a short screen. Defaults to `scale`.
+    var fontScale: CGFloat?
 
     var body: some View {
+        let f = fontScale ?? scale
         HStack(spacing: 14) {
             if showsContent {
                 CardIcon(card: card, theme: theme, highlighted: false, scale: scale)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(card.shortTitle)
-                        .font(.nunito(14 * scale, .extraBold)).foregroundStyle(theme.ink)
+                        .font(.nunito(14 * f, .extraBold)).foregroundStyle(theme.ink)
                         .lineLimit(1).minimumScaleFactor(0.6)
                     let road = card.kind == .arrive ? app.dest : card.shortRoad
                     if !road.isEmpty {
                         Text(road)
-                            .font(.nunito(11.5 * scale, .semibold)).foregroundStyle(theme.ink.opacity(0.75))
+                            .font(.nunito(11.5 * f, .semibold)).foregroundStyle(theme.ink.opacity(0.75))
                             .lineLimit(1).minimumScaleFactor(0.6)
                     }
                 }
                 Spacer(minLength: 4)
                 Text(app.fmt(app.routingManager.distanceTo(card)))
-                    .font(.nunito(15 * scale, .black)).foregroundStyle(theme.ink.opacity(0.85))
+                    .font(.nunito(15 * f, .black)).foregroundStyle(theme.ink.opacity(0.85))
                     .lineLimit(1).minimumScaleFactor(0.7)
             } else {
                 Spacer()
@@ -104,7 +108,7 @@ private struct PeekCard: View {
         .background(
             RoundedRectangle(cornerRadius: 20)
                 .fill(theme.screen)
-                .overlay(RoundedRectangle(cornerRadius: 20).fill(theme.ink.opacity(0.05)))
+                .overlay(RoundedRectangle(cornerRadius: 20).fill(theme.surface(0.05)))
                 .matchedGeometryEffect(id: card.id, in: namespace, isSource: !app.cardsExpanded)
         )
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.borderColor))
@@ -125,9 +129,13 @@ struct GuidanceCardStack: View {
     var showsPeeks = true
     /// The top stack also opens when it's pulled *down* (there's nothing above it to scroll).
     var opensOnPullDown = false
+    /// 1 on a full-size phone; down to ~0.72 on a short screen like the iPhone SE.
+    var density: CGFloat = 1
 
     /// The cards are 1.5× their original size for readability at a glance.
-    private let scale: CGFloat = 1.5
+    private var scale: CGFloat { 1.5 * density }
+    /// Text keeps its full size on a short screen — only the card's height and icon shrink.
+    private let fontScale: CGFloat = 1.5
     private var cardHeight: CGFloat { 84 * scale }
 
     var body: some View {
@@ -140,7 +148,7 @@ struct GuidanceCardStack: View {
 
         ZStack(alignment: .top) {
             ForEach(peeks, id: \.card.id) { item in
-                PeekCard(card: item.card, depth: item.depth, theme: theme, namespace: namespace, height: cardHeight, scale: scale)
+                PeekCard(card: item.card, depth: item.depth, theme: theme, namespace: namespace, height: cardHeight, scale: scale, fontScale: 1.5)
                     .transition(.opacity)
             }
             front(card: index.map { cards[$0] })
@@ -148,7 +156,7 @@ struct GuidanceCardStack: View {
                 .transition(.asymmetric(insertion: .opacity, removal: .opacity.combined(with: .scale(scale: 0.94))))
                 .zIndex(20)
         }
-        .frame(height: cardHeight + (showsPeeks ? 22 : 0), alignment: .top)
+        .frame(minHeight: cardHeight + (showsPeeks ? 22 * density : 0), alignment: .top)
         .animation(cardSpring, value: index)
         .contentShape(Rectangle())
         .onTapGesture { expand(app) }
@@ -166,46 +174,47 @@ struct GuidanceCardStack: View {
             CardIcon(card: card ?? arrivedPlaceholder, theme: theme, scale: scale)
             VStack(alignment: .leading, spacing: 3) {
                 Text(card?.shortTitle ?? "Arrived")
-                    .font(.nunito(15 * scale, .extraBold)).foregroundStyle(theme.ink)
-                    .lineLimit(1).minimumScaleFactor(0.6)
+                    .font(.nunito(15 * fontScale, .extraBold)).foregroundStyle(theme.ink)
+                    .lineLimit(2).minimumScaleFactor(0.6)
                 let road = card?.kind == .arrive ? app.dest : (card?.shortRoad ?? "")
                 if !road.isEmpty {
                     Text(road)
-                        .font(.nunito(12 * scale, .bold)).foregroundStyle(theme.ink.opacity(0.85))
-                        .lineLimit(1).minimumScaleFactor(0.6)
+                        .font(.nunito(12 * fontScale, .bold)).foregroundStyle(theme.ink.opacity(0.85))
+                        .lineLimit(2).minimumScaleFactor(0.6)
                 }
                 Text(app.currentPhaseText)
-                    .font(.nunito(10 * scale, app.currentPhaseHighlighted ? .black : .semibold))
+                    .font(.nunito(10 * fontScale, app.currentPhaseHighlighted ? .black : .semibold))
                     .foregroundStyle(app.currentPhaseHighlighted ? theme.accent : theme.textSecondary)
-                    .shadow(color: app.currentPhaseHighlighted ? theme.accent.opacity(0.55) : .clear, radius: 6)
+                    .glow(app.currentPhaseHighlighted ? theme.accent.opacity(0.55) : .clear, radius: 6, theme: theme)
                     .lineLimit(1).minimumScaleFactor(0.7)
             }
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 10) {
                 if card != nil {
                     Text(app.fmt(app.distanceToManeuver))
-                        .font(.nunito(17 * scale, .black)).foregroundStyle(theme.accent)
+                        .font(.nunito(17 * fontScale, .black)).foregroundStyle(theme.accent)
                         .lineLimit(1).minimumScaleFactor(0.7)
                 }
                 Button { app.endGuidance() } label: {
                     Text("END")
-                        .font(.nunito(10 * scale, .black)).tracking(0.9)
+                        .font(.nunito(10 * fontScale, .black)).tracking(0.9)
                         .foregroundStyle(theme.accent)
                         .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(Capsule().fill(theme.accent.opacity(0.14)))
+                        .background(Capsule().fill(theme.tint(0.14)))
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 14 * scale)
-        .frame(height: cardHeight)
+        .padding(.vertical, 8)
+        .frame(minHeight: cardHeight)
         .background(
             RoundedRectangle(cornerRadius: 24)
                 .fill(theme.screen)
-                .overlay(RoundedRectangle(cornerRadius: 24).fill(theme.ink.opacity(0.07)))
+                .overlay(RoundedRectangle(cornerRadius: 24).fill(theme.surface(0.07)))
                 .matchedGeometryEffect(id: card?.id ?? -1, in: namespace, isSource: !app.cardsExpanded)
         )
-        .overlay(RoundedRectangle(cornerRadius: 24).stroke(theme.accent.opacity(0.35)))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(theme.outline(0.35)))
     }
 
     private var arrivedPlaceholder: GuidanceCard {
@@ -223,9 +232,10 @@ struct NextCardsStack: View {
     let theme: AppTheme
     let namespace: Namespace.ID
 
-    private let scale: CGFloat = 1.5
+    var density: CGFloat = 1
+    private var scale: CGFloat { 1.5 * density }
     private var cardHeight: CGFloat { 68 * scale }
-    static let stackHeight: CGFloat = 68 * 1.5 + 30
+    private var stackHeight: CGFloat { 68 * scale + 30 * density }
 
     var body: some View {
         let routing = app.routingManager
@@ -234,14 +244,24 @@ struct NextCardsStack: View {
         let visible: [(card: GuidanceCard, depth: Int)] = index == nil ? [] :
             (1...3).compactMap { d in (index! + d < cards.count) ? (cards[index! + d], d) : nil }
 
-        ZStack(alignment: .top) {
-            ForEach(visible, id: \.card.id) { item in
-                PeekCard(card: item.card, depth: item.depth, theme: theme, namespace: namespace,
-                         height: cardHeight, showsContent: item.depth == 1, scale: scale)
+        VStack(alignment: .leading, spacing: 2) {
+            if !visible.isEmpty {
+                Text("Up next:")
+                    .font(.nunito(14, .extraBold))
+                    .tracking(0.4)
+                    .foregroundStyle(theme.textSecondary)
+                    .padding(.leading, 6)
                     .transition(.opacity)
             }
+            ZStack(alignment: .top) {
+                ForEach(visible, id: \.card.id) { item in
+                    PeekCard(card: item.card, depth: item.depth, theme: theme, namespace: namespace,
+                             height: cardHeight, showsContent: item.depth == 1, scale: scale, fontScale: 1.5)
+                        .transition(.opacity)
+                }
+            }
+            .frame(height: stackHeight, alignment: .top)
         }
-        .frame(height: Self.stackHeight, alignment: .top)
         .animation(cardSpring, value: index)
         .contentShape(Rectangle())
         .onTapGesture { expand(app) }
@@ -361,14 +381,14 @@ struct GuidanceCurtain: View {
         .background(
             RoundedRectangle(cornerRadius: 20)
                 .fill(theme.screen.opacity(0.88))
-                .overlay(RoundedRectangle(cornerRadius: 20).fill(isCurrent ? theme.accent.opacity(0.14) : theme.ink.opacity(0.05)))
+                .overlay(RoundedRectangle(cornerRadius: 20).fill(isCurrent ? theme.tint(0.14) : theme.surface(0.05)))
                 .matchedGeometryEffect(id: card.id, in: namespace, isSource: app.cardsExpanded)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(isCurrent ? theme.accent.opacity(0.7) : theme.borderColor, lineWidth: isCurrent ? 1.5 : 1)
+                .stroke(isCurrent ? theme.outline(0.7) : theme.borderColor, lineWidth: isCurrent ? 1.5 : 1)
         )
-        .shadow(color: isCurrent ? theme.accent.opacity(0.25) : .clear, radius: 10)
+        .glow(isCurrent ? theme.accent.opacity(0.25) : .clear, radius: 10, theme: theme)
         .opacity(isPast ? 0.45 : 1)
         // The glow glides from one card to the next as the trip advances.
         .animation(.easeInOut(duration: 0.4), value: isCurrent)

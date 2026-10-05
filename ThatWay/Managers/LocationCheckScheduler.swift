@@ -21,21 +21,21 @@ final class LocationCheckScheduler: ObservableObject {
 
     private var timer: Timer?
     private var isChecking = false
-    private var activityProvider: () -> GuidanceActivity = { .walking }
+    private var activityProvider: () -> TravelMode = { .walk }
     private var onCheck: () -> Void = {}
 
     /// 10s walking (course changes slowly on foot), 3s driving (needs responsive course
     /// correction at speed). Re-read from `activityProvider` on every cycle, so a walking→
     /// driving change takes effect on the very next check without needing an explicit restart.
-    private func interval(for activity: GuidanceActivity) -> TimeInterval {
-        activity == .driving ? 3 : 10
+    private func interval(for activity: TravelMode) -> TimeInterval {
+        activity.tuning.pollInterval
     }
 
     /// Starts polling for Guidance mode — a no-op, and stops anything already running, for
     /// Point mode, since there's no active route to check a corridor against. Safe to call
     /// repeatedly (e.g. every time mode/activity might have changed): if already polling in
     /// Guidance, the running cycle just continues rather than resetting the clock.
-    func start(mode: NavMode, activityProvider: @escaping () -> GuidanceActivity, onCheck: @escaping () -> Void) {
+    func start(mode: NavMode, activityProvider: @escaping () -> TravelMode, onCheck: @escaping () -> Void) {
         self.activityProvider = activityProvider
         self.onCheck = onCheck
         guard mode == .guidance else {

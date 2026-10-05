@@ -164,7 +164,6 @@ struct MapScreen: View {
             Circle().fill(Color.blue)
                 .frame(width: 12, height: 12)
                 .overlay(Circle().stroke(.white, lineWidth: 2.5))
-                .shadow(color: .black.opacity(0.35), radius: 2)
         }
     }
 
@@ -202,7 +201,6 @@ struct MapScreen: View {
             .frame(width: 44, height: 44)
             .background(Circle().fill(.ultraThinMaterial))
             .overlay(Circle().stroke(.white.opacity(0.15), lineWidth: 0.5))
-            .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
         }
         .buttonStyle(.plain)
     }

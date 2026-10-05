@@ -6,14 +6,83 @@
 //
 
 import SwiftUI
+import UIKit
 
-struct DialView: View {
-    @EnvironmentObject var app: AppModel
+/// Everything the dial draws, as plain values. The dial takes this instead of observing the whole
+/// AppModel, and is `Equatable`, so SwiftUI skips it entirely whenever none of these changed —
+/// a GPS fix or a card update no longer re-evaluates the dial's big view tree.
+struct DialState: Equatable {
+    var themeID: ThemeID
+    var skin: SkinID
+    var guiding: Bool
+    var arrived: Bool
+    var isIdle: Bool
+    var hasRealRoute: Bool
+    var showsArrivalClockBelow: Bool
+    var heading: Double
+    var needle: Double
+    var tilt: Double
+    var lane: Double
+    var sway: Double
+    var arrow: String
+    var distance: String
+
+    @MainActor
+    init(app: AppModel) {
+        themeID = app.theme
+        skin = app.skin
+        guiding = app.guiding
+        arrived = app.arrived
+        isIdle = app.isIdle
+        hasRealRoute = app.hasRealRoute
+        showsArrivalClockBelow = app.etaManager.arrivalClock != nil
+        heading = app.dialHeadingDeg
+        needle = app.needleDeg
+        tilt = app.tiltDeg
+        lane = app.laneDeg
+        sway = app.swayAmplitude
+        arrow = app.dialArrowSymbol
+        distance = app.fmt(app.activeDist)
+    }
+}
+
+struct DialView: View, Equatable {
+    let state: DialState
     let k: CGFloat
-    @State private var breathing = false
+
+    static func == (a: DialView, b: DialView) -> Bool { a.state == b.state && a.k == b.k }
+
+    @State private var needleImage: UIImage?
+
+    private struct NeedleImageKey: Hashable { let themeID: ThemeID; let skin: SkinID; let k: CGFloat }
+
+    @ViewBuilder
+    private func needleStack(theme: AppTheme) -> some View {
+        ZStack {
+            Circle()
+                .fill(RadialGradient(colors: [theme.glow.opacity(0.85), theme.glow.opacity(0.5), .clear], center: .center, startRadius: 0, endRadius: 68 * k))
+                .frame(width: 136 * k, height: 136 * k)
+                .opacity(theme.light ? 0 : 1)
+            switch state.skin {
+            case .needle: NeedleSkin(theme: theme, k: k)
+            case .wheel: WheelSkin(theme: theme, k: k)
+            case .clock: ClockSkin(theme: theme, k: k)
+            default: NeedleSkin(theme: theme, k: k)
+            }
+        }
+        .frame(width: 286 * k, height: 286 * k)
+    }
+
+    @MainActor
+    private func renderNeedle(theme: AppTheme) {
+        let renderer = ImageRenderer(content: needleStack(theme: theme))
+        renderer.scale = UIScreen.main.scale
+        renderer.isOpaque = false
+        needleImage = renderer.uiImage
+    }
 
     private func leanOffset(k: CGFloat) -> CGFloat {
-        let lean = app.laneDeg
+        let lean = state.lane
         guard lean != 0 else { return 0 }
         let radius = 143 * k
         let edge = radius * CGFloat(AppModel.leanEdgeFactor(atDegrees: lean))
@@ -22,24 +91,28 @@ struct DialView: View {
     }
 
     var body: some View {
-        let theme = app.currentTheme
-        let glassColors = app.dialGlassColors
+        let _ = Perf.hit("body.dial")
+        let _ = Perf.stamp("dialUpdate")
+        let theme = AppTheme.byId(state.themeID)
+        let glassColors = [theme.accent, Color(hex: "34D6A5"), theme.accent.hueShifted(24)]
 
         ZStack {
-            // aura glow — breathes continuously, tinted by the dominant dial-glass colors.
-            // Left outside the hard circular clip below so its soft radial falloff can bleed
-            // a little past the disc's edge; a RadialGradient has no hard border to go ragged.
+            // aura glow — held still (a breathing version cost too much CPU), tinted by the dominant
+            // dial-glass colours (dark themes only). Left outside the hard circular clip below so its soft radial falloff can
+            // bleed a little past the disc's edge.
             Circle()
-                .fill(RadialGradient(colors: [glassColors[0].opacity(breathing ? 0.32 : 0.16), .clear], center: .center, startRadius: 0, endRadius: 160 * k))
+                .fill(RadialGradient(colors: [glassColors[0].opacity(0.24), .clear], center: .center, startRadius: 0, endRadius: 160 * k))
                 .frame(width: 318 * k, height: 318 * k)
-                .onAppear { breathing = true }
-                .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: breathing)
+                .opacity(theme.light ? 0 : 1)
 
             // Everything that makes up the dial's actual face is clipped to one exact circle
             // BEFORE the 3D tilt/lean below is applied, so under perspective it always warps
             // as a single clean ellipse — never a mismatched patchwork of differently-sized
             // circles or straight edges poking out past the rim.
             ZStack {
+              // The static face (body, rim, bezel, sheen) is flattened into one cached bitmap, so
+              // the needle's sway animates only the needle instead of re-rendering the whole dial.
+              ZStack {
                 // dial body — theme-coloured (coral, in Ember) tint.
                 Circle()
                     .fill(RadialGradient(colors: [theme.dialA, theme.dialB], center: .init(x: 0.5, y: 0.28), startRadius: 0, endRadius: 150 * k))
@@ -51,7 +124,7 @@ struct DialView: View {
                         AngularGradient(colors: glassColors.map { $0.opacity(0.18) } + [glassColors[0].opacity(0.18)], center: .center),
                         lineWidth: 10 * k
                     )
-                    .background(Circle().fill(.ultraThinMaterial).opacity(0.15))
+                    .background(Circle().fill(.ultraThinMaterial).opacity(Perf.on("dialfx") ? 0.15 : 0))
                     .blendMode(.plusLighter)
 
                 // The tick ring and cardinal letters rotate together as one real compass
@@ -65,65 +138,68 @@ struct DialView: View {
                     // cardinal letters — idle mode emphasizes all four so the dial visibly reads
                     // as "resting, north-up" rather than mid-navigation.
                     VStack {
-                        Text("N").font(.nunito(app.isIdle ? 17 : 13, .black)).tracking(2).foregroundStyle(theme.accent)
-                            .shadow(color: theme.accent.opacity(app.isIdle ? 0.55 : 0), radius: 8)
+                        Text("N").font(.nunito(state.isIdle ? 17 : 13, .black)).tracking(2).foregroundStyle(theme.accent)
+                            .glow(theme.accent.opacity(state.isIdle ? 0.55 : 0), radius: 8, theme: theme)
                         Spacer()
-                        Text("S").font(.nunito(app.isIdle ? 15 : 12, app.isIdle ? .black : .bold))
-                            .foregroundStyle(app.isIdle ? theme.accent : theme.textSecondary)
-                            .shadow(color: theme.accent.opacity(app.isIdle ? 0.4 : 0), radius: 6)
+                        Text("S").font(.nunito(state.isIdle ? 15 : 12, state.isIdle ? .black : .bold))
+                            .foregroundStyle(state.isIdle ? theme.accent : theme.textSecondary)
+                            .glow(theme.accent.opacity(state.isIdle ? 0.4 : 0), radius: 6, theme: theme)
                     }
                     .padding(.vertical, 30 * k)
                     HStack {
-                        Text("W").font(.nunito(app.isIdle ? 15 : 12, app.isIdle ? .black : .bold))
-                            .foregroundStyle(app.isIdle ? theme.accent : theme.textSecondary)
-                            .shadow(color: theme.accent.opacity(app.isIdle ? 0.4 : 0), radius: 6)
+                        Text("W").font(.nunito(state.isIdle ? 15 : 12, state.isIdle ? .black : .bold))
+                            .foregroundStyle(state.isIdle ? theme.accent : theme.textSecondary)
+                            .glow(theme.accent.opacity(state.isIdle ? 0.4 : 0), radius: 6, theme: theme)
                         Spacer()
-                        Text("E").font(.nunito(app.isIdle ? 15 : 12, app.isIdle ? .black : .bold))
-                            .foregroundStyle(app.isIdle ? theme.accent : theme.textSecondary)
-                            .shadow(color: theme.accent.opacity(app.isIdle ? 0.4 : 0), radius: 6)
+                        Text("E").font(.nunito(state.isIdle ? 15 : 12, state.isIdle ? .black : .bold))
+                            .foregroundStyle(state.isIdle ? theme.accent : theme.textSecondary)
+                            .glow(theme.accent.opacity(state.isIdle ? 0.4 : 0), radius: 6, theme: theme)
                     }
                     .padding(.horizontal, 30 * k)
                 }
-                .rotationEffect(.degrees(app.dialHeadingDeg))
-                .animation(.easeOut(duration: 0.2), value: app.dialHeadingDeg)
-                .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.isIdle)
+                .rotationEffect(.degrees(state.heading))
+                .animation(Perf.anim(.easeOut(duration: 0.2)), value: state.heading)
+                .animation(.spring(response: 0.5, dampingFraction: 0.7), value: state.isIdle)
 
-                // needle
-                ZStack {
-                    Circle()
-                        .fill(RadialGradient(colors: [theme.glow.opacity(0.85), theme.glow.opacity(0.5), .clear], center: .center, startRadius: 0, endRadius: 68 * k))
-                        .frame(width: 136 * k, height: 136 * k)
-
-                    switch app.skin {
-                    case .needle: NeedleSkin(theme: theme, k: k)
-                    case .wheel: WheelSkin(theme: theme, k: k)
-                    case .clock: ClockSkin(theme: theme, k: k)
-                    default: NeedleSkin(theme: theme, k: k)
-                    }
-                }
-                .rotationEffect(.degrees(app.needleDeg))
-
-                // glass sheen
+                // glass sheen — under the needle, so it never washes the needle's colour out
                 Circle()
                     .fill(LinearGradient(colors: [.white.opacity(0.18), .white.opacity(0.05), .clear], startPoint: .top, endPoint: .bottom))
                     .allowsHitTesting(false)
+
+              }
+              .drawingGroup()
+
+                // needle, with its gentle "alive" sway. The needle is rendered once to an image and the
+                // sway is a native Core Animation rotation on that image: it runs in the render server
+                // at full smoothness and costs the app no CPU. (Measured on the SwiftUI alternatives:
+                // an every-frame animation cost 6-8 CPU points, a 5 Hz stepped one still ~1 point.)
+                Group {
+                    if let image = needleImage {
+                        SwayingImage(image: image, amplitude: state.sway)
+                    } else {
+                        needleStack(theme: theme)
+                    }
+                }
+                .frame(width: 286 * k, height: 286 * k)
+                .rotationEffect(.degrees(state.needle))
+                .task(id: NeedleImageKey(themeID: state.themeID, skin: state.skin, k: k)) { renderNeedle(theme: theme) }
             }
             .frame(width: 286 * k, height: 286 * k)
             .clipShape(Circle())
-            .overlay(Circle().stroke(theme.borderColor, lineWidth: 1))
-            .shadow(color: .black.opacity(0.45), radius: 30, y: 20)
+            .overlay(Circle().stroke(theme.borderColor, lineWidth: theme.light ? 1.5 : 1))
+            .lift(theme: theme, radius: 30, y: 20)
         }
         .frame(width: 286 * k, height: 286 * k)
         // Pivots on the dial's top edge (not its centre), so the top stays fixed on screen and the
         // bottom swings out toward the viewer as it tilts.
-        .rotation3DEffect(.degrees(app.tiltDeg), axis: (x: 1, y: 0, z: 0), anchor: .top, perspective: 0.18)
-        .rotation3DEffect(.degrees(app.laneDeg), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+        .rotation3DEffect(.degrees(Perf.on("dialfx") ? state.tilt : 0), axis: (x: 1, y: 0, z: 0), anchor: .top, perspective: 0.18)
+        .rotation3DEffect(.degrees(Perf.on("dialfx") ? state.lane : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
         // Slides so the leaning side's edge lands on the matching side guide line (Slight or Hard):
         // edge = radius × (1 + 0.16 × lean/40), and the rotation already pulls it in by cos(lean).
         .offset(x: leanOffset(k: k))
         .overlay(alignment: .top) {
             VStack(spacing: 7) {
-                if app.isIdle {
+                if state.isIdle {
                     Text("IDLE")
                         .font(.nunito(28, .black))
                         .foregroundStyle(theme.ink)
@@ -132,35 +208,35 @@ struct DialView: View {
                         .tracking(1.6)
                         .foregroundStyle(theme.textSecondary)
                 } else {
-                    if app.guiding, app.hasRealRoute, app.etaManager.arrivalClock != nil {
+                    if state.guiding, !state.arrived, state.hasRealRoute, state.showsArrivalClockBelow {
                         // While guiding the arrival time lives under the compass; on the dial itself
                         // there's just the adaptive direction arrow, centred and large.
-                        Image(systemName: app.dialArrowSymbol)
+                        Image(systemName: state.arrow)
                             .font(.system(size: 52, weight: .black))
                             .foregroundStyle(theme.ink)
                             .contentTransition(.symbolEffect(.replace))
-                            .animation(.easeInOut(duration: 0.25), value: app.dialArrowSymbol)
+                            .animation(.easeInOut(duration: 0.25), value: state.arrow)
                     } else {
                         HStack(spacing: 8) {
-                            Text(app.fmt(app.activeDist))
+                            Text(state.distance)
                                 .font(.nunito(34, .black))
                                 .foregroundStyle(theme.ink)
-                            Image(systemName: app.dialArrowSymbol)
+                            Image(systemName: state.arrow)
                                 .font(.system(size: 26, weight: .black))
                                 .foregroundStyle(theme.ink)
                                 .contentTransition(.symbolEffect(.replace))
-                                .animation(.easeInOut(duration: 0.25), value: app.dialArrowSymbol)
+                                .animation(.easeInOut(duration: 0.25), value: state.arrow)
                         }
                     }
                 }
             }
-            .offset(y: (app.skin == .wheel ? 54 : 172) * k * cos(app.tiltDeg * .pi / 180))
+            .offset(x: leanOffset(k: k), y: (state.skin == .wheel ? 54 : 172) * k * cos(state.tilt * .pi / 180))
             .allowsHitTesting(false)
         }
-        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.tiltDeg)
-        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.laneDeg)
-        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.needleDeg)
-        .animation(.easeOut(duration: 0.45), value: app.accent)
+        .animation(Perf.anim(.spring(response: 0.5, dampingFraction: 0.7)), value: state.tilt)
+        .animation(Perf.anim(.spring(response: 0.5, dampingFraction: 0.7)), value: state.lane)
+        .animation(Perf.anim(.spring(response: 0.5, dampingFraction: 0.7)), value: state.needle)
+        .animation(.easeOut(duration: 0.45), value: state.themeID)
     }
 }
 
@@ -192,11 +268,11 @@ private struct NeedleSkin: View {
             Triangle(pointingUp: true)
                 .fill(theme.needleRed)
                 .frame(width: 26 * k, height: 111 * k)
-                .shadow(color: .black.opacity(0.5), radius: 8)
+                .lift(theme: theme, radius: 8, darkOpacity: 0.5)
             Triangle(pointingUp: false)
                 .fill(theme.needleGray)
                 .frame(width: 26 * k, height: 111 * k)
-                .shadow(color: .black.opacity(0.5), radius: 8)
+                .lift(theme: theme, radius: 8, darkOpacity: 0.5)
         }
         .overlay(
             ZStack {
@@ -233,7 +309,7 @@ private struct WheelSkin: View {
             Circle()
                 .strokeBorder(Color(hex: "6E6358"), lineWidth: 18 * k)
                 .frame(width: 226 * k, height: 226 * k)
-                .shadow(color: .black.opacity(0.6), radius: 12, y: 6)
+                .lift(theme: theme, radius: 12, y: 6, darkOpacity: 0.6)
             Circle().strokeBorder(.black.opacity(0.4), lineWidth: 5 * k).frame(width: 198 * k, height: 198 * k)
             RoundedRectangle(cornerRadius: 8 * k)
                 .fill(LinearGradient(colors: [Color(hex: "8A7E71"), Color(hex: "4A4238")], startPoint: .leading, endPoint: .trailing))
@@ -246,11 +322,11 @@ private struct WheelSkin: View {
                 .fill(RadialGradient(colors: [Color(hex: "3A342E"), Color(hex: "181513")], center: .init(x: 0.5, y: 0.32), startRadius: 0, endRadius: 40 * k))
                 .frame(width: 74 * k, height: 74 * k)
                 .overlay(Circle().stroke(theme.borderColor, lineWidth: 1))
-            Circle().fill(theme.accent).frame(width: 26 * k, height: 26 * k).shadow(color: theme.accent, radius: 10)
+            Circle().fill(theme.accent).frame(width: 26 * k, height: 26 * k).glow(theme.accent, radius: 10, theme: theme)
             RoundedRectangle(cornerRadius: 2 * k)
                 .fill(theme.accent)
                 .frame(width: 4 * k, height: 22 * k)
-                .shadow(color: theme.accent, radius: 8)
+                .glow(theme.accent, radius: 8, theme: theme)
                 .offset(y: -113 * k)
         }
     }
@@ -264,7 +340,7 @@ private struct ClockSkin: View {
             RoundedRectangle(cornerRadius: 3 * k)
                 .fill(theme.accent)
                 .frame(width: 6 * k, height: 83 * k)
-                .shadow(color: theme.accent, radius: 8)
+                .glow(theme.accent, radius: 8, theme: theme)
                 .offset(y: -41 * k)
             RoundedRectangle(cornerRadius: 4 * k)
                 .fill(theme.ink.opacity(0.92))
@@ -276,5 +352,40 @@ private struct ClockSkin: View {
                 .frame(width: 18 * k, height: 18 * k)
                 .overlay(Circle().stroke(theme.screen, lineWidth: 3))
         }
+    }
+}
+
+
+/// A static image with a native, forever-repeating gentle rotation. The animation lives in Core
+/// Animation, so SwiftUI never has to re-evaluate anything per frame. It is only (re)started when
+/// the amplitude changes, never on an ordinary redraw, so the sway doesn't hiccup as the needle turns.
+struct SwayingImage: UIViewRepresentable {
+    let image: UIImage
+    let amplitude: Double
+
+    final class Coordinator { var amplitude: Double = -1 }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> UIImageView {
+        let view = UIImageView(image: image)
+        view.contentMode = .scaleAspectFit
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ view: UIImageView, context: Context) {
+        if view.image !== image { view.image = image }
+        guard context.coordinator.amplitude != amplitude else { return }
+        context.coordinator.amplitude = amplitude
+        view.layer.removeAnimation(forKey: "sway")
+        guard amplitude != 0 else { return }
+        let sway = CABasicAnimation(keyPath: "transform.rotation.z")
+        sway.fromValue = -amplitude * .pi / 180
+        sway.toValue = amplitude * .pi / 180
+        sway.duration = 2.8
+        sway.autoreverses = true
+        sway.repeatCount = .infinity
+        sway.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        view.layer.add(sway, forKey: "sway")
     }
 }

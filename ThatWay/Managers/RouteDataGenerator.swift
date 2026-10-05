@@ -12,16 +12,6 @@ import Foundation
 import CoreLocation
 import Combine
 
-/// The two tolerance profiles guidance data is baked for — a driver can reasonably drift
-/// further from the route's line (lane width, GPS noise at speed) than someone on foot.
-enum GuidanceActivity: String, Codable {
-    case walking
-    case driving
-
-    /// Perpendicular offset tolerance, in metres: 15m walking, 30m driving.
-    var corridorRadius: CLLocationDistance { self == .driving ? 30 : 15 }
-}
-
 /// One pre-computed sample point along the route, roughly every 10-20m of ground covered.
 struct GuidanceWaypoint: Codable {
     let latitude: CLLocationDegrees
@@ -49,7 +39,7 @@ struct GuidanceWaypoint: Codable {
 struct GuidanceData: Codable {
     let waypoints: [GuidanceWaypoint]
     let totalDistance: CLLocationDistance
-    let activity: GuidanceActivity
+    let mode: TravelMode
     let generatedAt: Date
 }
 
@@ -68,12 +58,12 @@ final class RouteDataGenerator: ObservableObject {
 
     /// Generates guidance data for `polyline`/`steps`, unless data already exists — in which
     /// case it's reused as-is. Called once, when the traveller comes within 500m of the destination — only that final stretch is ever baked.
-    func generateGuidanceData(polyline: [CLLocationCoordinate2D], steps: [RouteStep], activity: GuidanceActivity) {
+    func generateGuidanceData(polyline: [CLLocationCoordinate2D], steps: [RouteStep], mode: TravelMode) {
         guard guidanceData == nil else {
             print("[RouteDataGenerator] Reusing existing guidance data (\(guidanceData?.waypoints.count ?? 0) waypoints)")
             return
         }
-        bake(polyline: polyline, steps: steps, activity: activity)
+        bake(polyline: polyline, steps: steps, mode: mode)
     }
 
     /// Drops the cached data and cancels any in-flight bake — call this when guidance ends
@@ -85,14 +75,14 @@ final class RouteDataGenerator: ObservableObject {
         isGenerating = false
     }
 
-    private func bake(polyline: [CLLocationCoordinate2D], steps: [RouteStep], activity: GuidanceActivity) {
+    private func bake(polyline: [CLLocationCoordinate2D], steps: [RouteStep], mode: TravelMode) {
         bakeTask?.cancel()
         guard polyline.count > 1 else { return }
         isGenerating = true
         let interval = sampleInterval
-        print("[RouteDataGenerator] Baking guidance data: \(polyline.count) raw points, activity \(activity.rawValue)")
+        print("[RouteDataGenerator] Baking guidance data: \(polyline.count) raw points, mode \(mode.rawValue)")
         bakeTask = Task.detached(priority: .utility) {
-            let data = Self.computeGuidanceData(polyline: polyline, steps: steps, activity: activity, sampleInterval: interval)
+            let data = Self.computeGuidanceData(polyline: polyline, steps: steps, mode: mode, sampleInterval: interval)
             guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
                 guard let self, !Task.isCancelled else { return }
@@ -111,7 +101,7 @@ final class RouteDataGenerator: ObservableObject {
     nonisolated private static func computeGuidanceData(
         polyline: [CLLocationCoordinate2D],
         steps: [RouteStep],
-        activity: GuidanceActivity,
+        mode: TravelMode,
         sampleInterval: CLLocationDistance
     ) -> GuidanceData {
         var cumulative: [CLLocationDistance] = [0]
@@ -128,7 +118,7 @@ final class RouteDataGenerator: ObservableObject {
             nearestCumulativeDistance(to: step.endCoordinate, polyline: polyline, cumulative: cumulative)
         }
 
-        let corridorRadius = activity.corridorRadius
+        let corridorRadius = mode.tuning.corridorRadius
         var waypoints: [GuidanceWaypoint] = []
         var sampleAt: CLLocationDistance = 0
 
@@ -167,7 +157,7 @@ final class RouteDataGenerator: ObservableObject {
             ))
         }
 
-        return GuidanceData(waypoints: waypoints, totalDistance: totalDistance, activity: activity, generatedAt: Date())
+        return GuidanceData(waypoints: waypoints, totalDistance: totalDistance, mode: mode, generatedAt: Date())
     }
 
     /// The cumulative distance (from the table built above) at whichever polyline vertex

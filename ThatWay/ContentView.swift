@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    init() { Perf.start() }
     var body: some View {
         RootView()
     }

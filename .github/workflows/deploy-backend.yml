@@ -1,0 +1,50 @@
+name: Deploy backend Lambdas
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/lambda/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch: {}
+
+# Only the six functions that are actually deployed (see backend/lambda/README.md) — the
+# Sign in with Apple ones are written but not live, and must not be pushed until they are.
+env:
+  AWS_REGION: ap-southeast-2
+  FUNCTIONS: postConfirmation friendsSearch friendsRequest friendsRespond friendsList friendsRemove
+
+permissions:
+  id-token: write   # needed to mint the OIDC token GitHub exchanges for AWS credentials
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/lambda
+    steps:
+      - uses: actions/checkout@v4
+
+      # No long-lived AWS keys stored in GitHub — this assumes an IAM role via OIDC.
+      # Create the role and trust policy from backend/SETUP.md, then set its ARN below
+      # as the repo secret AWS_DEPLOY_ROLE_ARN.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Zip and deploy each function
+        run: |
+          set -euo pipefail
+          for fn in $FUNCTIONS; do
+            echo "Packaging $fn"
+            (cd "$fn" && zip -qr "/tmp/$fn.zip" index.mjs)
+            echo "Deploying $fn"
+            aws lambda update-function-code \
+              --function-name "$fn" \
+              --zip-file "fileb:///tmp/$fn.zip" \
+              --no-cli-pager
+          done

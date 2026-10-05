@@ -7,8 +7,8 @@ import SwiftUI
 
 struct ProfileScreen: View {
     @EnvironmentObject var app: AppModel
+    @EnvironmentObject var friendsManager: FriendsManager
     @State private var friendQuery = ""
-    @State private var friendRequestSentTo: String?
     @FocusState private var friendFieldFocused: Bool
 
     var body: some View {
@@ -17,11 +17,19 @@ struct ProfileScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header(theme: theme)
-                addFriendSection(theme: theme)
+                if Config.backendEnabled {
+                    addFriendSection(theme: theme)
+                    friendRequestsSection(theme: theme)
+                } else {
+                    backendDisabledNotice(theme: theme)
+                }
                 visibilitySection(theme: theme)
                 defaultNavModeSection(theme: theme)
                 achievementsSection(theme: theme)
                 settingsSection(theme: theme)
+                if Config.backendEnabled {
+                    signOutSection(theme: theme)
+                }
                 donateBanner(theme: theme)
             }
             .padding(.horizontal, 20)
@@ -70,46 +78,131 @@ struct ProfileScreen: View {
     }
 
     @ViewBuilder
+    private func backendDisabledNotice(theme: AppTheme) -> some View {
+        Text("Accounts & friends are temporarily off while the backend is being set up.")
+            .font(.nunito(12, .semibold))
+            .foregroundStyle(theme.textSecondary)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 14).fill(theme.ink.opacity(0.05)))
+    }
+
+    @ViewBuilder
     private func addFriendSection(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("ADD A FRIEND").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
             HStack(spacing: 10) {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.5))
-                    TextField("Username or email", text: $friendQuery)
+                    TextField("Username", text: $friendQuery)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .focused($friendFieldFocused)
                         .font(.nunito(15, .semibold))
-                        .onSubmit(sendFriendRequest)
+                        .onSubmit(runSearch)
                 }
                 .padding(.horizontal, 14).frame(height: 46)
                 .background(RoundedRectangle(cornerRadius: 14).fill(theme.ink.opacity(0.05)))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(theme.ink.opacity(0.1)))
 
-                Button(action: sendFriendRequest) {
-                    Text("ADD")
+                Button(action: runSearch) {
+                    Text("SEARCH")
                         .font(.nunito(12, .black)).tracking(0.6)
                         .foregroundStyle(theme.onAccent)
-                        .padding(.horizontal, 20).frame(height: 46)
+                        .padding(.horizontal, 16).frame(height: 46)
                         .background(RoundedRectangle(cornerRadius: 14).fill(theme.accent))
                         .opacity(friendQuery.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
                 }
                 .buttonStyle(.plain)
                 .disabled(friendQuery.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            if let sent = friendRequestSentTo {
-                Text("Request sent to \(sent)").font(.nunito(12, .semibold)).foregroundStyle(theme.accent)
+
+            ForEach(friendsManager.searchResults) { result in
+                HStack {
+                    Text(result.username).font(.nunito(14, .semibold))
+                    Spacer()
+                    Button {
+                        Task {
+                            if await friendsManager.sendRequest(to: result.id) {
+                                friendsManager.searchResults.removeAll { $0.id == result.id }
+                                friendQuery = ""
+                                friendFieldFocused = false
+                            }
+                        }
+                    } label: {
+                        Text("ADD").font(.nunito(11, .black)).tracking(0.6)
+                            .foregroundStyle(theme.onAccent)
+                            .padding(.horizontal, 14).padding(.vertical, 7)
+                            .background(Capsule().fill(theme.accent))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 4)
+            }
+
+            if let error = friendsManager.errorMessage {
+                Text(error).font(.nunito(12, .semibold)).foregroundStyle(theme.needleRed)
             }
         }
     }
 
-    private func sendFriendRequest() {
-        let name = friendQuery.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
-        friendRequestSentTo = name
-        friendQuery = ""
-        friendFieldFocused = false
+    private func runSearch() {
+        let query = friendQuery.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return }
+        Task { await friendsManager.searchUsers(query: query) }
+    }
+
+    @ViewBuilder
+    private func friendRequestsSection(theme: AppTheme) -> some View {
+        if !friendsManager.incomingRequests.isEmpty || !friendsManager.outgoingRequests.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("FRIEND REQUESTS").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
+                VStack(spacing: 8) {
+                    ForEach(friendsManager.incomingRequests) { req in
+                        HStack {
+                            Text(req.username).font(.nunito(14, .semibold))
+                            Spacer()
+                            Button { Task { await friendsManager.respond(to: req.id, accept: false) } } label: {
+                                Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.ink.opacity(0.6))
+                                    .frame(width: 32, height: 32)
+                                    .background(Circle().fill(theme.ink.opacity(0.08)))
+                            }.buttonStyle(.plain)
+                            Button { Task { await friendsManager.respond(to: req.id, accept: true) } } label: {
+                                Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.onAccent)
+                                    .frame(width: 32, height: 32)
+                                    .background(Circle().fill(theme.accent))
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                    ForEach(friendsManager.outgoingRequests) { req in
+                        HStack {
+                            Text(req.username).font(.nunito(14, .semibold))
+                            Spacer()
+                            Text("Pending").font(.nunito(11, .semibold)).foregroundStyle(theme.textSecondary)
+                        }
+                    }
+                }
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 16).fill(theme.ink.opacity(0.05)))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.ink.opacity(0.09)))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func signOutSection(theme: AppTheme) -> some View {
+        Button {
+            app.authManager.signOut()
+        } label: {
+            Text("SIGN OUT")
+                .font(.nunito(12, .black)).tracking(0.6)
+                .foregroundStyle(theme.needleRed)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(RoundedRectangle(cornerRadius: 16).fill(theme.needleRed.opacity(0.1)))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.needleRed.opacity(0.3)))
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -130,7 +223,7 @@ struct ProfileScreen: View {
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("You").font(.nunito(20, .black))
+                Text(app.authManager.currentUser?.username ?? "You").font(.nunito(20, .black))
                 Text(visLine).font(.nunito(13, .semibold)).foregroundStyle(theme.ink.opacity(0.68))
                 Button { app.avatarSheet = true } label: {
                     Text("EDIT PICTURE & AVATARS")
@@ -237,8 +330,10 @@ struct ProfileScreen: View {
                     if let id = AppTheme.all.first(where: { $0.name == v })?.id { app.setTheme(id) }
                 }
                 SettingsRow("Compass tilt", value: app.opts.tilt, options: ["Off", "Slight", "Hard"], theme: theme) { app.opts.tilt = $0 }
+                SettingsRow("Audio guidance", value: app.audioStyle.displayName, options: AudioGuidanceStyle.allCases.map(\.displayName), theme: theme) { v in
+                    app.audioStyle = AudioGuidanceStyle.allCases.first { $0.displayName == v } ?? .tone
+                }
                 SettingsRow("Voice of directions", value: app.opts.voice, options: ["Friendly", "Terse", "Cheeky"], theme: theme) { app.opts.voice = $0 }
-                SettingsRow("Activity detection", value: app.opts.activity, options: ["Automatic", "Walking", "Running", "Driving"], theme: theme) { app.opts.activity = $0 }
                 SettingsRow("Haptics on turns", value: app.opts.haptics, options: ["Off", "Light", "Strong"], theme: theme) { app.opts.haptics = $0 }
                 SettingsRow("Share destination", value: app.opts.share, options: ["Off", "Friends only", "Everyone"], theme: theme) { app.opts.share = $0 }
                 SettingsRow("Units", value: app.opts.units, options: ["Kilometres", "Miles"], theme: theme, isLast: true) { app.opts.units = $0 }
