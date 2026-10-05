@@ -135,4 +135,44 @@ struct CompassHealthTests {
         #expect(CompassHealth.signedDifference(270, from: 90) == 180)
         #expect(CompassHealth.signedDifference(45, from: 45) == 0)
     }
+
+    @Test func continuousAngleTakesTheShortWayAcrossTheWrapPoint() {
+        var a = ContinuousAngle(170)
+        var seen: [Double] = []
+        for wrapped in [175.0, 179.0, -179.0, -175.0, -170.0, -175.0, 179.0, 170.0] {
+            a.update(to: wrapped)
+            seen.append(a.value)
+        }
+        // Never a jump bigger than the real change (9° at most in this sequence), in either direction.
+        let all = [170.0] + seen
+        for (x, y) in zip(all, all.dropFirst()) { #expect(abs(y - x) <= 9.001) }
+        #expect(abs(seen[3] - 185) < 0.001)
+        #expect(abs(seen.last! - 170) < 0.001)
+    }
+
+    @Test func continuousAngleIsIdempotentAndHandlesNorth() {
+        var a = ContinuousAngle(350)
+        a.update(to: 350); a.update(to: 350)
+        #expect(a.value == 350)
+        a.update(to: 10)
+        #expect(abs(a.value - 370) < 0.001)
+        a.update(to: 350)
+        #expect(abs(a.value - 350) < 0.001)
+    }
+}
+
+@MainActor
+struct CompassCheckScopeTests {
+    @Test func theCompassCheckOnlyAppliesWhileGuidingATripThatHasNotEnded() {
+        let app = AppModel(routingManager: RoutingManager(provider: MockRoutingProvider(alwaysSucceedingWith: TestRoutes.trivial)))
+        app.mode = .point
+        app.arrived = false
+        #expect(app.compassHealthApplies == false, "idle or just pointing: no destination guidance")
+        app.mode = .guidance
+        #expect(app.compassHealthApplies == true)
+        app.arrived = true
+        #expect(app.compassHealthApplies == false, "the trip has ended")
+        app.mode = .point
+        app.arrived = false
+    }
 }

@@ -166,3 +166,13 @@ before a verdict. Heading redraws (item 4) cannot be measured in the simulator �
 `scripts/perf/make_tail_trip.py` trims a trip to its last N metres so a run starts inside the route-line reveal
 zone; `link_test.py` gained a `deadreckon` link. `-TW_GHOST` (PERF builds only) forces the compass-warning overlay
 so it can be inspected in the simulator.
+
+### Addendum — dial wrap-around and compass-check scope
+
+- **Dial 180° whirl fixed** (`ContinuousAngle`, `DialHost`). The ring and needle were animated from wrapped
+  angles (−180…180), so at the wrap point the value jumped +180 → −180 and SwiftUI spun the dial the long way
+  round. The dial now receives continuous angles that always take the shortest turn. Cost: two `Double`
+  updates per redraw — nil. Prediction: CPU/memory/battery unchanged (±0).
+- **Compass check now runs only while guiding** (`AppModel.compassHealthApplies`). It used to run whenever the
+  traveller was moving, including idle with no destination, where the phone can be held any way and a
+  "disagreement" means nothing. Prediction: slightly *less* work in idle/Point (one comparison per second saved).

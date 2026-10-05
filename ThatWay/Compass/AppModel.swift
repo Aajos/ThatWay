@@ -290,10 +290,25 @@ final class AppModel: ObservableObject {
 
     func stopUsingGPSDirection() { usingGPSHeading = false }
 
+    /// The compass check runs only while guiding a trip that hasn't ended.
+    var compassHealthApplies: Bool { guiding && !arrived }
+
     private func updateCompassHealth() {
         guard Perf.on("compasshealth") else { return }
         if Perf.ghost {
             if !compassSuspect { compassSuspect = true; compassPredicted = 40 }
+            return
+        }
+        // The compass only matters (and only gets judged) while a trip is being guided. With no
+        // destination, or just pointing, the phone can be held any way while the traveller walks, and
+        // a disagreement with the walking direction means nothing.
+        guard compassHealthApplies else {
+            if compassSuspect || usingGPSHeading || compassPredicted != nil {
+                compassHealth.reset()
+                compassSuspect = false
+                compassPredicted = nil
+                usingGPSHeading = false
+            }
             return
         }
         guard locationManager.hasReliableHeading, let fix = locationManager.location else { return }

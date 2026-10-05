@@ -27,8 +27,10 @@ struct DialState: Equatable {
     var arrow: String
     var distance: String
 
+    /// `heading` and `needle` are *continuous* angles (see `ContinuousAngle`), so animating between two
+    /// readings never spins the long way round at the ±180° wrap point.
     @MainActor
-    init(app: AppModel) {
+    init(app: AppModel, heading continuousHeading: Double, needle continuousNeedle: Double) {
         themeID = app.theme
         skin = app.skin
         guiding = app.guiding
@@ -36,8 +38,8 @@ struct DialState: Equatable {
         isIdle = app.isIdle
         hasRealRoute = app.hasRealRoute
         showsArrivalClockBelow = app.etaManager.arrivalClock != nil
-        heading = app.dialHeadingDeg
-        needle = app.needleDeg
+        heading = continuousHeading
+        needle = continuousNeedle
         tilt = app.tiltDeg
         lane = app.laneDeg
         sway = app.swayAmplitude
@@ -54,8 +56,15 @@ struct DialHost: View {
     @ObservedObject var location: LocationManager
     let k: CGFloat
 
+    /// Holds the running continuous angles. A reference type on purpose: updating it while building the
+    /// body is safe (nothing observes it) and idempotent for an unchanged reading.
+    private final class Angles { var heading = ContinuousAngle(); var needle = ContinuousAngle() }
+    @State private var angles = Angles()
+
     var body: some View {
-        DialView(state: DialState(app: app), k: k).equatable()
+        let _ = angles.heading.update(to: app.dialHeadingDeg)
+        let _ = angles.needle.update(to: app.needleDeg)
+        DialView(state: DialState(app: app, heading: angles.heading.value, needle: angles.needle.value), k: k).equatable()
     }
 }
 
