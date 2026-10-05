@@ -73,6 +73,15 @@ struct RootView: View {
 private struct TabBar: View {
     @EnvironmentObject var app: AppModel
 
+    /// Phones with a Home button (iPhone SE) have no bottom safe-area inset, so the bar's labels sat
+    /// right on the screen's edge; lift the bar a little there. Face ID phones already clear the
+    /// home indicator and get none.
+    private var bottomLeeway: CGFloat {
+        let inset = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom }.first
+        return inset == 0 ? 6 : 0   // unknown (no window yet) counts as none
+    }
+
     var body: some View {
         let theme = app.currentTheme
         HStack(spacing: 18) {
@@ -100,7 +109,7 @@ private struct TabBar: View {
                 .ignoresSafeArea(edges: .bottom)
         )
         .opacity(app.avatarSheet || app.searchOpen || app.cardsExpanded ? 0 : 1)
-        .offset(y: 20)
+        .offset(y: 20 - bottomLeeway)
         .sensoryFeedback(.selection, trigger: app.screen)
     }
 }
