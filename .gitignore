@@ -2,3 +2,7 @@
 xcuserdata/
 DerivedData/
 *.xcuserstate
+.build/
+.swiftpm/
+docs/vault/.obsidian/workspace*.json
+docs/vault/.obsidian/cache
