@@ -5,6 +5,14 @@ area: guidance-ui
 status: shipped
 risk: low
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.7
+tier: free
+value: 4
+release: v1.0
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Compass/TravelModeCarousel.swift
 tests:

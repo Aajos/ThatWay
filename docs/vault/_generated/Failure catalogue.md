@@ -20,7 +20,6 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | WVS-2 | [[watch-voice-search]] | medium | Query or place name ends up in a log | none: no test on the watch side | none |
 | AV-1 | [[avatars-social-decor]] | low | Avatar photo options do nothing | none: known gap | none |
 | CA-1 | [[continuous-angle]] | low | Angle value grows without bound over a very long session | none: Double precision is ample | none |
-| FR-1 | [[friends]] | low | Every call fails while `apiBaseURL` is the placeholder | none: known | none |
 | HI-1 | [[haptics-ios]] | low | A setting that does nothing erodes trust | none: known gap | none |
 | PD-1 | [[persistence-defaults]] | low | A key renamed without migration silently resets users' choices | none | none |
 | PD-2 | [[persistence-defaults]] | low | Theme and skin choice reset on relaunch (iPhone) | none: known gap | none |
@@ -63,8 +62,9 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | SR-1 | [[synthetic-route]] | low | Flat-earth offsets drift for legs over a few kilometres | by design: test aid | other |
 | TL-2 | [[trip-log]] | low | Device-wide network bytes misread as the app's own | documented caveat | other |
 | AM-2 | [[audio-manager]] | high | Session left active after the trip (blocks other apps' audio) | manual: END and arrival call `finishGuidance` | manual |
-| AU-1 | [[auth]] | high | Confirmation email never arrives, so no one can get past the gate | manual: currently failing; test builds switch the gate off | manual |
+| AU-1 | [[auth]] | high | Confirmation email never arrives, so no one can get past the gate | manual: still open on the AWS side (SETUP.md section 13); the app now offers Send a new code, and sign-in with an unconfirmed account goes back to the code step | manual |
 | AU-2 | [[auth]] | high | Gate on while the API URL is a placeholder | manual: see backend-config | manual |
+| AU-3 | [[auth]] | high | Launching with no network signed the user out or showed a blank screen (was a real bug) | manual: gate-on build in airplane mode; fixed | manual |
 | BG-1 | [[background-guidance]] | high | App suspended on lock and guidance silently stops | manual: long locked walk (trip log samples show it) | manual |
 | BG-2 | [[background-guidance]] | high | Screen-awake drains battery over a long walk (default chosen, not agreed) | manual: weekly battery test | manual |
 | BG-3 | [[background-guidance]] | high | iOS shows the blue location indicator after the trip ends | manual | manual |
@@ -72,6 +72,8 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | GM-2 | [[guidance-mode]] | high | Guidance started before the first real fix routes from the wrong place | manual: cold start; guarded in `fetchRouteAndWait` | manual |
 | LM-2 | [[location-manager]] | high | Heading orientation followed the physical orientation and could flip the compass (was changed to portrait) | manual | manual |
 | LM-3 | [[location-manager]] | high | Approximate location gives kilometre-scale fixes | manual: reduced-accuracy card | manual |
+| NB-7 | [[nearby-proximity]] | high | The real NISession misbehaves (token never arrives, session suspended, range drops) | manual: needs two UWB phones | manual |
+| NB-8 | [[nearby-proximity]] | high | The route is not created in AWS, so the deploy workflow fails on its last step | manual: SETUP.md section 12 | manual |
 | RG-2 | [[routing-governor]] | high | Retry loop outlives guidance | manual: END during retries | manual |
 | RM-B | [[redraw-model]] | high | An equatable view skips a needed redraw because a shown value was left out of its state | manual | manual |
 | WDG-2 | [[watch-drive-guard]] | high | About 3 s between launching the watch app and learning the phone is driving | manual: seen in the simulator | manual |
@@ -83,6 +85,8 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | CH-1 | [[compass-health]] | medium | False alarm because the phone is held off the walking direction | manual: first real walks; strict cadence mitigates | manual |
 | CL-1 | [[compass-screen-layout]] | medium | Keyboard shrinks the layout area and shifts everything down (was a real bug) | manual on device; fixed | manual |
 | CL-2 | [[compass-screen-layout]] | medium | New chrome added without checking SE height | manual | manual |
+| CL-3 | [[compass-screen-layout]] | medium | Ending a route switched layouts in one frame (a cut) | manual: screen recording, frame by frame | manual |
+| CL-4 | [[compass-screen-layout]] | medium | A new row or button not restacked or capped clips or hides a control (END was pushed off the card) | manual: simulator at accessibility-extra-extra-extra-large | manual |
 | DS-1 | [[destination-search]] | medium | Search region biased to the placeholder when there is no fix | manual | manual |
 | DV-3 | [[dial-view]] | medium | Needle image stale after theme/skin change | manual | manual |
 | GC-1 | [[guidance-cards]] | medium | Card text renders from stale values (equatable skip hides a change) | manual: GuidanceStackState holds every shown string | manual |
@@ -101,9 +105,11 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | TM-2 | [[travel-modes]] | medium | Walk/run values are first guesses, not yet tuned on foot | manual: real walks | manual |
 | WA-1 | [[watch-app]] | medium | Not yet signed or run on a real watch | manual: blocked on signing | manual |
 | WA-2 | [[watch-app]] | medium | Simulator has no magnetometer or wrist: blender cannot be exercised there | manual | manual |
+| WA-3 | [[watch-app]] | medium | Content squeezed or clipped on the display: the system keeps 40 pt (top) and 19 pt (bottom) free on a 40 mm SE 3 and only 2 pt at the sides, so controls hugged the rounded edge and the compass lost a third of the screen (was a real bug) | manual: screenshot every watch screen on the SE 3 40 mm and 44 mm simulators; the main screen lays itself out on the whole display (root `ignoresSafeArea`, 22 pt under the clock, 9 pt side margin) and the tools pages use `safeAreaPadding` | manual |
 | WG-1 | [[watch-gestures]] | medium | Swipes fight system gestures at the screen edge | manual on a real wrist | manual |
 | WG-2 | [[watch-gestures]] | medium | A swipe starting on a button triggers the button instead | manual | manual |
 | WVS-3 | [[watch-voice-search]] | medium | Search or route fails offline | manual | manual |
+| SP-3 | [[settings-profile]] | low | The system Menu scrolled the Profile page to the top and looked detached for a few seconds after a choice | manual: inline picker, verified in the simulator | manual |
 | SS-1 | [[store-skins]] | low | Donate action has no real destination yet | manual | manual |
 | SU-1 | [[search-ui]] | low | Panel extends under the keyboard and rows are unreachable | manual: fixed | manual |
 | TB-1 | [[tab-bar]] | low | Labels touch the screen edge on Home-button phones (was a real bug) | manual: fixed with leeway | manual |
@@ -113,6 +119,15 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | WH-1 | [[watch-haptics]] | low | Patterns feel identical on a moving wrist | manual: the point of the test | manual |
 | WTM-1 | [[watch-travel-modes]] | low | A mode change mid-route for cycling leaves the old walking route on screen if the refetch fails | manual: change mode with Airplane Mode on | manual |
 | WTM-2 | [[watch-travel-modes]] | low | Swipe ambiguity: a vertical swipe read as horizontal | manual on a real wrist | manual |
+| AU-4 | [[auth]] | high | A sign-up left unconfirmed becomes a dead end (sign-in error, username taken) | test: AuthManagerTests::signingInBeforeConfirmingSendsANewCodeInsteadOfDeadEnding | test |
+| GM-4 | [[guidance-mode]] | high | Clearing the destination while a trip is running left guidance running with no place, or left the compass pointing at the old place | test: ClearDestinationTests | test |
+| GM-5 | [[guidance-mode]] | high | DONE on the arrival screen left the compass pointing at the place just reached instead of idle | test: ClearDestinationTests.doneOnTheArrivalScreenReturnsToIdleNotToPointingAtTheOldPlace | test |
+| NB-1 | [[nearby-proximity]] | high | A phone without UWB tries to start a session | test: NearbyManagerTests::aPhoneWithoutUWBNeverTouchesTheBackend | test |
+| NB-2 | [[nearby-proximity]] | high | Ranging starts with the wrong friend's token | test: NearbyManagerTests::anotherFriendsOfferIsIgnored | test |
+| NB-3 | [[nearby-proximity]] | high | A stranger (not an accepted friend) gets a token relayed | test: backend/lambda/nearby/test.mjs (non-friend refused) | test |
+| NB-4 | [[nearby-proximity]] | high | Offers linger after the session or the friendship ends | test: backend/lambda/nearby/test.mjs (expired, unfriended and cleared offers) | test |
+| NB-5 | [[nearby-proximity]] | high | The distance readout or band flickers at an edge | test: ProximityTests::smootherDoesNotFlapAtAnEdge | test |
+| NB-6 | [[nearby-proximity]] | high | A token, id or body ends up in a server log | test: backend/lambda/nearby/test.mjs (log has the error name only) | test |
 | OR-2 | [[off-route-reroute]] | high | Reroute fetch fails and the user is left with no feedback | test: failedModeChangeKeepsTheOldRouteAndShowsDiagnosis; manual offline | test |
 | RP-2 | [[route-progress]] | high | Estimate carries progress past a turn and the card flips forward then back | test: DeadReckoningRouteTests.estimateStopsShortOfTheNextManoeuvre | test |
 | RS-2 | [[routing-provider-seam]] | high | An engine change breaks parsing of a field the UI relies on | tests: OSRMParsingTests fixtures | test |
@@ -126,4 +141,5 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | RF-1 | [[route-failure]] | medium | Offline vs a struggling server look the same as `network` unless connectivity is consulted | test: RoutingErrorMappingTests | test |
 | TM-1 | [[travel-modes]] | medium | A tuning value changed for one mode silently changes another feature (everything reads the table) | test: driving values pinned in TravelModeTests | test |
 | CT-2 | [[compass-tilt]] | low | Stage resets mid-leg and the dial jumps back | test: CompassTiltTests | test |
+| FR-1 | [[friends]] | low | Every call fails while `apiBaseURL` is the placeholder | test: AuthManagerTests::friendsAndNearbyNeedTheServiceAddress (now fails with a plain message instead of a network error); the real address is still to be set | test |
 | TL-1 | [[trip-log]] | low | A log line accidentally includes a location or name | test: logsNeverContainCoordinatesOrNames | test |

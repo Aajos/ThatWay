@@ -5,6 +5,14 @@ area: location-sensors
 status: shipped
 risk: low
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.8
+tier: internal
+value: 3
+release: v1.0
+cpu: "predicted: 0 (two Double updates per redraw)"
+memory: "predicted: 0"
+battery: "predicted: 0"
 files:
   - ThatWayCore/Sources/ThatWayCore/ContinuousAngle.swift
   - ThatWayCore/Sources/ThatWayCore/AngleMath.swift

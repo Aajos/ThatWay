@@ -5,6 +5,14 @@ area: power-performance
 status: shipped
 risk: high
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.8
+tier: internal
+value: 4
+release: v1.0
+cpu: "measured (sim): walk 2.74 % to 1.51 % mean after the dial/card split; compass redraws 1.06 to 0.56 /s"
+memory: "not measured"
+battery: "predicted: -0.5 to -1 %/h while guiding (device, not yet measured)"
 files:
   - ThatWay/Compass/AppModel.swift
   - ThatWay/Compass/DialView.swift

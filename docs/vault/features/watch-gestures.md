@@ -5,6 +5,14 @@ area: watch
 status: spike
 risk: medium
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.10
+tier: free
+value: 2
+release: later
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWayWatch/MainView.swift
   - ThatWayWatch/ToolsView.swift

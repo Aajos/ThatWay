@@ -5,6 +5,14 @@ area: watch
 status: spike
 risk: low
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.10
+tier: free
+value: 3
+release: later
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWayCore/Sources/ThatWayCore/HapticPatterns.swift
   - ThatWayWatch/HapticPlayer.swift

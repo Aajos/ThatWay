@@ -5,6 +5,14 @@ area: watch
 status: spike
 risk: medium
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.10
+tier: internal
+value: 2
+release: later
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Managers/WatchLink.swift
   - ThatWayWatch/PhoneLink.swift
@@ -30,6 +38,7 @@ tags: [feature, area/watch, status/spike, risk/medium]
 - `PhoneLink` (watch) reads the stored context at launch and live messages
 - `WatchSync` payload shared in ThatWayCore
 - Watch target embedded in the iPhone app (`Embed Watch Content`), companion bundle id `...ThatWay.watchkitapp`
+- Also carries the proximity state (friend name, band, metres) in the same context: the context is replaced wholesale, so mode and proximity are always sent together
 - Verified between paired simulators
 
 ## Depends on
@@ -37,6 +46,7 @@ tags: [feature, area/watch, status/spike, risk/medium]
 - [[core-package]]
 
 ## Used by
+- [[nearby-proximity]] — Find a friend nearby (UWB)
 - [[watch-drive-guard]] — Watch drive guard
 
 ## Failure points

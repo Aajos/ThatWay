@@ -5,6 +5,14 @@ area: shared-modules
 status: shipped
 risk: high
 last_verified: 2026-10-05
+introduced: 2026-09-15
+build: 0.3
+tier: internal
+value: 3
+release: v1.0
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWayCore/Sources/ThatWayCore/RouteModels.swift
 tests:

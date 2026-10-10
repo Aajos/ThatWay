@@ -5,6 +5,14 @@ area: location-sensors
 status: shipped
 risk: medium
 last_verified: 2026-10-05
+introduced: 2026-09-14
+build: 0.1
+tier: free
+value: 5
+release: v1.0
+cpu: "predicted: slightly less in idle (heading to dial only)"
+memory: "not measured"
+battery: "predicted: -0.5 to -2 %/h in Point and idle (device, not yet measured)"
 files:
   - ThatWay/Managers/LocationManager.swift
   - ThatWay/Compass/AppModel.swift

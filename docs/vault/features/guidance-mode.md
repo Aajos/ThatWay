@@ -5,12 +5,21 @@ area: navigation-core
 status: shipped
 risk: high
 last_verified: 2026-10-05
+introduced: 2026-09-14
+build: 0.1
+tier: free
+value: 5
+release: v1.0
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Compass/AppModel.swift
   - ThatWay/Managers/LocationCheckScheduler.swift
   - ThatWay/Managers/RoutePersistence.swift
 tests:
   - ThatWayTests/TravelModeTests.swift
+  - ThatWayTests/ClearDestinationTests.swift
   - ThatWayTests/CompassHealthTests.swift::theCompassCheckOnlyAppliesWhileGuidingATripThatHasNotEnded
 manual_checks:
   - Start a trip, END it mid-way: audio stops, screen may lock, no background location indicator
@@ -32,6 +41,7 @@ tags: [feature, area/navigation-core, status/shipped, risk/high]
 - Background location + screen-awake switched on/off with the mode
 - Trip log begin/end
 - Persisted trip saved on route arrival, cleared on end
+- END keeps the place (Point mode); clearing the place or DONE after arrival returns to idle (`clearDestination`, `finishArrival`)
 
 ## Depends on
 - [[route-progress]] — Route progress tracking
@@ -54,6 +64,8 @@ tags: [feature, area/navigation-core, status/shipped, risk/high]
 |---|---|---|
 | GM-1 | END leaves the retry loop or scheduler running (battery drain, phantom reroutes) | manual: END during an offline retry |
 | GM-2 | Guidance started before the first real fix routes from the wrong place | manual: cold start; guarded in `fetchRouteAndWait` |
+| GM-4 | Clearing the destination while a trip is running left guidance running with no place, or left the compass pointing at the old place | test: ClearDestinationTests |
+| GM-5 | DONE on the arrival screen left the compass pointing at the place just reached instead of idle | test: ClearDestinationTests.doneOnTheArrivalScreenReturnsToIdleNotToPointingAtTheOldPlace |
 | GM-3 | A fetch outliving an arrival restarts the scheduler | guarded by `!arrived` checks; no automated test |
 
 ## Tests

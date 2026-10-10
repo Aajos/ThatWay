@@ -5,6 +5,14 @@ area: location-sensors
 status: shipped
 risk: medium
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.8
+tier: free
+value: 4
+release: v1.0
+cpu: "predicted: +0 pt (one comparison a second)"
+memory: "predicted: under +0.05 MB"
+battery: "predicted: about 0"
 files:
   - ThatWay/Managers/CompassHealth.swift
   - ThatWay/Compass/CompassGhostOverlay.swift

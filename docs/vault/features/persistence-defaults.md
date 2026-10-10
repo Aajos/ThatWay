@@ -5,6 +5,14 @@ area: app-shell
 status: shipped
 risk: low
 last_verified: 2026-10-05
+introduced: 2026-09-19
+build: 0.5
+tier: free
+value: 3
+release: v1.0
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Compass/AppModel.swift
   - ThatWay/Managers/RoutePersistence.swift

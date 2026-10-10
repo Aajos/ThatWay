@@ -5,6 +5,14 @@ area: navigation-core
 status: shipped
 risk: medium
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.7
+tier: free
+value: 3
+release: v1.0
+cpu: "measured (sim): 1.89 % mean on vs 2.44 % off, inside the ±0.5 pt noise; predicted +0 to +0.7 pt"
+memory: "predicted: under +0.1 MB"
+battery: "predicted: +0 to +1 %/h (device, not yet measured)"
 files:
   - ThatWay/Managers/DeadReckoning.swift
   - ThatWay/Managers/RoutingManager.swift

@@ -5,6 +5,14 @@ area: audio-haptics
 status: setting-only
 risk: low
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.7
+tier: free
+value: 2
+release: later
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Compass/TravelModeCarousel.swift
   - ThatWay/Compass/ProfileScreen.swift

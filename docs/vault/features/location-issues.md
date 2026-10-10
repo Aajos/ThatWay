@@ -5,6 +5,14 @@ area: location-sensors
 status: shipped
 risk: medium
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.7
+tier: free
+value: 4
+release: v1.0
+cpu: "predicted: 0"
+memory: "predicted: under +0.05 MB"
+battery: "predicted: 0"
 files:
   - ThatWay/Compass/AppModel.swift
   - ThatWay/Compass/CompassScreen.swift

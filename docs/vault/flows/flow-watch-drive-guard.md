@@ -1,6 +1,6 @@
 ---
 id: flow-watch-drive-guard
-title: Phone in Drive mode: the watch refuses
+title: "Phone in Drive mode: the watch refuses"
 type: flow
 features: [phone-watch-link, travel-modes, watch-drive-guard, watch-session, watch-travel-modes]
 tags: [flow]

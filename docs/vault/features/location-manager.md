@@ -5,12 +5,20 @@ area: location-sensors
 status: shipped
 risk: high
 last_verified: 2026-10-05
+introduced: 2026-09-14
+build: 0.1
+tier: free
+value: 5
+release: v1.0
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Managers/LocationManager.swift
 tests:
   - ThatWayTests/LocationProfileTests.swift
 manual_checks:
-  - Deny location: the card says so; allow Precise off: card plus system prompt
+  - "Deny location: the card says so; allow Precise off: card plus system prompt"
 depends_on: [location-profile]
 tags: [feature, area/location-sensors, status/shipped, risk/high]
 ---

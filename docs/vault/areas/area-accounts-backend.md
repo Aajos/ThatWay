@@ -15,6 +15,7 @@ Sign-in, friends, configuration and the AWS backend.
 | [[friends]] | dormant | low | 0 |
 | [[backend-config]] | shipped | high | 0 |
 | [[backend-lambda]] | external | medium | 0 |
+| [[nearby-proximity]] | spike | high | 3 |
 
 ## Reaches into other areas
 - nothing

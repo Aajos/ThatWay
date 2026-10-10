@@ -5,6 +5,14 @@ area: navigation-core
 status: shipped
 risk: high
 last_verified: 2026-10-05
+introduced: 2026-09-15
+build: 0.3
+tier: free
+value: 5
+release: v1.0
+cpu: "measured (sim): route publishes 1.18 to 0.64 /s; last 450 m (drive) 0.91 % mean"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Managers/RoutingManager.swift
   - ThatWayCore/Sources/ThatWayCore/RouteTracker.swift

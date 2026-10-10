@@ -5,6 +5,14 @@ area: guidance-ui
 status: shipped
 risk: medium
 last_verified: 2026-10-05
+introduced: 2026-09-23
+build: 0.6
+tier: free
+value: 5
+release: v1.0
+cpu: "measured (sim): card redraws 0.3 to 0.4 /s instead of about 1 /s"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Compass/GuidanceCardsView.swift
   - ThatWay/Compass/CompassScreen.swift

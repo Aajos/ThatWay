@@ -12,10 +12,13 @@ Checks (errors fail the run, exit code 1):
   - every [[wikilink]] in every note resolves to a note
   - each feature's "## Used by" list equals the reverse of everyone's depends_on (it must not drift)
   - flow notes only reference existing features
+Optional ledger fields (validated when present, warned about when missing): introduced (YYYY-MM-DD), build (a row in versions.json),
+  tier (free|paid|internal), value (1-5), release (v1.0|v1.1|v1.2|later|internal), cpu/memory/battery (start with measured, predicted,
+  not measured or n/a). They feed the generated Feature ledger, Build timeline, Performance evidence and Release scope notes.
 Warnings (printed, do not fail): Swift source files that no feature claims ("unmapped"), dependency cycles.
 Numbers and structure only: the vault holds no coordinates, secrets or personal data.
 """
-import os, re, sys, subprocess, glob
+import os, re, sys, subprocess, glob, json, datetime
 from collections import defaultdict
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -24,6 +27,11 @@ STATUSES = {'shipped', 'spike', 'dormant', 'setting-only', 'external', 'planned'
 RISKS = {'low', 'medium', 'high'}
 REQUIRED = ['id', 'title', 'area', 'status', 'risk', 'files', 'tests', 'manual_checks', 'depends_on']
 SOURCE_ROOTS = ['ThatWay', 'ThatWayCore/Sources', 'ThatWayWatch']
+TIERS = {'free', 'paid', 'internal'}
+RELEASES = {'v1.0', 'v1.1', 'v1.2', 'later', 'internal'}
+PERF_PREFIXES = ('measured', 'predicted', 'not measured', 'n/a')
+BUILDS = json.load(open(os.path.join(os.path.dirname(__file__), 'versions.json')))['builds']
+BUILD_IDS = [b['build'] for b in BUILDS]
 
 errors, warnings = [], []
 def err(msg): errors.append(msg)
@@ -37,13 +45,14 @@ def parse(path):
     for line in m.group(1).split('\n'):
         if not line.strip(): continue
         if line.startswith('  - ') and key:
-            fm[key].append(line[4:].strip()); continue
+            item = line[4:].strip()
+            fm[key].append(item[1:-1] if len(item) >= 2 and item[0] == item[-1] == '"' else item); continue
         k, _, v = line.partition(':')
         key, v = k.strip(), v.strip()
         if v == '': fm[key] = []
         elif v.startswith('[') and v.endswith(']'):
             fm[key] = [x.strip() for x in v[1:-1].split(',') if x.strip()]
-        else: fm[key] = v
+        else: fm[key] = v[1:-1] if len(v) >= 2 and v[0] == v[-1] == '"' else v
     return fm, m.group(2)
 
 def section(body, title):
@@ -65,6 +74,10 @@ for name, p in notes.items():
         fm['_body'] = body; fm['_path'] = rel; flows[name] = fm
 
 areas = {n[len('area-'):] for n in notes if n.startswith('area-')}
+# generated notes exist after --write, so hand-written notes may link to them
+generated = {os.path.splitext(os.path.basename(p))[0] for p in glob.glob(f'{VAULT}/_generated/*.md')} | {
+    'Feature ledger', 'Build timeline', 'Performance evidence', 'Release scope', 'Finance model',
+    'Dependency matrix', 'Blast radius', 'Coverage', 'Failure catalogue', 'Gaps'}
 
 # ---------- validate features
 for fid, fm in features.items():
@@ -85,6 +98,22 @@ for fid, fm in features.items():
     for d in fm.get('depends_on', []):
         if d == fid: err(f"{where}: depends on itself")
         elif d not in features: err(f"{where}: depends_on unknown feature '{d}'")
+
+# ---------- ledger fields (optional but kept honest)
+for fid, fm in features.items():
+    where = fm['_path']
+    if 'introduced' not in fm or 'build' not in fm:
+        warn(f"{where}: no introduced/build (add them so the Feature ledger can place it)")
+    else:
+        try: datetime.date.fromisoformat(fm['introduced'])
+        except ValueError: err(f"{where}: introduced '{fm['introduced']}' is not YYYY-MM-DD")
+        if fm['build'] not in BUILD_IDS: err(f"{where}: build '{fm['build']}' is not in versions.json")
+    if 'tier' in fm and fm['tier'] not in TIERS: err(f"{where}: unknown tier '{fm['tier']}'")
+    if 'release' in fm and fm['release'] not in RELEASES: err(f"{where}: unknown release '{fm['release']}'")
+    if 'value' in fm and not (fm['value'].isdigit() and 1 <= int(fm['value']) <= 5): err(f"{where}: value must be 1-5")
+    for k in ('cpu', 'memory', 'battery'):
+        if k in fm and not str(fm[k]).lower().startswith(PERF_PREFIXES):
+            err(f"{where}: {k} must start with one of {PERF_PREFIXES}")
 
 # ---------- --fix: rewrite the derived "Used by" sections
 if '--fix' in sys.argv:
@@ -116,7 +145,15 @@ for name, p in notes.items():
     text = open(p, encoding='utf-8').read()
     text = re.sub(r'```.*?```', '', text, flags=re.S)
     for target in re.findall(r'\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]', text):
-        if target not in notes: err(f"{os.path.relpath(p, VAULT)}: broken link [[{target}]]")
+        if target not in notes and target not in generated: err(f"{os.path.relpath(p, VAULT)}: broken link [[{target}]]")
+
+# ---------- canvases: every file node must exist
+for cv in glob.glob(f'{VAULT}/**/*.canvas', recursive=True):
+    try: data = json.load(open(cv))
+    except ValueError: err(f"{os.path.relpath(cv, VAULT)}: not valid JSON"); continue
+    for node in data.get('nodes', []):
+        if node.get('type') == 'file' and not os.path.exists(os.path.join(VAULT, node.get('file', ''))):
+            err(f"{os.path.relpath(cv, VAULT)}: missing file {node.get('file')}")
 
 # ---------- flows
 for fl, fm in flows.items():
@@ -227,6 +264,60 @@ def write_reports():
         out += f"| {i} | {L(fid)} | {features[fid]['risk']} | {text} | {caught} | {cls} |\n"
     open(f'{gen}/Failure catalogue.md', 'w').write(out)
 
+    # feature ledger
+    def pf(v): return str(v).replace('|', '/')
+    led = sorted(features, key=lambda f: (features[f].get('introduced', '9999'), f))
+    out = header('Feature ledger') + ('Every feature: when it was first committed, in which internal dev build, what release it belongs to, and what it costs the '
+          'SE 2nd-gen in CPU, memory and battery. **"measured (sim)"** is the SE 2nd-gen *simulator*; nothing has been measured on the device yet, and anything '
+          'marked predicted was written before measuring. "First committed" is from git (early work was committed in batches, so dates are when it landed, not '
+          'when it was started). See [[P7 Optimisation checks]] for how to measure and [[Performance evidence]] for coverage.\n\n')
+    out += '| Feature | Area | Status | First committed | Build | Release | Tier | Value | CPU | Memory | Battery |\n|---|---|---|---|---|---|---|---|---|---|---|\n'
+    for f in led:
+        fm = features[f]
+        out += (f"| {L(f)} | {fm['area']} | {fm['status']} | {fm.get('introduced', '?')} | {fm.get('build', '?')} | {fm.get('release', '?')} | {fm.get('tier', '?')} | "
+                f"{fm.get('value', '?')} | {pf(fm.get('cpu', 'not measured'))} | {pf(fm.get('memory', 'not measured'))} | {pf(fm.get('battery', 'not measured'))} |\n")
+    open(f'{gen}/Feature ledger.md', 'w').write(out)
+
+    # build timeline
+    out = header('Build timeline') + 'Internal dev builds (see `scripts/vault/versions.json`). These are not App Store versions: the public v1.0 is still ahead ([[P1 Stages and the MVP line]]).\n\n'
+    counts = []
+    for b in BUILDS:
+        mine = [f for f in led if features[f].get('build') == b['build']]
+        counts.append(len(mine))
+        out += f"## Build {b['build']} ({b['date']}): {b['title']}\n\n" + (', '.join(L(f) for f in mine) or '(no features first committed here)') + f"\n\n{len(mine)} feature(s).\n\n"
+    labels = ', '.join(f'"{b["build"]}"' for b in BUILDS)
+    out += '## Features first committed per build\n\n```mermaid\nxychart-beta\n    title "Features first committed per dev build"\n    x-axis [' + labels + ']\n    y-axis "features" 0 --> ' + str(max(counts) + 2) + '\n    bar [' + ', '.join(map(str, counts)) + ']\n```\n'
+    open(f'{gen}/Build timeline.md', 'w').write(out)
+
+    # performance evidence
+    out = header('Performance evidence') + 'How much of the cost of each feature has actually been measured. The goal before launch: every high-risk shipped feature has a measured CPU, memory and battery figure on the **device**, not just the simulator.\n\n'
+    out += '| Metric | measured | predicted | not measured | n/a |\n|---|---|---|---|---|\n'
+    def kind(v):
+        v = str(v).lower()
+        return next((k for k in ('measured', 'predicted', 'not measured', 'n/a') if v.startswith(k)), 'not measured')
+    for k, label in (('cpu', 'CPU'), ('memory', 'Memory'), ('battery', 'Battery')):
+        c = {x: 0 for x in ('measured', 'predicted', 'not measured', 'n/a')}
+        for f in features: c[kind(features[f].get(k, 'not measured'))] += 1
+        out += f"| {label} | {c['measured']} | {c['predicted']} | {c['not measured']} | {c['n/a']} |\n"
+    dev = [f for f in order if features[f]['status'] == 'shipped' and features[f]['risk'] == 'high' and kind(features[f].get('battery', '')) in ('not measured', 'predicted')]
+    out += '\n## High-risk shipped features with no measured battery figure\n' + ('\n'.join(f"- {L(f)}: {pf(features[f].get('battery', 'not measured'))}" for f in dev) or '- none') + '\n'
+    out += '\n## Everything measured so far\n' + ('\n'.join(f"- {L(f)}: CPU {pf(features[f].get('cpu'))}" for f in order if kind(features[f].get('cpu', '')) == 'measured') or '- nothing') + '\n'
+    open(f'{gen}/Performance evidence.md', 'w').write(out)
+
+    # release scope (the MVP line)
+    out = header('Release scope') + 'What each planned release contains, from each feature\'s `release`, `tier` and `value`. **The MVP line is the end of the v1.0 block.** See [[P1 Stages and the MVP line]].\n\n'
+    out += '| Release | Features | Total value | Not yet shipped (spike, dormant, setting-only, planned) |\n|---|---|---|---|\n'
+    for rel in ('v1.0', 'v1.1', 'v1.2', 'later', 'internal'):
+        mine = [f for f in order if features[f].get('release') == rel]
+        val = sum(int(features[f].get('value', 0)) for f in mine)
+        pend = [f for f in mine if features[f]['status'] in ('spike', 'dormant', 'setting-only', 'planned')]
+        out += f"| {rel} | {len(mine)} | {val} | {' '.join(L(f) for f in pend) or '-'} |\n"
+    for rel in ('v1.0', 'v1.1', 'v1.2', 'later'):
+        mine = sorted([f for f in features if features[f].get('release') == rel], key=lambda f: (-int(features[f].get('value', 0)), f))
+        out += f"\n## {rel}\n\n| Feature | Value | Tier | Status | Risk |\n|---|---|---|---|---|\n"
+        for f in mine: out += f"| {L(f)} | {features[f].get('value')} | {features[f].get('tier')} | {features[f]['status']} | {features[f]['risk']} |\n"
+    open(f'{gen}/Release scope.md', 'w').write(out)
+
     # gaps
     out = header('Gaps')
     out += '## High-risk features with no automated tests\n' + ('\n'.join(f"- {L(f)}" for f in order if features[f]['risk'] == 'high' and not features[f]['tests']) or '- none') + '\n\n'
@@ -242,5 +333,6 @@ for e in errors: print('ERROR:', e)
 print(f"{len(features)} features, {len(flows)} flows, {len(areas)} areas, {len(failures)} failure points; "
       f"{len(errors)} errors, {len(warnings)} warnings")
 if '--write' in sys.argv:
-    write_reports(); print('wrote docs/vault/_generated/')
+    write_reports(); subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), 'model_finance.py'), '--write'], capture_output=True)
+    print('wrote docs/vault/_generated/')
 sys.exit(1 if errors else 0)

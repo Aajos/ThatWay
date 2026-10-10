@@ -5,6 +5,14 @@ area: navigation-core
 status: shipped
 risk: medium
 last_verified: 2026-10-05
+introduced: 2026-09-14
+build: 0.1
+tier: free
+value: 4
+release: v1.0
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Compass/AppModel.swift
   - ThatWay/Compass/CompassScreen.swift

@@ -5,6 +5,14 @@ area: navigation-core
 status: shipped
 risk: low
 last_verified: 2026-10-05
+introduced: 2026-09-23
+build: 0.6
+tier: free
+value: 3
+release: v1.0
+cpu: "not measured (removed two DateFormatter builds per read)"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Managers/ETAManager.swift
   - ThatWay/Compass/CompassScreen.swift

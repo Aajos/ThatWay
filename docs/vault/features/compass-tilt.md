@@ -5,6 +5,14 @@ area: navigation-core
 status: shipped
 risk: low
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.7
+tier: free
+value: 3
+release: v1.0
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Managers/CompassTilt.swift
   - ThatWay/Compass/AppModel.swift

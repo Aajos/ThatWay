@@ -5,6 +5,14 @@ area: accounts-backend
 status: external
 risk: medium
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.7
+tier: internal
+value: 4
+release: v1.0
+cpu: "n/a (server side)"
+memory: "n/a"
+battery: "n/a"
 files:
   - backend/lambda/README.md
   - .github/workflows/deploy-backend.yml

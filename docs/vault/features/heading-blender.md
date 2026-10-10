@@ -5,6 +5,14 @@ area: watch
 status: spike
 risk: medium
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.10
+tier: internal
+value: 2
+release: later
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWayCore/Sources/ThatWayCore/HeadingBlender.swift
   - ThatWayWatch/WatchModel.swift

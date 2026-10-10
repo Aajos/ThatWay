@@ -5,6 +5,14 @@ area: app-shell
 status: setting-only
 risk: low
 last_verified: 2026-10-05
+introduced: 2026-09-14
+build: 0.1
+tier: free
+value: 1
+release: later
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Compass/Sheets.swift
   - ThatWay/Compass/ProfileScreen.swift

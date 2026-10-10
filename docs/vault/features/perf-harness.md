@@ -5,6 +5,14 @@ area: power-performance
 status: shipped
 risk: low
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.7
+tier: internal
+value: 3
+release: v1.0
+cpu: "n/a (debug and PERF builds only)"
+memory: "n/a"
+battery: "n/a"
 files:
   - ThatWay/Perf.swift
   - scripts/perf/link_test.py

@@ -5,6 +5,14 @@ area: shared-modules
 status: shipped
 risk: high
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.10
+tier: internal
+value: 3
+release: v1.0
+cpu: "n/a (code layout)"
+memory: "n/a"
+battery: "n/a"
 files:
   - ThatWayCore/Package.swift
   - ThatWayCore/Sources/ThatWayCore/WatchSync.swift
@@ -13,7 +21,7 @@ tests:
   - ThatWayCore/Tests/ThatWayCoreTests/HeadingBlenderTests.swift
   - ThatWayCore/Tests/ThatWayCoreTests/RouteAndHapticTests.swift
 manual_checks:
-  - `cd ThatWayCore && swift test`; build all three schemes after changing Package.swift
+  - "`cd ThatWayCore && swift test`; build all three schemes after changing Package.swift"
 depends_on: []
 tags: [feature, area/shared-modules, status/shipped, risk/high]
 ---
@@ -37,6 +45,7 @@ tags: [feature, area/shared-modules, status/shipped, risk/high]
 ## Used by
 - [[bearing-math]] — Bearing and distance maths
 - [[continuous-angle]] — Continuous angles
+- [[nearby-proximity]] — Find a friend nearby (UWB)
 - [[phone-watch-link]] — iPhone-to-watch link (travel mode)
 - [[route-models]] — Route models
 - [[routing-provider-seam]] — Routing provider seam (OSRM + fallback)

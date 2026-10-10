@@ -5,6 +5,14 @@ area: watch
 status: spike
 risk: low
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.10
+tier: internal
+value: 2
+release: v1.0
+cpu: "n/a (tests only)"
+memory: "n/a"
+battery: "n/a"
 files:
   - ThatWayCore/Sources/ThatWayCore/SyntheticRoute.swift
 tests:

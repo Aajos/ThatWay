@@ -5,6 +5,14 @@ area: guidance-ui
 status: shipped
 risk: medium
 last_verified: 2026-10-05
+introduced: 2026-09-14
+build: 0.1
+tier: free
+value: 5
+release: v1.0
+cpu: "measured (sim): dial redraws 0.96 to 0.27 /s (-75 to -85 %)"
+memory: "not measured"
+battery: "predicted: -0.5 to -2 %/h in idle and Point (heading to dial only; device, not yet measured)"
 files:
   - ThatWay/Compass/DialView.swift
   - ThatWayCore/Sources/ThatWayUI/DialSkins.swift

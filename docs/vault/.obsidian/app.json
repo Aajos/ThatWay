@@ -1,5 +1,11 @@
 {
-  "useMarkdownLinks": false,
+  "alwaysUpdateLinks": true,
   "newLinkFormat": "shortest",
-  "alwaysUpdateLinks": true
+  "useMarkdownLinks": false,
+  "propertiesInDocument": "visible",
+  "showFrontmatter": true,
+  "defaultViewMode": "preview",
+  "showLineNumber": false,
+  "strictLineBreaks": false,
+  "foldHeading": true
 }

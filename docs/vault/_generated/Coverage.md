@@ -7,18 +7,19 @@ tags: [generated]
 
 | Feature | Status | Risk | Tests | Manual checks | Failure points (test / manual / none / other) |
 |---|---|---|---|---|---|
-| [[auth]] | shipped | high | 0 | 1 | 2 (0 / 2 / 0 / 0) |
+| [[auth]] | shipped | high | 1 | 1 | 4 (1 / 3 / 0 / 0) |
 | [[backend-config]] | shipped | high | 0 | 1 | 2 (0 / 0 / 1 / 1) |
 | [[backend-lambda]] | external | medium | 0 | 0 | 1 (0 / 1 / 0 / 0) |
-| [[friends]] | dormant | low | 0 | 0 | 1 (0 / 0 / 1 / 0) |
+| [[friends]] | dormant | low | 1 | 0 | 1 (1 / 0 / 0 / 0) |
+| [[nearby-proximity]] | spike | high | 3 | 4 | 8 (6 / 2 / 0 / 0) |
 | [[avatars-social-decor]] | setting-only | low | 0 | 0 | 1 (0 / 0 / 1 / 0) |
 | [[persistence-defaults]] | shipped | low | 1 | 1 | 2 (0 / 0 / 2 / 0) |
-| [[settings-profile]] | shipped | low | 0 | 1 | 2 (0 / 0 / 2 / 0) |
+| [[settings-profile]] | shipped | low | 0 | 1 | 3 (0 / 1 / 2 / 0) |
 | [[store-skins]] | shipped | low | 0 | 1 | 1 (0 / 1 / 0 / 0) |
 | [[audio-cue-plan]] | shipped | medium | 1 | 1 | 2 (1 / 1 / 0 / 0) |
 | [[audio-manager]] | shipped | high | 1 | 2 | 3 (0 / 1 / 0 / 2) |
 | [[haptics-ios]] | setting-only | low | 0 | 1 | 1 (0 / 0 / 1 / 0) |
-| [[compass-screen-layout]] | shipped | medium | 0 | 2 | 2 (0 / 2 / 0 / 0) |
+| [[compass-screen-layout]] | shipped | medium | 0 | 3 | 4 (0 / 4 / 0 / 0) |
 | [[dial-view]] | shipped | medium | 2 | 3 | 3 (1 / 1 / 0 / 1) |
 | [[guidance-cards]] | shipped | medium | 0 | 2 | 2 (0 / 2 / 0 / 0) |
 | [[route-line]] | shipped | medium | 0 | 1 | 2 (0 / 0 / 0 / 2) |
@@ -38,7 +39,7 @@ tags: [generated]
 | [[dead-reckoning]] | shipped | medium | 1 | 1 | 2 (1 / 0 / 0 / 1) |
 | [[destination-search]] | shipped | medium | 0 | 1 | 2 (0 / 1 / 1 / 0) |
 | [[eta]] | shipped | low | 0 | 1 | 2 (0 / 0 / 0 / 2) |
-| [[guidance-mode]] | shipped | high | 2 | 2 | 3 (0 / 2 / 0 / 1) |
+| [[guidance-mode]] | shipped | high | 3 | 2 | 5 (2 / 2 / 0 / 1) |
 | [[map-tab]] | shipped | medium | 0 | 1 | 1 (0 / 1 / 0 / 0) |
 | [[mode-change-reroute]] | shipped | medium | 1 | 0 | 1 (1 / 0 / 0 / 0) |
 | [[off-route-reroute]] | shipped | high | 2 | 1 | 3 (1 / 0 / 0 / 2) |
@@ -60,7 +61,7 @@ tags: [generated]
 | [[phone-watch-link]] | spike | medium | 1 | 2 | 3 (0 / 3 / 0 / 0) |
 | [[route-tracker]] | spike | medium | 1 | 0 | 1 (0 / 0 / 1 / 0) |
 | [[synthetic-route]] | spike | low | 1 | 0 | 1 (0 / 0 / 0 / 1) |
-| [[watch-app]] | spike | medium | 0 | 1 | 2 (0 / 2 / 0 / 0) |
+| [[watch-app]] | spike | medium | 0 | 1 | 3 (0 / 3 / 0 / 0) |
 | [[watch-drive-guard]] | spike | high | 2 | 2 | 3 (0 / 1 / 1 / 1) |
 | [[watch-gestures]] | spike | medium | 0 | 1 | 2 (0 / 2 / 0 / 0) |
 | [[watch-haptics]] | spike | low | 1 | 1 | 1 (0 / 1 / 0 / 0) |
@@ -69,4 +70,4 @@ tags: [generated]
 | [[watch-travel-modes]] | spike | low | 1 | 1 | 2 (0 / 2 / 0 / 0) |
 | [[watch-voice-search]] | spike | medium | 0 | 2 | 3 (0 / 1 / 1 / 1) |
 
-**Totals:** 61 features, 118 failure points: 14 caught by tests, 51 by manual checks, 35 partly, 18 not caught at all.
+**Totals:** 62 features, 134 failure points: 24 caught by tests, 58 by manual checks, 35 partly, 17 not caught at all.

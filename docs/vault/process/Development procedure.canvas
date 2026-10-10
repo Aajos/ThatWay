@@ -1,0 +1,401 @@
+{
+  "nodes": [
+    {
+      "id": "n001",
+      "type": "text",
+      "text": "## S0 Prototype\nSep 2026\nDONE\nScreens, real location, compass, OSRM",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 190,
+      "color": "4"
+    },
+    {
+      "id": "n002",
+      "type": "text",
+      "text": "## S1 Core build\nto 15 Nov 2026\nNOW\nv1.0 features, working sign-up and friends, polyline on 3 routes",
+      "x": 360,
+      "y": 0,
+      "width": 320,
+      "height": 190,
+      "color": "2"
+    },
+    {
+      "id": "n003",
+      "type": "text",
+      "text": "## S2 Hardening\nto 14 Nov 2026\nPower and memory baselines, accessibility pass",
+      "x": 720,
+      "y": 0,
+      "width": 320,
+      "height": 190,
+      "color": "2"
+    },
+    {
+      "id": "n004",
+      "type": "text",
+      "text": "## S3 Internal TestFlight\n1 Dec 2026\nYou plus 2 friends: a full drive and walk, no crash",
+      "x": 1080,
+      "y": 0,
+      "width": 320,
+      "height": 190,
+      "color": "3"
+    },
+    {
+      "id": "n005",
+      "type": "text",
+      "text": "## S4 External beta\nto 10 Jan 2027\n20 to 50 testers, App Review dry run",
+      "x": 1440,
+      "y": 0,
+      "width": 320,
+      "height": 190,
+      "color": "3"
+    },
+    {
+      "id": "n006",
+      "type": "text",
+      "text": "## S5 Launch v1.0 (MVP)\n15 Jan 2027\nFree: core navigation and basic friends",
+      "x": 1800,
+      "y": 0,
+      "width": 320,
+      "height": 190,
+      "color": "1"
+    },
+    {
+      "id": "n007",
+      "type": "text",
+      "text": "## S6 v1.1 paid\nto 30 Apr 2027\nProximity (UWB), tracking, purchase and restore",
+      "x": 2160,
+      "y": 0,
+      "width": 320,
+      "height": 190,
+      "color": "5"
+    },
+    {
+      "id": "n008",
+      "type": "text",
+      "text": "## S7 v1.2 looks\nto 30 Jun 2027\nSkins and themes as data",
+      "x": 2520,
+      "y": 0,
+      "width": 320,
+      "height": 190,
+      "color": "5"
+    },
+    {
+      "id": "n009",
+      "type": "text",
+      "text": "## S8 Growth and review\nto 1 Oct 2027\nUsers, retention, runway decision",
+      "x": 2880,
+      "y": 0,
+      "width": 320,
+      "height": 190,
+      "color": "6"
+    },
+    {
+      "id": "n018",
+      "type": "file",
+      "file": "process/P1 Stages and the MVP line.md",
+      "x": 0,
+      "y": 330,
+      "width": 300,
+      "height": 110
+    },
+    {
+      "id": "n023",
+      "type": "file",
+      "file": "process/P9 How the app works.md",
+      "x": 360,
+      "y": 330,
+      "width": 300,
+      "height": 110
+    },
+    {
+      "id": "n025",
+      "type": "file",
+      "file": "process/P10 Backend and proximity runbook.md",
+      "x": 720,
+      "y": 330,
+      "width": 300,
+      "height": 110,
+      "color": "2"
+    },
+    {
+      "id": "n028",
+      "type": "file",
+      "file": "process/P7 Optimisation checks.md",
+      "x": 1080,
+      "y": 330,
+      "width": 300,
+      "height": 110
+    },
+    {
+      "id": "n030",
+      "type": "file",
+      "file": "process/P5 Accessibility testing.md",
+      "x": 1440,
+      "y": 330,
+      "width": 300,
+      "height": 110
+    },
+    {
+      "id": "n033",
+      "type": "file",
+      "file": "process/P6 Live testing.md",
+      "x": 1800,
+      "y": 330,
+      "width": 300,
+      "height": 110
+    },
+    {
+      "id": "n036",
+      "type": "file",
+      "file": "process/P8 Before you push or commit.md",
+      "x": 2160,
+      "y": 330,
+      "width": 300,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "n040",
+      "type": "file",
+      "file": "process/P2 Feature value and scope.md",
+      "x": 360,
+      "y": 560,
+      "width": 300,
+      "height": 110
+    },
+    {
+      "id": "n043",
+      "type": "file",
+      "file": "process/P3 Costs.md",
+      "x": 1080,
+      "y": 560,
+      "width": 300,
+      "height": 110
+    },
+    {
+      "id": "n046",
+      "type": "file",
+      "file": "process/P4 Revenue and growth.md",
+      "x": 2160,
+      "y": 560,
+      "width": 300,
+      "height": 110
+    },
+    {
+      "id": "n049",
+      "type": "file",
+      "file": "process/P0 Product development map.md",
+      "x": 1080,
+      "y": -230,
+      "width": 300,
+      "height": 110,
+      "color": "6"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e010",
+      "fromNode": "n001",
+      "fromSide": "right",
+      "toNode": "n002",
+      "toSide": "left"
+    },
+    {
+      "id": "e011",
+      "fromNode": "n002",
+      "fromSide": "right",
+      "toNode": "n003",
+      "toSide": "left"
+    },
+    {
+      "id": "e012",
+      "fromNode": "n003",
+      "fromSide": "right",
+      "toNode": "n004",
+      "toSide": "left"
+    },
+    {
+      "id": "e013",
+      "fromNode": "n004",
+      "fromSide": "right",
+      "toNode": "n005",
+      "toSide": "left"
+    },
+    {
+      "id": "e014",
+      "fromNode": "n005",
+      "fromSide": "right",
+      "toNode": "n006",
+      "toSide": "left"
+    },
+    {
+      "id": "e015",
+      "fromNode": "n006",
+      "fromSide": "right",
+      "toNode": "n007",
+      "toSide": "left"
+    },
+    {
+      "id": "e016",
+      "fromNode": "n007",
+      "fromSide": "right",
+      "toNode": "n008",
+      "toSide": "left"
+    },
+    {
+      "id": "e017",
+      "fromNode": "n008",
+      "fromSide": "right",
+      "toNode": "n009",
+      "toSide": "left"
+    },
+    {
+      "id": "e019",
+      "fromNode": "n001",
+      "fromSide": "bottom",
+      "toNode": "n018",
+      "toSide": "top"
+    },
+    {
+      "id": "e020",
+      "fromNode": "n002",
+      "fromSide": "bottom",
+      "toNode": "n018",
+      "toSide": "top"
+    },
+    {
+      "id": "e021",
+      "fromNode": "n006",
+      "fromSide": "bottom",
+      "toNode": "n018",
+      "toSide": "top"
+    },
+    {
+      "id": "e022",
+      "fromNode": "n009",
+      "fromSide": "bottom",
+      "toNode": "n018",
+      "toSide": "top"
+    },
+    {
+      "id": "e024",
+      "fromNode": "n002",
+      "fromSide": "bottom",
+      "toNode": "n023",
+      "toSide": "top"
+    },
+    {
+      "id": "e026",
+      "fromNode": "n002",
+      "fromSide": "bottom",
+      "toNode": "n025",
+      "toSide": "top"
+    },
+    {
+      "id": "e027",
+      "fromNode": "n007",
+      "fromSide": "bottom",
+      "toNode": "n025",
+      "toSide": "top"
+    },
+    {
+      "id": "e029",
+      "fromNode": "n003",
+      "fromSide": "bottom",
+      "toNode": "n028",
+      "toSide": "top"
+    },
+    {
+      "id": "e031",
+      "fromNode": "n003",
+      "fromSide": "bottom",
+      "toNode": "n030",
+      "toSide": "top"
+    },
+    {
+      "id": "e032",
+      "fromNode": "n004",
+      "fromSide": "bottom",
+      "toNode": "n030",
+      "toSide": "top"
+    },
+    {
+      "id": "e034",
+      "fromNode": "n004",
+      "fromSide": "bottom",
+      "toNode": "n033",
+      "toSide": "top"
+    },
+    {
+      "id": "e035",
+      "fromNode": "n005",
+      "fromSide": "bottom",
+      "toNode": "n033",
+      "toSide": "top"
+    },
+    {
+      "id": "e037",
+      "fromNode": "n004",
+      "fromSide": "bottom",
+      "toNode": "n036",
+      "toSide": "top"
+    },
+    {
+      "id": "e038",
+      "fromNode": "n005",
+      "fromSide": "bottom",
+      "toNode": "n036",
+      "toSide": "top"
+    },
+    {
+      "id": "e039",
+      "fromNode": "n006",
+      "fromSide": "bottom",
+      "toNode": "n036",
+      "toSide": "top"
+    },
+    {
+      "id": "e041",
+      "fromNode": "n002",
+      "fromSide": "bottom",
+      "toNode": "n040",
+      "toSide": "top"
+    },
+    {
+      "id": "e042",
+      "fromNode": "n006",
+      "fromSide": "bottom",
+      "toNode": "n040",
+      "toSide": "top"
+    },
+    {
+      "id": "e044",
+      "fromNode": "n004",
+      "fromSide": "bottom",
+      "toNode": "n043",
+      "toSide": "top"
+    },
+    {
+      "id": "e045",
+      "fromNode": "n006",
+      "fromSide": "bottom",
+      "toNode": "n043",
+      "toSide": "top"
+    },
+    {
+      "id": "e047",
+      "fromNode": "n007",
+      "fromSide": "bottom",
+      "toNode": "n046",
+      "toSide": "top"
+    },
+    {
+      "id": "e048",
+      "fromNode": "n009",
+      "fromSide": "bottom",
+      "toNode": "n046",
+      "toSide": "top"
+    }
+  ]
+}

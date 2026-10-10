@@ -17,6 +17,9 @@ tags: [index]
 - Add a scenario step or a new flow if it changes a user situation.
 - Run the checker. A new source file that no note claims is reported as **unmapped**.
 
+## Before you commit
+Run the gate in [[P8 Before you push or commit]]. Measuring cost: [[P7 Optimisation checks]]. Taking it outside: [[P6 Live testing]].
+
 ## When something breaks
 - Find the failing seam in a flow note; if the failure was not listed, add it with an ID and what would have caught it. A bug that was not on the map is a gap in the map.
 - If nothing caught it, that is a `none` in the failure catalogue: write the test, or write why not.

@@ -5,6 +5,14 @@ area: app-shell
 status: shipped
 risk: low
 last_verified: 2026-10-05
+introduced: 2026-09-14
+build: 0.1
+tier: paid
+value: 2
+release: v1.2
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Compass/StoreScreen.swift
   - ThatWay/Compass/AppModel.swift

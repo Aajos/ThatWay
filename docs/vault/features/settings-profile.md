@@ -5,6 +5,14 @@ area: app-shell
 status: shipped
 risk: low
 last_verified: 2026-10-05
+introduced: 2026-09-14
+build: 0.1
+tier: free
+value: 2
+release: v1.0
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Compass/ProfileScreen.swift
   - ThatWay/Compass/CompassModels.swift
@@ -24,6 +32,7 @@ tags: [feature, area/app-shell, status/shipped, risk/low]
 
 ## What it covers
 - WIRED: Compass skin, Theme, Compass tilt (Off/Slight/Hard), Audio guidance (Off/Tone/Voice), Units, Default mode, Record test logs
+- Rows open their options in place (inline picker) instead of the system Menu, which scrolled the page to the top and sat detached from its row
 - NOT WIRED (stored in memory only, nothing reads them): Voice of directions, Haptics on turns, Share destination
 - Decorative: Visibility and close-by radius, achievements
 
@@ -43,6 +52,7 @@ tags: [feature, area/app-shell, status/shipped, risk/low]
 | ID | What breaks | Caught by |
 |---|---|---|
 | SP-1 | Settings that do nothing (voice, haptics, share) mislead the user | none: known gap |
+| SP-3 | The system Menu scrolled the Profile page to the top and looked detached for a few seconds after a choice | manual: inline picker, verified in the simulator |
 | SP-2 | `NavOptions` values are not persisted: tilt/units/voice reset on every launch | none: known gap |
 
 ## Tests

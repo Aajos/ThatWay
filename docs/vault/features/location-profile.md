@@ -5,6 +5,14 @@ area: location-sensors
 status: shipped
 risk: medium
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.7
+tier: internal
+value: 3
+release: v1.0
+cpu: "not measured"
+memory: "not measured"
+battery: "not measured"
 files:
   - ThatWay/Managers/LocationProfile.swift
   - ThatWay/Managers/LocationManager.swift

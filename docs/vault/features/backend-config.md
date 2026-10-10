@@ -5,6 +5,14 @@ area: accounts-backend
 status: shipped
 risk: high
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.7
+tier: internal
+value: 3
+release: v1.0
+cpu: "n/a"
+memory: "n/a"
+battery: "n/a"
 files:
   - ThatWay/Config.swift
 tests:

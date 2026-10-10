@@ -5,6 +5,14 @@ area: watch
 status: spike
 risk: low
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.10
+tier: internal
+value: 1
+release: later
+cpu: "n/a (tooling)"
+memory: "n/a"
+battery: "n/a"
 files:
   - ThatWayWatch/SpikeLog.swift
   - scripts/watch/analyze_spike_log.py

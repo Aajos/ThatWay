@@ -5,6 +5,14 @@ area: location-sensors
 status: shipped
 risk: high
 last_verified: 2026-10-05
+introduced: 2026-10-05
+build: 0.7
+tier: free
+value: 5
+release: v1.0
+cpu: "predicted: 0"
+memory: "not measured"
+battery: "predicted: +8 to +20 %/h with the screen kept on versus locked (device, not yet measured; the largest single draw)"
 files:
   - ThatWay/Info.plist
   - ThatWay/Compass/AppModel.swift
