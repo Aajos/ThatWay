@@ -15,6 +15,9 @@ import ThatWayCore
 @MainActor
 final class WatchLink: NSObject, WCSessionDelegate {
     private var latest: TravelMode?
+    /// Who the phone is currently finding, if anyone. Rides in the same application context as the mode (the context is
+    /// replaced wholesale on every update, so both must always be sent together).
+    private var proximity: ProximityWatchState?
 
     func start(mode: TravelMode) {
         latest = mode
@@ -29,11 +32,17 @@ final class WatchLink: NSObject, WCSessionDelegate {
         push()
     }
 
+    func sendProximity(_ state: ProximityWatchState?) {
+        proximity = state
+        push()
+    }
+
     private func push() {
         guard WCSession.isSupported(), let mode = latest else { return }
         let session = WCSession.default
         guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
-        let payload = WatchSync.payload(mode: mode)
+        var payload = WatchSync.payload(mode: mode)
+        payload.merge(WatchSync.proximityPayload(proximity)) { _, new in new }
         try? session.updateApplicationContext(payload)           // latest wins; delivered even if the watch app is not running
         if session.isReachable { session.sendMessage(payload, replyHandler: nil, errorHandler: nil) }   // immediate when it is
     }

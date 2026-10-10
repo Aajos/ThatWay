@@ -32,6 +32,10 @@ enum Config {
     /// Must include the stage (e.g. `/Dev`), no trailing slash — every call 404s without it.
     static let apiBaseURL = "https://REPLACE_WITH_API_ID.execute-api.ap-southeast-2.amazonaws.com/Dev"
 
+    /// False while `apiBaseURL` is still the placeholder from the template: friends and nearby calls then say so plainly
+    /// instead of failing against a host that does not exist.
+    static var apiConfigured: Bool { !apiBaseURL.contains("REPLACE_WITH") }
+
     static var cognitoEndpoint: String { "https://cognito-idp.\(awsRegion).amazonaws.com/" }
 
     // MARK: - Routing

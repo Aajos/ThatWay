@@ -188,6 +188,7 @@ private struct PeekCard: View {
 /// last 500m (`showsPeeks`) it goes back to the bottom of the screen with the next two stacked
 /// behind it.
 struct GuidanceCardStack: View, Equatable {
+    @Environment(\.dynamicTypeSize) private var typeSize
     let state: GuidanceStackState
     /// Not observed — only used to run the tap/END actions, so the stack never redraws just because
     /// something else in the model changed.
@@ -237,38 +238,55 @@ struct GuidanceCardStack: View, Equatable {
     }
 
     private func front(face: CardFace?) -> some View {
-        HStack(spacing: 14) {
-            CardIcon(symbol: face?.symbol ?? "flag.checkered", theme: theme, scale: scale)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(face?.title ?? "Arrived")
-                    .font(.nunito(15 * fontScale, .extraBold)).foregroundStyle(theme.ink)
+        let stackedLayout = typeSize >= .xxxLarge
+        let icon = CardIcon(symbol: face?.symbol ?? "flag.checkered", theme: theme, scale: scale)
+        let texts = VStack(alignment: .leading, spacing: 3) {
+            Text(face?.title ?? "Arrived")
+                .font(.nunito(15 * fontScale, .extraBold)).foregroundStyle(theme.ink)
+                .lineLimit(2).minimumScaleFactor(0.6)
+            if let road = face?.road, !road.isEmpty {
+                Text(road)
+                    .font(.nunito(12 * fontScale, .bold)).foregroundStyle(theme.ink.opacity(0.85))
                     .lineLimit(2).minimumScaleFactor(0.6)
-                if let road = face?.road, !road.isEmpty {
-                    Text(road)
-                        .font(.nunito(12 * fontScale, .bold)).foregroundStyle(theme.ink.opacity(0.85))
-                        .lineLimit(2).minimumScaleFactor(0.6)
-                }
-                Text(state.phase)
-                    .font(.nunito(10 * fontScale, state.phaseHighlighted ? .black : .semibold))
-                    .foregroundStyle(state.phaseHighlighted ? theme.accent : theme.textSecondary)
-                    .glow(state.phaseHighlighted ? theme.accent.opacity(0.55) : .clear, radius: 6, theme: theme)
+            }
+            Text(state.phase)
+                .font(.nunito(10 * fontScale, state.phaseHighlighted ? .black : .semibold))
+                .foregroundStyle(state.phaseHighlighted ? theme.accent : theme.textSecondary)
+                .glow(state.phaseHighlighted ? theme.accent.opacity(0.55) : .clear, radius: 6, theme: theme)
+                .lineLimit(stackedLayout ? 2 : 1).minimumScaleFactor(0.7)
+        }
+        let distance = Group {
+            if let face {
+                Text(face.distance)
+                    .font(.nunito(17 * fontScale, .black)).foregroundStyle(theme.accent)
                     .lineLimit(1).minimumScaleFactor(0.7)
             }
-            Spacer(minLength: 4)
-            VStack(alignment: .trailing, spacing: 10) {
-                if let face {
-                    Text(face.distance)
-                        .font(.nunito(17 * fontScale, .black)).foregroundStyle(theme.accent)
-                        .lineLimit(1).minimumScaleFactor(0.7)
+        }
+        let endButton = Button { app.endGuidance() } label: {
+            Text("END")
+                .font(.nunito(10 * fontScale, .black)).tracking(0.9)
+                .foregroundStyle(theme.accent)
+                .fixedSize()
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Capsule().fill(theme.tint(0.14)))
+        }
+        .buttonStyle(.plain)
+
+        return Group {
+            if stackedLayout {
+                // Large text: the title gets the full width and the distance + END move to their own row,
+                // so END is never squeezed into "E…".
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 14) { icon; texts; Spacer(minLength: 0) }
+                    HStack { distance; Spacer(minLength: 8); endButton }
                 }
-                Button { app.endGuidance() } label: {
-                    Text("END")
-                        .font(.nunito(10 * fontScale, .black)).tracking(0.9)
-                        .foregroundStyle(theme.accent)
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(Capsule().fill(theme.tint(0.14)))
+            } else {
+                HStack(spacing: 14) {
+                    icon
+                    texts
+                    Spacer(minLength: 4)
+                    VStack(alignment: .trailing, spacing: 10) { distance; endButton }
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 14 * scale)
@@ -337,6 +355,7 @@ struct NextCardsStack: View, Equatable {
 
 struct GuidanceCurtain: View {
     @EnvironmentObject var app: AppModel
+    @Environment(\.dynamicTypeSize) private var typeSize
     let theme: AppTheme
     let namespace: Namespace.ID
     /// Once the list has settled, pulling down past its top (the first card already in view, and a
@@ -411,22 +430,22 @@ struct GuidanceCurtain: View {
     private func row(_ card: GuidanceCard, offset: Int, currentIndex: Int) -> some View {
         let isPast = offset < currentIndex
         let isCurrent = offset == currentIndex
-        return HStack(spacing: 12) {
-            CardIcon(symbol: card.symbolName, theme: theme, highlighted: isCurrent)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(card.title)
-                    .font(.nunito(isCurrent ? 15 : 14, .extraBold)).foregroundStyle(theme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(subtitle(for: card))
-                    .font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 6)
+        let stackedLayout = typeSize >= .xxxLarge
+        let icon = CardIcon(symbol: card.symbolName, theme: theme, highlighted: isCurrent)
+        let texts = VStack(alignment: .leading, spacing: 3) {
+            Text(card.title)
+                .font(.nunito(isCurrent ? 15 : 14, .extraBold)).foregroundStyle(theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(subtitle(for: card))
+                .font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        let trailing = Group {
             if isPast {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 18)).foregroundStyle(theme.ink.opacity(0.35))
             } else if card.kind != .depart {
-                VStack(alignment: .trailing, spacing: 2) {
+                VStack(alignment: stackedLayout ? .leading : .trailing, spacing: 2) {
                     if isCurrent {
                         Text("NEXT").font(.nunito(9, .black)).tracking(1).foregroundStyle(theme.accent)
                     }
@@ -434,6 +453,17 @@ struct GuidanceCurtain: View {
                     .font(.nunito(isCurrent ? 18 : 15, .black))
                     .foregroundStyle(isCurrent ? theme.accent : theme.ink.opacity(0.8))
                 }
+            }
+        }
+        return Group {
+            if stackedLayout {
+                // Large text: the instruction gets the full width and the distance sits on its own line below it.
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 12) { icon; texts; Spacer(minLength: 0) }
+                    HStack { trailing; Spacer(minLength: 0) }
+                }
+            } else {
+                HStack(spacing: 12) { icon; texts; Spacer(minLength: 6); trailing }
             }
         }
         .padding(.horizontal, 14).padding(.vertical, isCurrent ? 14 : 11)

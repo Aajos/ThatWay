@@ -14,6 +14,9 @@ struct ProfileScreen: View {
     @State private var showLogShare = false
     @State private var logExport: URL?
     @State private var logRefresh = 0
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// At large text sizes side-by-side controls stack vertically instead of squeezing words apart.
+    private var stacked: Bool { typeSize >= .xxxLarge }
 
     var body: some View {
         let theme = app.currentTheme
@@ -51,10 +54,11 @@ struct ProfileScreen: View {
     private func defaultNavModeSection(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("DEFAULT MODE").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
-            HStack(spacing: 10) {
+            let cards = Group {
                 navModeCard(.point, title: "Point", icon: "location.north.line", detail: "Power-efficient", theme: theme)
                 navModeCard(.guidance, title: "Guidance", icon: "arrow.triangle.turn.up.right.diamond.fill", detail: "Live turns", theme: theme)
             }
+            if stacked { VStack(spacing: 10) { cards } } else { HStack(spacing: 10) { cards } }
         }
     }
 
@@ -70,7 +74,7 @@ struct ProfileScreen: View {
                     .background(RoundedRectangle(cornerRadius: 12).fill(selected ? theme.accent.opacity(0.16) : theme.ink.opacity(0.06)))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink)
-                    Text(detail).font(.nunito(11, .semibold)).foregroundStyle(theme.ink.opacity(0.62)).lineLimit(1)
+                    Text(detail).font(.nunito(11, .semibold)).foregroundStyle(theme.ink.opacity(0.62)).lineLimit(stacked ? 3 : 1)
                 }
                 Spacer(minLength: 0)
             }
@@ -96,7 +100,7 @@ struct ProfileScreen: View {
     private func addFriendSection(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("ADD A FRIEND").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
-            HStack(spacing: 10) {
+            let addRow = Group {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.ink.opacity(0.5))
                     TextField("Username", text: $friendQuery)
@@ -121,6 +125,7 @@ struct ProfileScreen: View {
                 .buttonStyle(.plain)
                 .disabled(friendQuery.trimmingCharacters(in: .whitespaces).isEmpty)
             }
+            if stacked { VStack(alignment: .leading, spacing: 10) { addRow } } else { HStack(spacing: 10) { addRow } }
 
             ForEach(friendsManager.searchResults) { result in
                 HStack {
@@ -252,18 +257,20 @@ struct ProfileScreen: View {
     private func visibilitySection(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("VISIBLE TO").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
-            HStack(spacing: 6) {
-                ForEach(Visibility.allCases) { v in
-                    Button { app.vis = v } label: {
-                        Text(v.rawValue)
-                            .font(.nunito(13, .extraBold))
-                            .foregroundStyle(theme.ink)
-                            .opacity(app.vis == v ? 1 : 0.45)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 9)
-                            .background(RoundedRectangle(cornerRadius: 12).fill(app.vis == v ? theme.accent.opacity(0.22) : .clear))
-                    }
+            let choices = ForEach(Visibility.allCases) { v in
+                Button { app.vis = v } label: {
+                    Text(v.rawValue)
+                        .font(.nunito(13, .extraBold))
+                        .foregroundStyle(theme.ink)
+                        .opacity(app.vis == v ? 1 : 0.45)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(app.vis == v ? theme.accent.opacity(0.22) : .clear))
                 }
+            }
+            Group {
+                if stacked { VStack(spacing: 6) { choices } } else { HStack(spacing: 6) { choices } }
             }
             .padding(4)
             .background(RoundedRectangle(cornerRadius: 16).fill(theme.ink.opacity(0.05)))
@@ -294,11 +301,12 @@ struct ProfileScreen: View {
     private func achievementsSection(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("ACHIEVEMENTS").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
-            HStack(spacing: 10) {
+            let badges = Group {
                 badge("✦", "First 10 km", 1, theme: theme)
                 badge("◔", "Dawn run", 1, theme: theme)
                 badge("◇", "No wrong turns", 0.4, theme: theme)
             }
+            if stacked { VStack(spacing: 10) { badges } } else { HStack(spacing: 10) { badges } }
         }
     }
 
@@ -364,7 +372,7 @@ struct ProfileScreen: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("\(files.count) trip\(files.count == 1 ? "" : "s") saved · \(Int(app.tripLog.totalSizeKB())) KB. Numbers only — no places, routes or coordinates are ever recorded.")
                         .font(.nunito(12, .semibold)).foregroundStyle(theme.ink.opacity(0.7))
-                    HStack(spacing: 10) {
+                    let logButtons = Group {
                         Button {
                             logExport = app.tripLog.exportCombined()
                             showLogShare = logExport != nil
@@ -381,6 +389,7 @@ struct ProfileScreen: View {
                         }
                         .buttonStyle(.plain).disabled(files.isEmpty).opacity(files.isEmpty ? 0.4 : 1)
                     }
+                    if stacked { VStack(alignment: .leading, spacing: 10) { logButtons } } else { HStack(spacing: 10) { logButtons } }
                 }
                 .padding(14)
             }
@@ -416,11 +425,8 @@ struct ProfileScreen: View {
     }
 }
 
-/// A settings row with a native `Menu` dropdown. `Menu` items render through UIKit's own
-/// menu chrome rather than anything SwiftUI draws directly, so they ignore custom fonts —
-/// but that chrome uses `UIFont.preferredFont(forTextStyle:)` internally, which means it
-/// already tracks the system's real Dynamic Type accessibility setting on its own, with
-/// no extra plumbing needed here.
+/// A settings row whose options open in place inside the card (no system popover), so the page never
+/// scrolls or detaches when it is used.
 private struct SettingsRow: View {
     let label: String
     let value: String
@@ -438,30 +444,78 @@ private struct SettingsRow: View {
         self.onChange = onChange
     }
 
+    @State private var open = false
+    @Environment(\.dynamicTypeSize) private var typeSize
+    private var stacked: Bool { typeSize >= .xxxLarge }
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text(label).font(.nunito(15, .semibold)).foregroundStyle(theme.ink)
-                Spacer()
-                Menu {
-                    ForEach(options, id: \.self) { opt in
-                        Button(opt) { onChange(opt) }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(value).font(.nunito(13, .bold)).foregroundStyle(theme.ink)
-                        Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(theme.ink.opacity(0.5))
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                    .background(RoundedRectangle(cornerRadius: 11).fill(theme.ink.opacity(0.08)))
-                    .overlay(RoundedRectangle(cornerRadius: 11).stroke(theme.ink.opacity(0.12)))
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { open.toggle() }
+            } label: {
+                let valuePill = HStack(spacing: 6) {
+                    Text(value).font(.nunito(13, .bold)).foregroundStyle(theme.ink).multilineTextAlignment(.leading)
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(theme.ink.opacity(0.5))
+                        .rotationEffect(.degrees(open ? 180 : 0))
                 }
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .background(RoundedRectangle(cornerRadius: 11).fill(theme.ink.opacity(open ? 0.14 : 0.08)))
+                .overlay(RoundedRectangle(cornerRadius: 11).stroke(open ? theme.outline(0.5) : theme.ink.opacity(0.12)))
+                // Label and value sit side by side; at large text sizes the label gets the full width and the value drops below it.
+                Group {
+                    if stacked {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(label).font(.nunito(15, .semibold)).foregroundStyle(theme.ink).multilineTextAlignment(.leading)
+                            valuePill
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        HStack {
+                            Text(label).font(.nunito(15, .semibold)).foregroundStyle(theme.ink)
+                            Spacer()
+                            valuePill
+                        }
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 13)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 16).padding(.vertical, 13)
+            .buttonStyle(.plain)
+
+            // The options open in place, inside the card. (The system Menu popped out of the page, scrolled it to
+            // the top and sat detached from the row for a couple of seconds after a choice.)
+            if open {
+                VStack(spacing: 0) {
+                    ForEach(options, id: \.self) { option in
+                        Button {
+                            onChange(option)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { open = false }
+                        } label: {
+                            HStack {
+                                Text(option).font(.nunito(14, option == value ? .extraBold : .semibold)).foregroundStyle(theme.ink)
+                                Spacer()
+                                if option == value {
+                                    Image(systemName: "checkmark").font(.system(size: 12, weight: .black)).foregroundStyle(theme.accent)
+                                }
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 11)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        if option != options.last { Divider().background(theme.ink.opacity(0.07)).padding(.leading, 14) }
+                    }
+                }
+                .background(RoundedRectangle(cornerRadius: 14).fill(theme.ink.opacity(0.06)))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(theme.ink.opacity(0.1)))
+                .padding(.horizontal, 16).padding(.bottom, 12)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             if !isLast {
                 Divider().background(theme.ink.opacity(0.07)).padding(.leading, 16)
             }
         }
+        .clipped()
     }
 }
 

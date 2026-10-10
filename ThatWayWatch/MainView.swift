@@ -20,44 +20,48 @@ struct MainView: View {
 
     var body: some View {
         let theme = model.theme
-        VStack(spacing: 3) {
-            HStack(spacing: 4) {
-                modeButton("Point", .point, theme)
-                modeButton("Guide", .guidance, theme)
-                Image(systemName: model.mode.symbolName)
-                    .font(.system(size: 13, weight: .black))
-                    .foregroundStyle(theme.modeTint(model.mode))
-                    .frame(width: 26, height: 22)
-                    .background(Capsule().fill(theme.surface(0.12)))
-                    .overlay(Capsule().stroke(theme.borderColor))
-                Button { showTools = true } label: {
-                    Image(systemName: "ellipsis").font(.system(size: 12, weight: .black)).foregroundStyle(theme.ink.opacity(0.7))
-                        .frame(width: 26, height: 22)
-                        .background(Capsule().fill(theme.surface(0.12)))
-                        .overlay(Capsule().stroke(theme.borderColor))
-                }
-                .buttonStyle(.plain)
-            }
-            .frame(height: 24)
+        // The screen is laid out on the whole display (the app root ignores the safe area): the system keeps 40 pt free
+        // at the top and 19 pt at the bottom of a 40 mm SE 3, which left the compass a 158 x 138 pt band with controls
+        // hard against the rounded edge. Instead: start just under the system clock, keep a margin from the rounded
+        // corners, and put the readouts in a strip above the dial rather than over its rim.
+        GeometryReader { g in
+            let w = g.size.width, h = g.size.height
+            let side = max(9, w * 0.06)
+            let top = 22 + max(0, w - 162) * 0.06
+            let bottom = max(8, w * 0.05)
+            ZStack {
+                VStack(spacing: 4) {
+                    HStack(spacing: 4) {
+                        modeButton("Point", .point, theme)
+                        modeButton("Guide", .guidance, theme)
+                        Image(systemName: model.mode.symbolName)
+                            .font(.system(size: 13, weight: .black))
+                            .foregroundStyle(theme.modeTint(model.mode))
+                            .frame(width: 26, height: 22)
+                            .background(Capsule().fill(theme.surface(0.12)))
+                            .overlay(Capsule().stroke(theme.borderColor))
+                        Button { showTools = true } label: {
+                            Image(systemName: "ellipsis").font(.system(size: 12, weight: .black)).foregroundStyle(theme.ink.opacity(0.7))
+                                .frame(width: 26, height: 22)
+                                .background(Capsule().fill(theme.surface(0.12)))
+                                .overlay(Capsule().stroke(theme.borderColor))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .frame(height: 24)
 
-            ZStack(alignment: .bottom) {
-                GeometryReader { geo in
-                    let d = min(geo.size.width, geo.size.height)
-                    dial(theme: theme, d: d)
-                        .frame(width: d, height: d)
-                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                        .onLongPressGesture { model.cycleSkin() }
-                }
-                // The readouts sit in the dial's empty lower corners, so the compass can use the whole space.
-                HStack(alignment: .bottom) {
-                    bottomLeft(theme)
-                    Spacer(minLength: 2)
-                    VStack(alignment: .trailing, spacing: -2) {
-                        Text("\(Int((model.speed * 3.6).rounded()))").font(.nunito(24, .extraBold)).foregroundStyle(theme.ink.opacity(0.9))
-                        Text("km/h").font(.nunito(10, .extraBold)).tracking(0.4).foregroundStyle(theme.ink.opacity(0.6))
+                    infoStrip(theme)
+
+                    GeometryReader { geo in
+                        let d = max(40, min(geo.size.width, geo.size.height))
+                        dial(theme: theme, d: d)
+                            .frame(width: d, height: d)
+                            .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                            .onLongPressGesture { model.cycleSkin() }
                     }
                 }
-                .allowsHitTesting(false)
+                .padding(.top, top).padding(.horizontal, side).padding(.bottom, bottom)
+
                 if let flash = model.modeFlash {
                     VStack(spacing: 2) {
                         Image(systemName: flash.symbolName).font(.system(size: 26, weight: .black)).foregroundStyle(theme.modeTint(flash))
@@ -66,14 +70,14 @@ struct MainView: View {
                     .padding(.horizontal, 16).padding(.vertical, 10)
                     .background(RoundedRectangle(cornerRadius: 18).fill(theme.screen.opacity(0.92)))
                     .overlay(RoundedRectangle(cornerRadius: 18).stroke(theme.outline(0.5)))
-                    .frame(maxHeight: .infinity, alignment: .center)
                     .transition(.scale.combined(with: .opacity))
                     .allowsHitTesting(false)
                 }
             }
+            .frame(width: w, height: h)
             .animation(.spring(response: 0.3, dampingFraction: 0.75), value: model.modeFlash)
+            .animation(.easeOut(duration: 0.2), value: model.proximity)
         }
-        .padding(.horizontal, 4)
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 22).onEnded { v in
@@ -87,6 +91,43 @@ struct MainView: View {
         )
         .sheet(isPresented: $showSearch) { SearchView().environmentObject(model) }
         .sheet(isPresented: $showTools) { ToolsView() }
+        .onAppear {
+            // Simulator testing aid: `-spike-open search|tools` opens that sheet at launch.
+            let args = ProcessInfo.processInfo.arguments
+            guard let i = args.firstIndex(of: "-spike-open"), i + 1 < args.count else { return }
+            if args[i + 1] == "search" { showSearch = true } else if args[i + 1] == "tools" { showTools = true }
+        }
+    }
+
+    /// One row above the dial: what is happening (a friend being found, the next turn, or the gesture hint) on the
+    /// left and the speed on the right. It used to float over the dial's lower corners and overlap its rim.
+    @ViewBuilder
+    private func infoStrip(_ theme: AppTheme) -> some View {
+        HStack(alignment: .center, spacing: 6) {
+            Group {
+                if let near = model.proximity {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.wave.2.fill").font(.system(size: 11, weight: .black)).foregroundStyle(theme.accent)
+                        Text("\(near.friendName) · \(near.meters.map { "\($0) m" } ?? near.band.label)")
+                            .font(.nunito(12, .extraBold)).foregroundStyle(theme.ink).lineLimit(1).minimumScaleFactor(0.6)
+                    }
+                    .padding(.horizontal, 8).frame(height: 22)
+                    .background(Capsule().fill(theme.surface(0.12)))
+                    .overlay(Capsule().stroke(theme.accent.opacity(0.6)))
+                } else {
+                    bottomLeft(theme)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                Text("\(Int((model.speed * 3.6).rounded()))").font(.nunito(18, .extraBold)).foregroundStyle(theme.ink.opacity(0.9))
+                Text("km/h").font(.nunito(9, .extraBold)).tracking(0.3).foregroundStyle(theme.ink.opacity(0.6))
+            }
+            .fixedSize()
+        }
+        .frame(height: 26)
+        .allowsHitTesting(false)
     }
 
     // MARK: Dial
@@ -155,17 +196,17 @@ struct MainView: View {
     private func bottomLeft(_ theme: AppTheme) -> some View {
         if model.navMode == .guidance, let p = model.progress {
             HStack(spacing: 4) {
-                Image(systemName: arrow(p.nextTurn?.dir)).font(.system(size: 17, weight: .black)).foregroundStyle(theme.accent)
+                Image(systemName: arrow(p.nextTurn?.dir)).font(.system(size: 15, weight: .black)).foregroundStyle(theme.accent)
                     .glow(theme.accent.opacity(0.5), radius: 5, theme: theme)
-                Text(CompassManager.formattedDistance(p.distanceToNext)).font(.nunito(17, .black)).minimumScaleFactor(0.6)
+                Text(CompassManager.formattedDistance(p.distanceToNext)).font(.nunito(15, .black)).minimumScaleFactor(0.6)
                     .foregroundStyle(p.offRoute ? Color.red : theme.ink)
             }
-            .padding(.horizontal, 8).padding(.vertical, 4)
+            .padding(.horizontal, 8).padding(.vertical, 3)
             .background(RoundedRectangle(cornerRadius: 12).fill(theme.surface(0.08)))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(theme.outline(0.4)))
         } else {
-            Text(model.message.isEmpty ? "← theme  → search  ↕ mode" : model.message)
-                .font(.nunito(10, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(2)
+            Text(model.message.isEmpty ? "← theme · → search\n↕ mode" : model.message)
+                .font(.nunito(9, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(2).minimumScaleFactor(0.8)
         }
     }
 

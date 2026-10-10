@@ -32,9 +32,35 @@ enum AuthError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .cognito(_, let message): return message
+        case .cognito(let type, let message): return Self.friendlyMessage(type: type, fallback: message)
         case .unexpectedResponse: return "Unexpected response from the server."
         }
+    }
+
+    /// Cognito's own wording ("1 validation error detected: Value at 'password'…") is written for developers; these are
+    /// the cases a person can actually act on. Anything unlisted keeps the server's message.
+    static func friendlyMessage(type: String, fallback: String) -> String {
+        let name = type.split(separator: "#").last.map(String.init) ?? type
+        switch name {
+        case "UserNotConfirmedException": return "That email isn't confirmed yet."
+        case "UsernameExistsException": return "That username is taken."
+        case "CodeMismatchException": return "That code isn't right. Check the latest email and try again."
+        case "ExpiredCodeException": return "That code has expired. Tap “Send a new code”."
+        case "LimitExceededException", "TooManyRequestsException", "TooManyFailedAttemptsException":
+            return "Too many attempts. Wait a few minutes and try again."
+        case "InvalidPasswordException": return "Use at least 8 characters with a mix of letters, numbers and symbols."
+        case "NotAuthorizedException", "UserNotFoundException": return "Wrong username or password."
+        case "InvalidParameterException" where fallback.localizedCaseInsensitiveContains("password"):
+            return "Use at least 8 characters with a mix of letters, numbers and symbols."
+        case "CodeDeliveryFailureException": return "We couldn't send the email. Check the address and try again."
+        default: return fallback
+        }
+    }
+
+    /// The Cognito exception name without any namespace prefix, nil for other errors.
+    var cognitoName: String? {
+        guard case .cognito(let type, _) = self else { return nil }
+        return type.split(separator: "#").last.map(String.init) ?? type
     }
 }
 
@@ -44,6 +70,10 @@ final class AuthManager: ObservableObject {
     @Published var currentUser: AuthUser?
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// A neutral line (not an error): "We sent a new code", shown on the confirmation step.
+    @Published var noticeMessage: String?
+    /// Where Cognito says the confirmation code went, already masked by Cognito ("j***@g***").
+    @Published var codeDestination: String?
 
     /// Used only to read identity claims (`sub`, `cognito:username`) for `currentUser` — the
     /// friends API checks the access token, not this one (see `bearerToken`).
@@ -57,6 +87,10 @@ final class AuthManager: ObservableObject {
     /// handle. Apple identity tokens are short-lived but comfortably outlast that round trip.
     private var pendingAppleIdentityToken: String?
 
+    /// Every network call goes through here so tests can answer with canned Cognito responses.
+    typealias Transport = (URLRequest) async throws -> (Data, URLResponse)
+    private let transport: Transport
+
     private let idTokenKey = "idToken"
     private let accessTokenKey = "accessToken"
     private let refreshTokenKey = "refreshToken"
@@ -64,9 +98,21 @@ final class AuthManager: ObservableObject {
     /// Attach to outgoing API Gateway requests as `Authorization: Bearer <token>`.
     var bearerToken: String? { accessToken }
 
-    init() {
+    init(transport: @escaping Transport = { try await URLSession.shared.data(for: $0) }, restoreSession: Bool = true) {
+        self.transport = transport
+        guard restoreSession else { authState = .signedOut; return }
         if let refresh = KeychainStore.get(refreshTokenKey) {
             refreshToken = refresh
+            // A saved login opens the app straight away from the cached identity, so a slow or missing connection
+            // never holds the user on a blank screen (or, worse, in the city with no way in). The tokens are then
+            // refreshed quietly in the background.
+            if let cachedID = KeychainStore.get(idTokenKey), let claims = Self.decodeJWT(cachedID), let sub = claims["sub"] as? String {
+                idToken = cachedID
+                accessToken = KeychainStore.get(accessTokenKey)
+                let username = (claims["cognito:username"] as? String) ?? (claims["username"] as? String) ?? sub
+                currentUser = AuthUser(id: sub, username: username)
+                authState = .signedIn
+            }
             Task { await refreshAccessToken() }
         } else {
             authState = .signedOut
@@ -74,23 +120,68 @@ final class AuthManager: ObservableObject {
     }
 
     func signUp(username: String, email: String, password: String) async {
-        isLoading = true; errorMessage = nil
+        isLoading = true; errorMessage = nil; noticeMessage = nil
         defer { isLoading = false }
         do {
-            _ = try await cognitoRequest(target: "SignUp", body: [
+            let json = try await cognitoRequest(target: "SignUp", body: [
                 "ClientId": Config.cognitoAppClientId,
                 "Username": username,
                 "Password": password,
                 "UserAttributes": [["Name": "email", "Value": email]],
             ])
+            codeDestination = Self.destination(in: json)
             authState = .needsConfirmation(username: username)
+        } catch let error as AuthError where error.cognitoName == "UsernameExistsException" {
+            // An earlier sign-up that never got its code also answers "exists". Asking for a fresh code tells the two
+            // apart: it works for an unconfirmed account and is refused for one that is already confirmed.
+            if await requestNewCode(for: username) {
+                noticeMessage = "That username has a sign-up waiting for its code. We've sent a new one."
+            } else {
+                errorMessage = error.localizedDescription
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
+    /// Asks Cognito to email the code again. Returns whether a code is on its way (and, if so, moves to the code step).
+    @discardableResult
+    func resendConfirmationCode(username: String) async -> Bool {
+        isLoading = true; errorMessage = nil; noticeMessage = nil
+        defer { isLoading = false }
+        let sent = await requestNewCode(for: username)
+        if sent { noticeMessage = "We've sent a new code. It can take a minute, and may land in spam." }
+        else if errorMessage == nil { errorMessage = "We couldn't send a new code. Try again in a minute." }
+        return sent
+    }
+
+    private func requestNewCode(for username: String) async -> Bool {
+        do {
+            let json = try await cognitoRequest(target: "ResendConfirmationCode", body: [
+                "ClientId": Config.cognitoAppClientId,
+                "Username": username,
+            ])
+            codeDestination = Self.destination(in: json)
+            authState = .needsConfirmation(username: username)
+            return true
+        } catch {
+            if (error as? AuthError)?.cognitoName != "InvalidParameterException" { errorMessage = error.localizedDescription }
+            return false
+        }
+    }
+
+    /// Leaves the code step (wrong email, or the person wants to start over).
+    func cancelConfirmation() {
+        errorMessage = nil; noticeMessage = nil; codeDestination = nil
+        authState = .signedOut
+    }
+
+    private static func destination(in json: [String: Any]) -> String? {
+        (json["CodeDeliveryDetails"] as? [String: Any])?["Destination"] as? String
+    }
+
     func confirmSignUp(username: String, code: String) async {
-        isLoading = true; errorMessage = nil
+        isLoading = true; errorMessage = nil; noticeMessage = nil
         defer { isLoading = false }
         do {
             _ = try await cognitoRequest(target: "ConfirmSignUp", body: [
@@ -98,6 +189,7 @@ final class AuthManager: ObservableObject {
                 "Username": username,
                 "ConfirmationCode": code,
             ])
+            codeDestination = nil
             authState = .signedOut
         } catch {
             errorMessage = error.localizedDescription
@@ -105,7 +197,7 @@ final class AuthManager: ObservableObject {
     }
 
     func signIn(username: String, password: String) async {
-        isLoading = true; errorMessage = nil
+        isLoading = true; errorMessage = nil; noticeMessage = nil
         defer { isLoading = false }
         do {
             let json = try await cognitoRequest(target: "InitiateAuth", body: [
@@ -114,6 +206,14 @@ final class AuthManager: ObservableObject {
                 "AuthParameters": ["USERNAME": username, "PASSWORD": password],
             ])
             try applyAuthResult(json)
+        } catch let error as AuthError where error.cognitoName == "UserNotConfirmedException" {
+            // They signed up but never entered the code (or left the app on that step): take them back to it and
+            // send a fresh code instead of leaving them at a sign-in error they cannot get past.
+            if await requestNewCode(for: username) {
+                noticeMessage = "That email isn't confirmed yet. We've sent a new code."
+            } else {
+                errorMessage = error.localizedDescription
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -184,8 +284,9 @@ final class AuthManager: ObservableObject {
         var body: [String: Any] = ["identityToken": identityToken]
         if let username { body["username"] = username }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.timeoutInterval = 10      // the default 60 s would leave the app waiting on a blank screen
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await transport(request)
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
             let message = (json["message"] as? String) ?? "Couldn't sign in with Apple."
@@ -207,8 +308,14 @@ final class AuthManager: ObservableObject {
             ])
             try applyAuthResult(json, fallbackRefreshToken: refreshToken)
             return true
-        } catch {
+        } catch AuthError.cognito {
+            // The server itself refused the saved login (expired or revoked): that is the only reason to sign out.
             signOut()
+            return false
+        } catch {
+            // No connection, a timeout, a server hiccup: keep the saved login so the next launch can try again.
+            // If there is no cached identity to show, fall back to the sign-in screen without deleting anything.
+            if authState == .restoring { authState = .signedOut }
             return false
         }
     }
@@ -240,8 +347,9 @@ final class AuthManager: ObservableObject {
         request.setValue("application/x-amz-json-1.1", forHTTPHeaderField: "Content-Type")
         request.setValue("AWSCognitoIdentityProviderService.\(target)", forHTTPHeaderField: "X-Amz-Target")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.timeoutInterval = 10
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await transport(request)
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
             let type = (json["__type"] as? String) ?? "Error"

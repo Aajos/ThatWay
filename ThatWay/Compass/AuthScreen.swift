@@ -47,6 +47,14 @@ struct AuthScreen: View {
                     }
                 }
 
+                if let notice = auth.noticeMessage {
+                    Text(notice)
+                        .font(.nunito(13, .semibold))
+                        .foregroundStyle(theme.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                }
+
                 if let error = auth.errorMessage {
                     Text(error)
                         .font(.nunito(13, .semibold))
@@ -65,7 +73,10 @@ struct AuthScreen: View {
     }
 
     private var headline: String {
-        if case .needsConfirmation = auth.authState { return "Check your email for a code" }
+        if case .needsConfirmation = auth.authState {
+            if let destination = auth.codeDestination { return "We sent a 6-digit code to \(destination)" }
+            return "Check your email for a code"
+        }
         if case .needsAppleUsername = auth.authState { return "Pick a username for your friends" }
         return mode == .signIn ? "Sign in to find your friends" : "Create an account"
     }
@@ -198,6 +209,27 @@ struct AuthScreen: View {
             }
             .buttonStyle(.plain)
             .disabled(confirmationCode.count != 6 || auth.isLoading)
+
+            Button("Send a new code") {
+                Task { await auth.resendConfirmationCode(username: pendingUsername) }
+            }
+            .font(.nunito(13, .extraBold))
+            .foregroundStyle(theme.accent)
+            .disabled(auth.isLoading)
+
+            Button("Wrong email? Start over") {
+                confirmationCode = ""
+                auth.cancelConfirmation()
+                mode = .signUp
+            }
+            .font(.nunito(12, .semibold))
+            .foregroundStyle(theme.textSecondary)
+            .disabled(auth.isLoading)
+
+            Text("The email is sent automatically and can take a minute. Check your spam or junk folder if it isn't in your inbox.")
+                .font(.nunito(11, .semibold))
+                .foregroundStyle(theme.textSecondary)
+                .multilineTextAlignment(.center)
         }
     }
 

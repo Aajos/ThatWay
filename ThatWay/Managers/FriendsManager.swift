@@ -113,7 +113,8 @@ final class FriendsManager: ObservableObject {
         }
     }
 
-    private func request<T: Decodable>(method: String, path: String, body: [String: Any]? = nil, allowRefresh: Bool = true) async throws -> T {
+    func request<T: Decodable>(method: String, path: String, body: [String: Any]? = nil, allowRefresh: Bool = true) async throws -> T {
+        guard Config.apiConfigured else { throw FriendsError.notConfigured }
         guard let url = URL(string: Config.apiBaseURL + path) else { throw FriendsError.badURL }
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = method
@@ -139,20 +140,24 @@ final class FriendsManager: ObservableObject {
             let message = decoded?.error ?? decoded?.message
             throw FriendsError.server(message ?? "The friends service couldn't be reached.")
         }
+        // A 204 has no body at all, which JSONDecoder rejects: treat it as the empty success it is.
+        if data.isEmpty, let empty = EmptyResponse() as? T { return empty }
         return try JSONDecoder().decode(T.self, from: data)
     }
 }
 
-private struct EmptyResponse: Decodable {}
+struct EmptyResponse: Decodable {}
 private struct ErrorBody: Decodable { let error: String?; let message: String? }
 
 enum FriendsError: LocalizedError {
     case badURL
+    case notConfigured
     case unreachable
     case server(String)
 
     var errorDescription: String? {
         switch self {
+        case .notConfigured: return "Friends aren't switched on yet: the app doesn't have its friends service address."
         case .badURL, .unreachable: return "The friends service couldn't be reached."
         case .server(let message): return message
         }

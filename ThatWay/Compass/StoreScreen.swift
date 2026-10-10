@@ -11,6 +11,9 @@ struct StoreScreen: View {
     @State private var customAmount = ""
     @State private var showAllSkins = false
     @FocusState private var customFocused: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// At large text sizes side-by-side controls stack vertically instead of truncating their labels.
+    private var stacked: Bool { typeSize >= .xxxLarge }
 
     private let tips: [(amount: String, name: String)] = [
         ("$5", "A flat white"),
@@ -59,23 +62,34 @@ struct StoreScreen: View {
     private func donateSection(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionLabel("DONATE", theme: theme)
-            HStack(spacing: 10) {
-                ForEach(tips, id: \.amount) { tip in
-                    Button {} label: {
-                        VStack(spacing: 4) {
-                            Text(tip.amount).font(.nunito(20, .black)).foregroundStyle(theme.accent)
-                            Text(tip.name).font(.nunito(11, .semibold)).foregroundStyle(theme.ink.opacity(0.7))
-                                .lineLimit(1).minimumScaleFactor(0.8)
+            let tipTiles = ForEach(tips, id: \.amount) { tip in
+                Button {} label: {
+                    Group {
+                        if stacked {
+                            HStack(spacing: 12) {
+                                Text(tip.amount).font(.nunito(20, .black)).foregroundStyle(theme.accent)
+                                Text(tip.name).font(.nunito(13, .semibold)).foregroundStyle(theme.ink.opacity(0.7)).multilineTextAlignment(.leading)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 16)
+                        } else {
+                            VStack(spacing: 4) {
+                                Text(tip.amount).font(.nunito(20, .black)).foregroundStyle(theme.accent)
+                                Text(tip.name).font(.nunito(11, .semibold)).foregroundStyle(theme.ink.opacity(0.7))
+                                    .lineLimit(1).minimumScaleFactor(0.8)
+                            }
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(RoundedRectangle(cornerRadius: 18).fill(theme.accent.opacity(0.12)))
-                        .overlay(RoundedRectangle(cornerRadius: 18).stroke(theme.accent.opacity(0.32)))
                     }
-                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(RoundedRectangle(cornerRadius: 18).fill(theme.accent.opacity(0.12)))
+                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(theme.accent.opacity(0.32)))
                 }
+                .buttonStyle(.plain)
             }
-            HStack(spacing: 10) {
+            if stacked { VStack(spacing: 10) { tipTiles } } else { HStack(spacing: 10) { tipTiles } }
+
+            let customRow = Group {
                 HStack(spacing: 6) {
                     Text("$").font(.nunito(16, .extraBold)).foregroundStyle(theme.ink.opacity(0.6))
                     TextField("Custom amount", text: $customAmount)
@@ -83,7 +97,7 @@ struct StoreScreen: View {
                         .focused($customFocused)
                         .font(.nunito(15, .semibold))
                 }
-                .padding(.horizontal, 14).frame(height: 46)
+                .padding(.horizontal, 14).frame(minHeight: 46)
                 .background(RoundedRectangle(cornerRadius: 14).fill(theme.ink.opacity(0.05)))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(theme.ink.opacity(0.1)))
 
@@ -91,13 +105,14 @@ struct StoreScreen: View {
                     Text("DONATE")
                         .font(.nunito(12, .black)).tracking(0.6)
                         .foregroundStyle(theme.onAccent)
-                        .padding(.horizontal, 18).frame(height: 46)
+                        .padding(.horizontal, 18).frame(maxWidth: stacked ? .infinity : nil, minHeight: 46)
                         .background(RoundedRectangle(cornerRadius: 14).fill(theme.accent))
                         .opacity(customAmount.isEmpty ? 0.5 : 1)
                 }
                 .buttonStyle(.plain)
                 .disabled(customAmount.isEmpty)
             }
+            if stacked { VStack(spacing: 10) { customRow } } else { HStack(spacing: 10) { customRow } }
             Text("Tips can be one-off or recurring. Enjoying the app? Consider leaving a review on the App Store!")
                 .font(.nunito(11, .semibold)).foregroundStyle(theme.ink.opacity(0.6))
         }
@@ -127,7 +142,7 @@ struct StoreScreen: View {
                                 }
                             }
                             .padding(16)
-                            .frame(width: 150, alignment: .leading)
+                            .frame(width: stacked ? 210 : 150, alignment: .leading)
                             .background(RoundedRectangle(cornerRadius: 20).fill(theme.ink.opacity(0.05)))
                             .overlay(RoundedRectangle(cornerRadius: 20).stroke(app.theme == th.id ? theme.accent.opacity(0.4) : theme.ink.opacity(0.09)))
                         }
@@ -159,7 +174,7 @@ struct StoreScreen: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(Skin.all) { sk in
-                        skinCard(sk, theme: theme).frame(width: 140)
+                        skinCard(sk, theme: theme).frame(width: stacked ? 200 : 140)
                     }
                 }
                 .padding(.horizontal, 1)
@@ -171,7 +186,7 @@ struct StoreScreen: View {
         let theme = app.currentTheme
         return NavigationStack {
             ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                LazyVGrid(columns: stacked ? [GridItem(.flexible())] : [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     ForEach(Skin.all) { sk in skinCard(sk, theme: theme, dismissOnPick: true) }
                 }
                 .padding(16)

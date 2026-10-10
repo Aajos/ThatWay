@@ -202,8 +202,12 @@ struct MapScreen: View {
             .frame(width: 44, height: 44)
             .background(Circle().fill(.ultraThinMaterial))
             .overlay(Circle().stroke(.white.opacity(0.15), lineWidth: 0.5))
+            // A fixed 44 pt round control: its tiny caption stays within it at any text size. VoiceOver still
+            // gets the full label.
+            .dynamicTypeSize(...DynamicTypeSize.large)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
 }

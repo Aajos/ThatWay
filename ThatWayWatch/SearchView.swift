@@ -67,7 +67,7 @@ struct SearchView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 8)
         }
         .onAppear { search.reset() }
     }

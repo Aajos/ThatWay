@@ -9,7 +9,9 @@
 //  Safety rule: if the paired iPhone is in Drive mode the watch refuses to guide and closes (see `DriveNoticeView`).
 //
 //  Simulator launch flags (testing aids only): `-spike-autoroute`, `-spike-autostart`, `-spike-kind <label>`,
-//  `-spike-phone-mode <mode>`, `-spike-searchtext <words>` (searches and picks the first result), `-spike-open search|tools`.
+//  `-spike-phone-mode <mode>`, `-spike-searchtext <words>` (searches and picks the first result), `-spike-open search|tools`,
+//  `-spike-proximity-demo <friend>` (plays a friend approaching from 60 m to right here, as the phone would report it:
+//  the simulator has no Ultra Wideband, so this is the only way to see the Find chip).
 //
 
 import SwiftUI
@@ -37,7 +39,8 @@ struct ThatWayWatchApp: App {
             ZStack {
                 RadialGradient(colors: [model.theme.worldA, model.theme.worldB], center: .init(x: 0.5, y: 0.54), startRadius: 0, endRadius: 160)
                     .ignoresSafeArea()
-                MainView()
+                // The compass lays itself out on the whole display (below the system clock, inside the corners).
+                MainView().ignoresSafeArea()
                 if model.blockedByDriving {
                     DriveNoticeView(theme: model.theme).transition(.opacity)
                 }
@@ -56,6 +59,7 @@ struct ThatWayWatchApp: App {
 
     private func launch() {
         phone.onMode = { model.applyPhoneMode($0) }
+        phone.onProximity = { model.applyProximity($0) }
         phone.start()
         model.start()
         if let raw = Self.arg("-spike-phone-mode"), let mode = TravelMode(rawValue: raw) {
@@ -66,6 +70,18 @@ struct ThatWayWatchApp: App {
         }
         if ProcessInfo.processInfo.arguments.contains("-spike-autostart") {
             Task { try? await Task.sleep(for: .seconds(3)); await session.start(model: model) }
+        }
+        if let friend = Self.arg("-spike-proximity-demo") {
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                for metres in [60, 42, 28, 18, 12, 8, 5, 3, 1] {
+                    let band = ProximityBand.exact(forMeters: Double(metres))
+                    model.applyProximity(ProximityWatchState(friendName: friend, band: band, meters: metres))
+                    try? await Task.sleep(for: .seconds(2.5))
+                }
+                try? await Task.sleep(for: .seconds(4))
+                model.applyProximity(nil)
+            }
         }
         if let words = Self.arg("-spike-searchtext") {
             Task {

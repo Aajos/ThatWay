@@ -63,6 +63,8 @@ struct CompassScreen: View {
     /// between the two instead of one appearing and the other vanishing.
     @Namespace private var cardNamespace
     @State private var modeFlash: String?
+    /// The friend whose Find sheet is open (tap a friend on the roster).
+    @State private var nearbyFriend: Friend?
     /// Height of the on-screen keyboard (0 when hidden), so the search results end above it.
     @State private var keyboardHeight: CGFloat = 0
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -123,6 +125,8 @@ struct CompassScreen: View {
 
                     if !app.guiding {
                         searchBar(theme: theme)
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                             .padding(.horizontal, Spacing.container * k)
                             .padding(.top, Spacing.element * k)
                             .background(
@@ -133,10 +137,12 @@ struct CompassScreen: View {
                             .onPreferenceChange(SearchBarFramePreferenceKey.self) { searchBarFrame = $0 }
 
                         friendsRow(k: k, theme: theme)
+                            .dynamicTypeSize(...DynamicTypeSize.xLarge)
                             .frame(height: 80 * k)
                             .padding(.top, Spacing.element * k)
                             .blur(radius: blurRest)
                             .zIndex(1)
+                            .transition(.opacity)
                     }
 
                     // A routing failure never changes the selected mode or clears whatever
@@ -163,7 +169,8 @@ struct CompassScreen: View {
                             .padding(.horizontal, Spacing.container * k)
                             .padding(.top, Spacing.element * k)
                             .blur(radius: blurRest)
-                            .opacity(app.cardsExpanded ? 0 : 1) }
+                            .opacity(app.cardsExpanded ? 0 : 1)
+                            .transition(.move(edge: .top).combined(with: .opacity)) }
                     }
 
                     if app.showsPolyline {
@@ -211,9 +218,11 @@ struct CompassScreen: View {
                         }
                         .frame(maxHeight: .infinity)
                         .blur(radius: blurRest)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
                     } else {
                         dialCluster(theme: theme, k: dialK, dialSize: dialSize)
                             .blur(radius: blurRest)
+                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
                     }
 
                     if app.guiding, !app.arrived, app.hasRealRoute, let clock = app.etaManager.arrivalClock {
@@ -222,6 +231,7 @@ struct CompassScreen: View {
                             .padding(.bottom, Spacing.tight)
                             .blur(radius: blurRest)
                             .opacity(app.cardsExpanded ? 0 : 1)
+                            .transition(.opacity)
                     }
 
                     if app.arrived {
@@ -234,6 +244,7 @@ struct CompassScreen: View {
                             .padding(.horizontal, Spacing.container * k)
                             .blur(radius: blurRest)
                             .opacity(app.cardsExpanded ? 0 : 1)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     } else if app.guiding {
                         Color.clear.frame(height: Spacing.element * k)
                     } else {
@@ -242,8 +253,10 @@ struct CompassScreen: View {
 
                     if !app.guiding {
                         bottomCard(theme: theme, k: k)
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                             .padding(.horizontal, Spacing.container * k)
                             .blur(radius: blurRest)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
 
                     // While guiding, the cards sit at one fixed height whether or not the route
@@ -288,6 +301,10 @@ struct CompassScreen: View {
             .animation(.spring(response: 0.8, dampingFraction: 0.86), value: app.showsPolyline)
             .animation(.spring(response: 0.5, dampingFraction: 0.82), value: app.cardsExpanded)
             .animation(.spring(response: 0.5, dampingFraction: 0.7), value: app.searchOpen)
+            // Starting, ending and clearing a trip reshape the whole screen (cards, search bar, dial size):
+            // let that happen as one smooth move instead of a cut.
+            .animation(.spring(response: 0.6, dampingFraction: 0.84), value: app.guiding)
+            .animation(.spring(response: 0.6, dampingFraction: 0.84), value: app.isIdle)
             // The search field's own focus would otherwise trigger the system's default
             // keyboard-avoidance and shove this whole screen (compass included) upward —
             // the custom results panel already handles showing results, so nothing here
@@ -301,6 +318,9 @@ struct CompassScreen: View {
         // The keyboard must not resize or shift this screen at all (it shrank the layout area by the
         // keyboard's height and pushed everything down); the results panel reserves keyboard room itself.
         .ignoresSafeArea(.keyboard, edges: .bottom)
+        .sheet(item: $nearbyFriend) { friend in
+            NearbySheet(friend: friend, nearby: app.nearbyManager)
+        }
         .alert(
             "Route there?",
             isPresented: Binding(
@@ -623,7 +643,7 @@ struct CompassScreen: View {
             Image(systemName: issue == .searching ? "location.fill" : "location.slash.fill")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(theme.accent)
-            Text(text).font(.nunito(13, .extraBold)).foregroundStyle(theme.ink).lineLimit(3)
+            Text(text).font(.nunito(13, .extraBold)).foregroundStyle(theme.ink).lineLimit(6).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             if issue == .searching {
                 ProgressView().controlSize(.small)
@@ -677,9 +697,8 @@ struct CompassScreen: View {
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(theme.outline(0.4)))
     }
 
-    /// A purely social/decorative roster — friends have no real location data, so unlike a
-    /// place or the You page, tapping one doesn't point or route to them (there's nothing
-    /// real to point at).
+    /// The friends roster. Friends share no location, so tapping one doesn't point or route to them; it opens Find,
+    /// which ranges them over Ultra Wideband when both phones are close and both have it open.
     @ViewBuilder
     private func friendsRow(k: CGFloat, theme: AppTheme) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -688,6 +707,9 @@ struct CompassScreen: View {
                     Text("No friends yet — add some in your profile")
                         .font(.nunito(12, .semibold))
                         .foregroundStyle(theme.textSecondary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 300, alignment: .leading)
                 }
                 ForEach(app.friendsManager.friends) { f in
                     VStack(spacing: 6) {
@@ -707,6 +729,11 @@ struct CompassScreen: View {
                             .lineLimit(1)
                     }
                     .frame(width: 56)
+                    .contentShape(Rectangle())
+                    .onTapGesture { nearbyFriend = f }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Find \(f.username)")
+                    .accessibilityAddTraits(.isButton)
                 }
             }
             .padding(.horizontal, Spacing.container * k)
@@ -725,7 +752,7 @@ struct CompassScreen: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(app.dest).font(.nunito(16, .extraBold)).foregroundStyle(theme.ink).lineLimit(1)
                         Text(app.destinationCoordinate != nil ? "Real bearing · tap GUIDE" : "Straight-line pointing")
-                            .font(.nunito(13, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(1)
+                            .font(.nunito(13, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(2)
                     }
                     Spacer()
                     Button { app.clearDestination() } label: {
@@ -760,7 +787,9 @@ struct CompassScreen: View {
             Text("Search for a place to start pointing")
                 .font(.nunito(13, .semibold))
                 .foregroundStyle(theme.textSecondary)
-            Spacer()
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, Spacing.container + 2).padding(.vertical, Spacing.element + 4)
         .background(RoundedRectangle(cornerRadius: 22).fill(theme.surface(0.07)))
@@ -784,7 +813,7 @@ struct CompassScreen: View {
 
     @ViewBuilder
     private func arrivedDoneButton(theme: AppTheme) -> some View {
-        Button { app.endGuidance() } label: {
+        Button { app.finishArrival() } label: {
             Text("DONE").font(.nunito(13, .black)).tracking(1)
                 .foregroundStyle(app.accent.onInk)
                 .frame(maxWidth: .infinity)
@@ -821,6 +850,8 @@ private struct TurnGlyph: View {
 /// no second, redundant text field in here.
 private struct SearchResultsPanel: View {
     @EnvironmentObject var app: AppModel
+    @Environment(\.dynamicTypeSize) private var typeSize
+    private var stacked: Bool { typeSize >= .xxxLarge }
     let k: CGFloat
     let onClose: () -> Void
 
@@ -894,9 +925,9 @@ private struct SearchResultsPanel: View {
                                 .frame(width: 34, height: 34)
                                 .background(RoundedRectangle(cornerRadius: 11).fill(theme.ink.opacity(0.08)))
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(place.name).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink).lineLimit(1)
+                                Text(place.name).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink).lineLimit(stacked ? 3 : 1)
                                 if let subtitle = place.subtitle {
-                                    Text(subtitle).font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(1)
+                                    Text(subtitle).font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(stacked ? 3 : 1)
                                 }
                             }
                             Spacer()
@@ -927,15 +958,18 @@ private struct SearchResultsPanel: View {
                     .foregroundStyle(theme.ink.opacity(0.76))
                     .frame(width: 34, height: 34)
                     .background(RoundedRectangle(cornerRadius: 11).fill(theme.ink.opacity(0.08)))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(name).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink).lineLimit(1)
-                    if let subtitle = subtitle(for: item) {
-                        Text(subtitle).font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(1)
-                    }
-                }
-                Spacer()
-                Text(CompassManager.formattedDistance(metres))
+                let distanceText = Text(CompassManager.formattedDistance(metres))
                     .font(.nunito(12, .bold)).foregroundStyle(theme.textSecondary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(name).font(.nunito(15, .extraBold)).foregroundStyle(theme.ink).lineLimit(stacked ? 3 : 1)
+                    if let subtitle = subtitle(for: item) {
+                        Text(subtitle).font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(stacked ? 3 : 1)
+                    }
+                    // At large text sizes the distance drops under the name instead of squeezing the street.
+                    if stacked { distanceText }
+                }
+                Spacer(minLength: 0)
+                if !stacked { distanceText }
             }
             .padding(.vertical, Spacing.tight + 3).padding(.horizontal, Spacing.tight)
             .overlay(Rectangle().fill(theme.borderColor).frame(height: 1), alignment: .bottom)

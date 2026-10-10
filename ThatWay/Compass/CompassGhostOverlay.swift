@@ -72,6 +72,8 @@ struct CompassGhostOverlay: View {
             .padding(.horizontal, 34 * k)
         }
         .frame(width: size, height: size)
+        // Drawn to fit inside the dial, so its text follows the user's size only up to what the face can hold.
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Compass may be off")
     }
@@ -94,5 +96,6 @@ struct GPSDirectionChip: View {
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(Capsule().fill(theme.screen.opacity(0.92)))
         .overlay(Capsule().stroke(theme.outline(0.5)))
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 }

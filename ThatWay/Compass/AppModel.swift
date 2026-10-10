@@ -53,6 +53,14 @@ final class AppModel: ObservableObject {
     let locationCheckScheduler = LocationCheckScheduler()
     let authManager = AuthManager()
     lazy var friendsManager = FriendsManager(auth: authManager)
+    /// Ultra Wideband "find a friend"; reports how close the friend is to the watch as well.
+    lazy var nearbyManager: NearbyManager = {
+        let manager = NearbyManager(api: friendsManager,
+                                    capability: { NearbySession.currentCapability() },
+                                    makeSession: { NearbySession() })
+        manager.onWatchState = { [weak self] state in self?.watchLink.sendProximity(state) }
+        return manager
+    }()
 
     /// The position/speed the guidance corridor check last actually looked at — updated
     /// only by `performLocationCheck()`, i.e. once per adaptive poll (10s walking, 3s
@@ -953,13 +961,24 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Drops whatever place is selected and returns the compass to idle:
-    /// north-up, flat, cardinal markers emphasized.
+    /// Drops whatever place is selected and returns the compass to idle: north-up, flat, cardinal
+    /// markers emphasized. If a trip is still being guided (or has just ended in arrival) it is ended
+    /// first, so nothing is left pointing at, fetching for or persisted for the place that was dropped.
     func clearDestination() {
+        if guiding || arrived { endGuidance() }
+        routingManager.cancelFetch()
         destKind = .none
         dest = ""
         destinationCoordinate = nil
         routingManager.clear()
+        routeDataGenerator.clearGuidanceData()
+        RoutePersistence.clear()
+    }
+
+    /// DONE on the arrival screen: the trip is over, so the compass goes back to idle rather than
+    /// carrying on pointing at the place that was just reached.
+    func finishArrival() {
+        clearDestination()
     }
 
     func pickPlace(_ name: String) {

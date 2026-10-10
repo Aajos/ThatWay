@@ -8,11 +8,11 @@ on:
       - ".github/workflows/deploy-backend.yml"
   workflow_dispatch: {}
 
-# Only the six functions that are actually deployed (see backend/lambda/README.md) — the
+# Only the functions that are actually deployed (create `nearby` in the console first: backend/SETUP.md section 12) (see backend/lambda/README.md) — the
 # Sign in with Apple ones are written but not live, and must not be pushed until they are.
 env:
   AWS_REGION: ap-southeast-2
-  FUNCTIONS: postConfirmation friendsSearch friendsRequest friendsRespond friendsList friendsRemove
+  FUNCTIONS: postConfirmation friendsSearch friendsRequest friendsRespond friendsList friendsRemove nearby
 
 permissions:
   id-token: write   # needed to mint the OIDC token GitHub exchanges for AWS credentials
@@ -41,7 +41,7 @@ jobs:
           set -euo pipefail
           for fn in $FUNCTIONS; do
             echo "Packaging $fn"
-            (cd "$fn" && zip -qr "/tmp/$fn.zip" index.mjs)
+            (cd "$fn" && zip -qr "/tmp/$fn.zip" index.mjs $(ls core.mjs 2>/dev/null))
             echo "Deploying $fn"
             aws lambda update-function-code \
               --function-name "$fn" \

@@ -150,6 +150,21 @@ final class WatchModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
+    /// How close the friend the phone is finding is (nil when no Find session is running). The phone does the ranging;
+    /// the watch shows it and taps the wrist as the friend gets closer.
+    @Published private(set) var proximity: ProximityWatchState?
+
+    func applyProximity(_ new: ProximityWatchState?) {
+        let old = proximity
+        proximity = new
+        guard let new, !blockedByDriving else { return }
+        if new.band == .here, old?.band != .here {
+            WKInterfaceDevice.current().play(.success)
+        } else if let old, new.band < old.band {
+            WKInterfaceDevice.current().play(.click)       // one tap per band closer
+        }
+    }
+
     /// Stops location, heading and any route: nothing keeps running once the watch has refused to guide.
     func shutdown() {
         manager.stopUpdatingLocation()

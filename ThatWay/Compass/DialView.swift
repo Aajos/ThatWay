@@ -261,6 +261,9 @@ struct DialView: View, Equatable {
         .animation(Perf.anim(.spring(response: 0.5, dampingFraction: 0.7)), value: state.lane)
         .animation(Perf.anim(.spring(response: 0.5, dampingFraction: 0.7)), value: state.needle)
         .animation(.easeOut(duration: 0.45), value: state.themeID)
+        // The dial is a fixed-size instrument: its letters and readout are drawn to fit inside it, so they follow
+        // the user's text size only up to the point where they would spill over the face.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 }
 
