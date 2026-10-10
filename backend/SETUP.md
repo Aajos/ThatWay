@@ -295,3 +295,58 @@ you clicked through above into **Terraform** (`terraform import` for each resour
 rewrite it from scratch and `terraform apply` into a fresh set of resources) so the whole stack
 becomes reproducible and destroyable in one command — the thing console-first setup doesn't
 give you. That's a separate exercise from this one; nothing here needs to change for it.
+
+
+## 12. Proximity (UWB "find a friend"): the `nearby` function
+
+Two phones ranging each other with Apple's Nearby Interaction need each other's *discovery token* first. The backend's
+only job is to hand a token from one **accepted friend** to the other, briefly. It stores no location: an offer is an
+opaque token plus who it is for, expires after 120 seconds, and is never logged.
+
+1. **DynamoDB** → create table `NearbyOffers`: partition key `userId` (String), sort key `fromUserId` (String),
+   on-demand. Then **Additional settings → Time to Live** → attribute name `expiresAt` (a number of epoch seconds).
+   TTL deletion can lag by hours, so the function also checks `expiresAt` on every read.
+2. **IAM**: add `NearbyOffers` to `thatway-dynamodb-access` (`GetItem`, `Query`, `PutItem`, `DeleteItem`) and make sure
+   `Friends` allows `GetItem` (it already does).
+3. **Lambda**: create `nearby` (Node.js 24.x, role `thatway-lambda-role`, handler `index.handler`). Upload a zip of
+   `backend/lambda/nearby/index.mjs` **and** `core.mjs` (the inline editor can hold both files too). Create it before
+   merging, or the deploy workflow fails on its last step.
+4. **API Gateway** (same `ThatWay-api`, same `cognito-auth` authorizer), three routes to `nearby`:
+   - `PUT /nearby/offers` — body `{"friendId": "...", "token": "<base64>", "kind": "uwb"}`
+   - `GET /nearby/offers` — returns the offers addressed to me from accepted friends
+   - `DELETE /nearby/offers/{friendId}` — ends a session (clears both directions)
+   Then **Deploy** to the `Dev` stage.
+5. Test: `backend/scripts/smoke.sh` (below) exercises sign-in, friends and nearby with a confirmed test account.
+
+Not built yet: push notification ("Sam wants to find you"), which belongs to v1.1's push work. Until then the app polls
+`GET /nearby/offers` every 2 s, only while the Find screen is open.
+
+## 13. Confirmation email troubleshooting (the code never arrives)
+
+The app side is correct (sign-up, confirm, **Send a new code**, and sign-in with an unconfirmed account all work against
+Cognito's public API), so a missing email is Cognito or the mailbox. In order:
+
+1. **Did sign-up reach the pool?** Console → Cognito → your user pool → **Users**. The new user should be listed with
+   status `Unconfirmed`. If it is not there, the app is pointing at a different pool (check `Config.cognitoUserPoolId`).
+2. **Unblock yourself now**: select that user → **Actions → Confirm account**. Then sign in normally. Use this to keep
+   testing while the email is sorted out.
+3. **Spam / junk.** Cognito's default sender is `no-reply@verificationemail.com`; Gmail and Outlook often junk it.
+   The confirm screen says so and offers **Send a new code**.
+4. **Daily cap.** "Send email with Cognito" is limited to **50 emails a day per account/region**, and the limit is
+   shared by every sign-up and resend. After a day of testing the pool can silently stop sending (Cognito answers
+   `LimitExceededException` to a *resend*, which the app now shows as "Too many attempts").
+5. **Message settings.** Cognito → pool → **Authentication → Sign-up** (or **Messaging**): the verification type must be
+   **code**, not link, and "Verify email" attribute verification must be on. The message template must contain `{####}`.
+6. **Move to SES for real use.** Messaging → Email → **Edit** → *Send email with Amazon SES*: verify a sender address
+   (or your own domain) in SES (Sydney, `ap-southeast-2`), and request production access so mail reaches addresses
+   you have not verified (in the SES sandbox only verified recipients receive mail). Cost is about US$0.10 per 1,000.
+7. **Check SES evidence** once on SES: SES → **Account dashboard → Sending statistics** shows sends, bounces and
+   complaints; a bounce or suppression-list entry explains one address that never receives anything.
+
+## 14. Smoke test
+
+```bash
+CLIENT_ID=<app client id> API=<invoke url>/Dev backend/scripts/smoke.sh <confirmed username>
+```
+Prompts for the password (not echoed, not stored). Signs in, then calls `GET /friends`, `GET /nearby/offers` and
+checks the API rejects a call with no token. Exit code 0 means the wiring works.
