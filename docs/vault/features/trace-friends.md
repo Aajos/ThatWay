@@ -98,7 +98,7 @@ tags: [feature, area/accounts-backend, status/spike, risk/high]
 - No map, coordinate or place name anywhere
 
 ## Open items
-- Create the table, function and five routes in AWS (`backend/scripts/aws.sh trace --apply`), then run the smoke test.
+- Done 2026-10-12: table, function and five routes exist in AWS and answer correctly. Still to do: the signed-in smoke test (`backend/scripts/smoke.sh`) and a real two-phone trace.
 - Remote push (APNs) once the Apple Developer Program is enrolled; the notifier is a seam.
 - Walkie talkie in a trace chain: see [[walkie-talkie]].
 - Watch integration: deliberately not done (friends are on the phone's main screen only for now).

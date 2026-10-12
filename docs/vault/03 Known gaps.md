@@ -10,7 +10,7 @@ Hand-kept list of things that are known to be missing, unwired or unproven. The 
 ## Unwired or dead (the app promises, the code does not deliver)
 - "Voice of directions", "Haptics on turns", "Share destination" settings: stored, read by nothing. See [[settings-profile]], [[haptics-ios]].
 - Visibility, close-by radius, achievements, avatar photo options: decorative. See [[avatars-social-decor]].
-- Friends and the API: the address is set (2026-10-12) but friends have not been exercised end to end from the app. See [[friends]], [[backend-config]], [[P10 Backend and proximity runbook]].
+- Friends and tracing: the backend is live and verified against the real tables (2026-10-12), but neither friends nor a trace has been driven from two phones in the app yet. See [[friends]], [[backend-config]], [[P10 Backend and proximity runbook]].
 
 ## Not persisted
 - iPhone theme, skin, tilt, units, default mode, visibility reset on every launch. See [[persistence-defaults]].

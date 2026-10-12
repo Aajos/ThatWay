@@ -108,7 +108,10 @@ provision() {
       --billing-mode PROVISIONED --provisioned-throughput "ReadCapacityUnits=$rcu,WriteCapacityUnits=$wcu"
     [ "$APPLY" = 1 ] && aws dynamodb wait table-exists --region "$REGION" --table-name "$table"
   fi
-  run aws dynamodb update-time-to-live --region "$REGION" --table-name "$table" --time-to-live-specification "Enabled=true,AttributeName=expiresAt"
+  local ttl; ttl=$(aws dynamodb describe-time-to-live --region "$REGION" --table-name "$table" --query TimeToLiveDescription.TimeToLiveStatus --output text 2>/dev/null)
+  if [ "$ttl" = "ENABLED" ] || [ "$ttl" = "ENABLING" ]; then ok "TTL on expiresAt already $ttl"; else
+    run aws dynamodb update-time-to-live --region "$REGION" --table-name "$table" --time-to-live-specification "Enabled=true,AttributeName=expiresAt"
+  fi
 
   echo; echo "== 2. IAM: an extra inline policy on $ROLE_NAME (the existing policies are not touched)"
   local pol; pol=$(mktemp)
