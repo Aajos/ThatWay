@@ -53,14 +53,84 @@ final class AppModel: ObservableObject {
     let locationCheckScheduler = LocationCheckScheduler()
     let authManager = AuthManager()
     lazy var friendsManager = FriendsManager(auth: authManager)
-    /// Ultra Wideband "find a friend"; reports how close the friend is to the watch as well.
-    lazy var nearbyManager: NearbyManager = {
-        let manager = NearbyManager(api: friendsManager,
-                                    capability: { NearbySession.currentCapability() },
-                                    makeSession: { NearbySession() })
-        manager.onWatchState = { [weak self] state in self?.watchLink.sendProximity(state) }
-        return manager
-    }()
+    /// Consent-based friend tracing: a request, an acceptance, then direction and distance at any range.
+    lazy var traceManager = TraceManager(
+        api: friendsManager,
+        ranging: nearbyManager,
+        notifier: LocalTraceNotifier(),
+        friends: { [weak self] in self?.friendsManager.friends ?? [] },
+        refreshFriends: { [weak self] in await self?.friendsManager.refresh() },
+        myPosition: { [weak self] in
+            guard let self, self.hasRealLocation else { return nil }
+            return self.currentPosition
+        },
+        myAccuracy: { [weak self] in self?.locationManager.location?.horizontalAccuracy ?? 10 }
+    )
+
+    // MARK: - Following a traced friend
+
+    /// The destination is a person who is moving, not a place. The needle (Point) and the route (Guidance) chase them.
+    private var followedFriendId: String?
+    private var lastFollowFetch: (at: Date, target: CLLocationCoordinate2D)?
+    /// The clock used by the moving-target throttle (replaced in tests).
+    var followClock: () -> Date = Date.init
+
+    func followFriend(_ friend: Friend, at position: CLLocationCoordinate2D, guide: Bool) {
+        if guiding || arrived { endGuidance() }
+        routingManager.cancelFetch()
+        followedFriendId = friend.id
+        dest = friend.username
+        destKind = .place
+        destinationCoordinate = position
+        searchOpen = false
+        searchQuery = ""
+        lastFollowFetch = nil
+        if guide {
+            startGuidance()
+            lastFollowFetch = (followClock(), position)
+        } else {
+            mode = .point        // pointing is free at any range; a road route is only fetched when asked for
+        }
+    }
+
+    /// A fresh position for the friend being followed. The needle follows at once; the route is re-fetched only when
+    /// they have moved far enough to matter (and not more than once every 20 s), so a moving target is chased without
+    /// hammering the routing service.
+    func friendMoved(to position: CLLocationCoordinate2D) {
+        guard followedFriendId != nil else { return }
+        destinationCoordinate = position
+        guard guiding, !arrived, !routingManager.isLoading else { return }
+        let last = lastFollowFetch
+        let moved = last.map { CompassManager.distance(from: $0.target, to: position) } ?? .infinity
+        let elapsed = last.map { followClock().timeIntervalSince($0.at) } ?? .infinity
+        let threshold = max(40, min(500, routingManager.remainingDistance * 0.1))
+        guard moved > threshold, elapsed >= 20 else { return }
+        lastFollowFetch = (followClock(), position)
+        tripLog.count("followReroute")
+        fetchRoute(to: position, isReroute: false)
+    }
+
+    func stopFollowing() {
+        guard followedFriendId != nil else { return }
+        clearDestination()
+    }
+
+    private func wireTrace() {
+        traceManager.onFollow = { [weak self] friend, coordinate, guide in self?.followFriend(friend, at: coordinate, guide: guide) }
+        traceManager.onStopFollowing = { [weak self] in self?.stopFollowing() }
+        traceManager.onFriendPosition = { [weak self] _, coordinate in self?.friendMoved(to: coordinate) }
+        // Sharing a position is what keeps the app alive in the background, so a trace does not stop mid-trip.
+        traceManager.$state
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updateBackgroundTracking() }
+            .store(in: &cancellables)
+    }
+
+    /// Ultra Wideband ranging for the last stretch of a trace. Nothing about a trace goes to the watch for now
+    /// (friends appear on the phone's main screen only; the watch integration is a later decision).
+    lazy var nearbyManager = NearbyManager(api: friendsManager,
+                                           capability: { NearbySession.currentCapability() },
+                                           makeSession: { NearbySession() })
 
     /// The position/speed the guidance corridor check last actually looked at — updated
     /// only by `performLocationCheck()`, i.e. once per adaptive poll (10s walking, 3s
@@ -111,6 +181,33 @@ final class AppModel: ObservableObject {
             .sink { [weak self] _ in self?.lowPowerChanged() }
             .store(in: &cancellables)
         lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-tw-preview-friends") {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(2))
+                self?.friendsManager.friends = ["sam", "ellie", "marcus", "priya", "jo"].enumerated().map {
+                    Friend(id: "p\($0.offset)", username: $0.element, status: "ACCEPTED", requestedAt: nil, acceptedAt: nil)
+                }
+            }
+        }
+        if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-tw-preview-trace"), i + 1 < ProcessInfo.processInfo.arguments.count {
+            let name = ProcessInfo.processInfo.arguments[i + 1]
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(2))      // after the sign-in sink has run its reset
+                self?.traceManager.previewState(name)
+            }
+        }
+        #endif
+        wireTrace()
+        // Tracing only runs for a signed-in person, and ends the moment they sign out.
+        authManager.$authState
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                guard let self else { return }
+                if state == .signedIn { self.traceManager.setSceneActive(self.sceneActive) } else { self.traceManager.reset() }
+            }
+            .store(in: &cancellables)
         #if PERF
         objectWillChange.sink { Perf.hit("appPublish") }.store(in: &cancellables)
         locationManager.objectWillChange.sink { Perf.hit("locMgrPublish") }.store(in: &cancellables)
@@ -167,7 +264,7 @@ final class AppModel: ObservableObject {
         let profile = LocationProfile.make(
             mode: travelMode,
             guiding: guiding && !arrived,
-            hasDestination: destinationCoordinate != nil,
+            hasDestination: destinationCoordinate != nil || traceManager.isSharing,
             distanceToNextTurn: guiding && hasRealRoute && !arrived ? distanceToManeuver : nil,
             stationary: stationary,
             lowPower: lowPower
@@ -186,6 +283,7 @@ final class AppModel: ObservableObject {
     func setSceneActive(_ active: Bool) {
         guard active != sceneActive else { return }
         sceneActive = active
+        traceManager.setSceneActive(active && authManager.authState == .signedIn)
         tripLog.count(active ? "screenOn" : "screenOff")
         updateScreenAwake()
         if active {
@@ -220,7 +318,9 @@ final class AppModel: ObservableObject {
 
     /// Background location only runs while a trip is being guided and hasn't ended in arrival.
     private func updateBackgroundTracking() {
-        locationManager.setBackgroundGuidance(guiding && !arrived, activityType: travelMode.locationActivityType)
+        // A trip being guided, or an accepted trace (this phone is sharing its position): either needs the app alive
+        // with the screen locked. Nothing else ever gets background location.
+        locationManager.setBackgroundGuidance((guiding && !arrived) || traceManager.isSharing, activityType: travelMode.locationActivityType)
         refreshLocationProfile()
         updateScreenAwake()
         if sceneActive, timer != nil, abs(tickInterval - lastTickInterval) > 0.01 { startTick() }
@@ -857,7 +957,8 @@ final class AppModel: ObservableObject {
         guard guiding, routingManager.hasRoute, !arrived else { return }
         tripLog.routeInfo(metres: routingManager.routeLength, seconds: routingManager.totalDuration, steps: routingManager.cards.count)
         if let route = routingManager.currentRoute {
-            if Perf.on("persist") { RoutePersistence.save(PersistedTrip(route: route, destinationCoordinate: destination, destinationName: dest, profile: profile)) }
+            // A route to a moving friend is never saved: relaunching must not resurrect a stale place.
+            if Perf.on("persist"), followedFriendId == nil { RoutePersistence.save(PersistedTrip(route: route, destinationCoordinate: destination, destinationName: dest, profile: profile)) }
         }
         // The old route line describes a road that's no longer the plan (reroute or mode
         // switch) — drop it; it's baked fresh from the new route when it's actually needed.
@@ -973,6 +1074,7 @@ final class AppModel: ObservableObject {
         routingManager.clear()
         routeDataGenerator.clearGuidanceData()
         RoutePersistence.clear()
+        if followedFriendId != nil { followedFriendId = nil; lastFollowFetch = nil; traceManager.followingEnded() }
     }
 
     /// DONE on the arrival screen: the trip is over, so the compass goes back to idle rather than

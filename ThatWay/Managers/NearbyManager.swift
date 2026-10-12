@@ -49,42 +49,63 @@ protocol ProximitySession: AnyObject {
     func stop()
 }
 
+/// What the trace manager needs from the UWB layer (so it can be tested without hardware).
 @MainActor
-final class NearbyManager: ObservableObject {
+protocol ProximityRanging: AnyObject {
+    var capability: NearbyCapability { get }
+    /// The newest Ultra Wideband reading and when it arrived; nil until the first one of this session.
+    var latestReading: (reading: ProximityReading, at: Date)? { get }
+    /// Called on every new reading, so the pill can follow UWB at its own rate instead of the polling rate.
+    var onReading: (() -> Void)? { get set }
+    func start(with friend: Friend)
+    func stop()
+}
+
+@MainActor
+final class NearbyManager: ObservableObject, ProximityRanging {
     @Published private(set) var state: NearbyState = .idle
     @Published private(set) var friend: Friend?
-    /// The phone tells the watch how close the friend is (nil when the session ends).
-    var onWatchState: ((ProximityWatchState?) -> Void)?
+    private(set) var latestReading: (reading: ProximityReading, at: Date)?
+    var onReading: (() -> Void)?
 
     private let api: NearbyOfferAPI
-    private let capability: () -> NearbyCapability
+    private let capabilityProvider: () -> NearbyCapability
     private let isConfigured: () -> Bool
     private let makeSession: () -> ProximitySession
     private let pollInterval: Duration
     private let republishEvery: Int
+    private let staleAfter: TimeInterval
+    private let now: () -> Date
 
     private var session: ProximitySession?
     private var loop: Task<Void, Never>?
     private var smoother = ProximitySmoother()
-    private var lastSentToWatch: (meters: Int?, band: ProximityBand, at: Date)?
     private var ranging = false
+    /// The friend's token we last handed to the session, and when: if readings stop, their token may have changed
+    /// (they closed and reopened Find, or the app was killed and an old offer lingered).
+    private var usedPeerToken: String?
+    private var ranAt = Date.distantPast
 
     init(api: NearbyOfferAPI,
          capability: @escaping () -> NearbyCapability,
          isConfigured: @escaping () -> Bool = { Config.apiConfigured },
          makeSession: @escaping () -> ProximitySession,
          pollInterval: Duration = .seconds(2),
-         republishEvery: Int = 15) {
-        self.api = api; self.capability = capability; self.isConfigured = isConfigured; self.makeSession = makeSession
+         republishEvery: Int = 15,
+         staleAfter: TimeInterval = 6,
+         now: @escaping () -> Date = Date.init) {
+        self.api = api; self.capabilityProvider = capability; self.isConfigured = isConfigured; self.makeSession = makeSession
         self.pollInterval = pollInterval; self.republishEvery = republishEvery
+        self.staleAfter = staleAfter; self.now = now
     }
 
+    var capability: NearbyCapability { capabilityProvider() }
     var isActive: Bool { loop != nil }
 
     func start(with friend: Friend) {
         stop()
         self.friend = friend
-        guard capability().canRange else { state = .unsupported; return }
+        guard capability.canRange else { state = .unsupported; return }
         guard isConfigured() else {
             state = .failed("Friends aren't switched on yet, so finding a friend isn't available.")
             return
@@ -92,7 +113,7 @@ final class NearbyManager: ObservableObject {
         let session = makeSession()
         guard let token = session.localToken() else { state = .unsupported; return }
         self.session = session
-        smoother.reset(); ranging = false; lastSentToWatch = nil
+        smoother.reset(); ranging = false; latestReading = nil; usedPeerToken = nil; ranAt = .distantPast
         state = .connecting
 
         session.onUpdate = { [weak self] meters, bearing in self?.handleReading(meters: meters, bearing: bearing) }
@@ -107,14 +128,9 @@ final class NearbyManager: ObservableObject {
                     if tick % self.republishEvery == 0 {            // keeps our offer inside its 2-minute life
                         try await self.api.putOffer(friendId: friend.id, token: token, kind: .uwb)
                     }
-                    if !self.ranging {
+                    if self.needsOffers {
                         let offers = try await self.api.offers()
-                        if let theirs = offers.first(where: { $0.friendId == friend.id && $0.kind == .uwb }),
-                           self.session?.run(peerToken: theirs.token) == true {
-                            self.ranging = true
-                        } else if case .connecting = self.state {
-                            self.state = .waiting
-                        }
+                        self.adopt(offers.first(where: { $0.friendId == friend.id && $0.kind == .uwb }))
                     }
                     failures = 0
                 } catch {
@@ -127,39 +143,55 @@ final class NearbyManager: ObservableObject {
         }
     }
 
+    /// Poll for the friend's token until ranging has started, and again whenever readings have gone quiet for
+    /// `staleAfter` seconds: that is the signature of a dead token (their old offer) or a friend who restarted.
+    private var needsOffers: Bool {
+        guard ranging else { return true }
+        let lastSign = max(latestReading?.at ?? .distantPast, ranAt)
+        return now().timeIntervalSince(lastSign) > staleAfter
+    }
+
+    private func adopt(_ offer: NearbyOffer?) {
+        guard let offer else {
+            if !ranging, case .connecting = state { state = .waiting }
+            return
+        }
+        guard offer.token != usedPeerToken else { return }          // same token: nothing new to learn
+        if session?.run(peerToken: offer.token) == true {
+            usedPeerToken = offer.token
+            ranging = true
+            ranAt = now()
+            latestReading = nil
+            smoother.reset()
+        }
+    }
+
     func stop() {
         loop?.cancel(); loop = nil
         session?.onUpdate = nil; session?.onEnded = nil
         session?.stop(); session = nil
-        ranging = false
+        ranging = false; latestReading = nil; usedPeerToken = nil
         if let id = friend?.id { Task { await api.endOffers(friendId: id) } }
-        if state != .idle { onWatchState?(nil) }
         friend = nil
         state = .idle
     }
 
     private func handleReading(meters: Double, bearing: Double?) {
-        guard let friend else { return }
+        guard friend != nil else { return }
         let band = smoother.add(meters: meters)
-        let smoothed = smoother.meters ?? meters
-        let reading = ProximityReading(meters: smoothed, band: band, relativeBearing: bearing)
+        let reading = ProximityReading(meters: smoother.meters ?? meters, band: band, relativeBearing: bearing)
+        latestReading = (reading, now())
         state = .ranging(reading)
-
-        // The watch needs the news, not every sample: when the band or whole metres change, at most once a second.
-        let whole = Int(smoothed.rounded())
-        let now = Date()
-        if let last = lastSentToWatch, last.band == band, last.meters == whole || now.timeIntervalSince(last.at) < 1 { return }
-        lastSentToWatch = (whole, band, now)
-        onWatchState?(ProximityWatchState(friendName: friend.username, band: band, meters: whole))
+        onReading?()
     }
 
     private func handleEnded() {
         loop?.cancel(); loop = nil
         session?.stop(); session = nil
-        ranging = false
+        ranging = false; latestReading = nil; usedPeerToken = nil
         if let id = friend?.id { Task { await api.endOffers(friendId: id) } }
-        onWatchState?(nil)
         state = .lost
+        onReading?()
     }
 }
 

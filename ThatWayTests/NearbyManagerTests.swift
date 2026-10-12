@@ -32,9 +32,10 @@ private final class FakeSession: ProximitySession {
     var onUpdate: ((Double, Double?) -> Void)?
     var onEnded: (() -> Void)?
     var ranToken: String?
+    var ranTokens: [String] = []
     var stopped = false
     func localToken() -> String? { "TUJD" }
-    func run(peerToken: String) -> Bool { ranToken = peerToken; return true }
+    func run(peerToken: String) -> Bool { ranToken = peerToken; ranTokens.append(peerToken); return true }
     func stop() { stopped = true }
 }
 
@@ -77,8 +78,6 @@ struct NearbyManagerTests {
 
     @Test func startsRangingWhenTheFriendsTokenAppears() async {
         let (manager, api, session) = make()
-        var watchStates: [ProximityWatchState?] = []
-        manager.onWatchState = { watchStates.append($0) }
         manager.start(with: friend)
         await eventually(manager.state == .waiting)
         api.available = [NearbyOffer(friendId: "bob-id", token: "QkJC", kind: .uwb, expiresAt: 9_999_999_999)]
@@ -89,7 +88,7 @@ struct NearbyManagerTests {
         guard case .ranging(let reading) = manager.state else { Issue.record("not ranging: \(manager.state)"); return }
         #expect(abs(reading.meters - 12.4) < 0.01)
         #expect(reading.relativeBearing == 20)
-        #expect(watchStates.last??.friendName == "bob")
+        #expect(manager.latestReading != nil)
         manager.stop()
     }
 
@@ -104,10 +103,8 @@ struct NearbyManagerTests {
         manager.stop()
     }
 
-    @Test func stoppingCleansUpAndTellsTheWatch() async {
+    @Test func stoppingCleansUp() async {
         let (manager, api, session) = make()
-        var watchStates: [ProximityWatchState?] = []
-        manager.onWatchState = { watchStates.append($0) }
         manager.start(with: friend)
         await eventually(manager.state == .waiting)
         manager.stop()
@@ -115,7 +112,6 @@ struct NearbyManagerTests {
         #expect(session.stopped)
         #expect(api.ended == ["bob-id"])
         #expect(manager.state == .idle)
-        #expect(watchStates.last == .some(nil), "the watch is told the session ended")
     }
 
     @Test func theFriendLeavingEndsTheSession() async {
@@ -135,6 +131,42 @@ struct NearbyManagerTests {
         manager.start(with: friend)
         await eventually({ if case .failed = manager.state { return true } else { return false } }())
         if case .failed = manager.state {} else { Issue.record("expected failed, got \(manager.state)") }
+        manager.stop()
+    }
+
+    @Test func aDeadTokenIsReplacedWhenTheFriendComesBackWithANewOne() async {
+        // Their old offer lingered (app killed): we start on it, no readings ever arrive, then their fresh offer appears.
+        let api = FakeAPI(), session = FakeSession()
+        var clock = Date(timeIntervalSince1970: 1_000)
+        api.available = [NearbyOffer(friendId: "bob-id", token: "T0xE", kind: .uwb, expiresAt: 9_999_999_999)]
+        let manager = NearbyManager(api: api, capability: { .uwbWithDirection }, isConfigured: { true },
+                                    makeSession: { session }, pollInterval: .milliseconds(2), staleAfter: 6, now: { clock })
+        manager.start(with: friend)
+        await eventually(session.ranTokens == ["T0xE"])
+        api.available = [NearbyOffer(friendId: "bob-id", token: "TkVX", kind: .uwb, expiresAt: 9_999_999_999)]
+        await settle()
+        #expect(session.ranTokens == ["T0xE"], "not before the readings have been quiet for 6 s")
+        clock = clock.addingTimeInterval(7)
+        await eventually(session.ranTokens == ["T0xE", "TkVX"])
+        #expect(session.ranTokens == ["T0xE", "TkVX"])
+        manager.stop()
+    }
+
+    @Test func aHealthyConnectionIsNotTouched() async {
+        let api = FakeAPI(), session = FakeSession()
+        var clock = Date(timeIntervalSince1970: 1_000)
+        api.available = [NearbyOffer(friendId: "bob-id", token: "QkJC", kind: .uwb, expiresAt: 9_999_999_999)]
+        let manager = NearbyManager(api: api, capability: { .uwbWithDirection }, isConfigured: { true },
+                                    makeSession: { session }, pollInterval: .milliseconds(2), staleAfter: 6, now: { clock })
+        manager.start(with: friend)
+        await eventually(session.ranToken != nil)
+        session.onUpdate?(8, 10)                                   // readings flowing
+        clock = clock.addingTimeInterval(4)
+        session.onUpdate?(7, 10)
+        api.available = [NearbyOffer(friendId: "bob-id", token: "TkVX", kind: .uwb, expiresAt: 9_999_999_999)]
+        clock = clock.addingTimeInterval(4)                        // 4 s since the last reading: still fresh
+        await settle()
+        #expect(session.ranTokens == ["QkJC"])
         manager.stop()
     }
 

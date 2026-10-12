@@ -30,7 +30,7 @@ enum Config {
     static let cognitoUserPoolId = "ap-southeast-2_I6w74AQkj"
     static let cognitoAppClientId = "2ute5p0mqgufhech5u59sn1is7"
     /// Must include the stage (e.g. `/Dev`), no trailing slash — every call 404s without it.
-    static let apiBaseURL = "https://REPLACE_WITH_API_ID.execute-api.ap-southeast-2.amazonaws.com/Dev"
+    static let apiBaseURL = "https://7tjtxhleca.execute-api.ap-southeast-2.amazonaws.com/Dev"
 
     /// False while `apiBaseURL` is still the placeholder from the template: friends and nearby calls then say so plainly
     /// instead of failing against a host that does not exist.

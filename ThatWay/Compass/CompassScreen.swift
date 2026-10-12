@@ -63,8 +63,8 @@ struct CompassScreen: View {
     /// between the two instead of one appearing and the other vanishing.
     @Namespace private var cardNamespace
     @State private var modeFlash: String?
-    /// The friend whose Find sheet is open (tap a friend on the roster).
-    @State private var nearbyFriend: Friend?
+    /// The friend the person tapped: they are asked to confirm before a trace request is sent.
+    @State private var traceCandidate: Friend?
     /// Height of the on-screen keyboard (0 when hidden), so the search results end above it.
     @State private var keyboardHeight: CGFloat = 0
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -136,9 +136,12 @@ struct CompassScreen: View {
                             )
                             .onPreferenceChange(SearchBarFramePreferenceKey.self) { searchBarFrame = $0 }
 
-                        friendsRow(k: k, theme: theme)
+                        TraceSlot(trace: app.traceManager, app: app, theme: theme, myName: app.authManager.currentUser?.username ?? "You", inset: Spacing.container * k) {
+                            friendsRow(k: k, theme: theme)
+                        }
                             .dynamicTypeSize(...DynamicTypeSize.xLarge)
-                            .frame(height: 80 * k)
+                            // At least the friends row's height; the trace pill is taller and grows downward.
+                            .frame(minHeight: 80 * k, alignment: .top)
                             .padding(.top, Spacing.element * k)
                             .blur(radius: blurRest)
                             .zIndex(1)
@@ -160,6 +163,18 @@ struct CompassScreen: View {
                             .padding(.horizontal, Spacing.container * k)
                             .padding(.top, Spacing.element * k)
                             .blur(radius: blurRest)
+                    }
+
+                    // While guiding the friends row is not shown, but a trace must never be invisible: the pill
+                    // sits here, above the instruction, for as long as one is pending or active.
+                    if app.guiding, !app.arrived {
+                        TraceSlot(trace: app.traceManager, app: app, theme: theme, myName: app.authManager.currentUser?.username ?? "You") {
+                            EmptyView()
+                        }
+                        .dynamicTypeSize(...DynamicTypeSize.xLarge)
+                        .padding(.horizontal, Spacing.container * k)
+                        .padding(.top, Spacing.element * k)
+                        .blur(radius: blurRest)
                     }
 
                     // The active instruction is always the first thing under the pills — before the
@@ -318,8 +333,26 @@ struct CompassScreen: View {
         // The keyboard must not resize or shift this screen at all (it shrank the layout area by the
         // keyboard's height and pushed everything down); the results panel reserves keyboard room itself.
         .ignoresSafeArea(.keyboard, edges: .bottom)
-        .sheet(item: $nearbyFriend) { friend in
-            NearbySheet(friend: friend, nearby: app.nearbyManager)
+        .confirmationDialog(
+            traceCandidate.map { "Ask \($0.username) to share their direction?" } ?? "",
+            isPresented: Binding(get: { traceCandidate != nil }, set: { if !$0 { traceCandidate = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Send request") {
+                if let friend = traceCandidate { Task { await app.traceManager.request(friend) } }
+                traceCandidate = nil
+            }
+            Button("Cancel", role: .cancel) { traceCandidate = nil }
+        } message: {
+            Text("They have to accept first. Only direction and distance are shown, never a map, and either of you can stop at any time.")
+        }
+        .alert("Couldn't start the trace", isPresented: Binding(
+            get: { app.traceManager.errorMessage != nil },
+            set: { _ in }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(app.traceManager.errorMessage ?? "")
         }
         .alert(
             "Route there?",
@@ -697,48 +730,13 @@ struct CompassScreen: View {
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(theme.outline(0.4)))
     }
 
-    /// The friends roster. Friends share no location, so tapping one doesn't point or route to them; it opens Find,
-    /// which ranges them over Ultra Wideband when both phones are close and both have it open.
+    /// The friends roster. Tapping a friend asks (after a confirmation) to trace them: nothing is shared until they
+    /// accept, and the pill below takes this row's place for as long as the trace lasts.
     @ViewBuilder
     private func friendsRow(k: CGFloat, theme: AppTheme) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: Spacing.element) {
-                if app.friendsManager.friends.isEmpty {
-                    Text("No friends yet — add some in your profile")
-                        .font(.nunito(12, .semibold))
-                        .foregroundStyle(theme.textSecondary)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 300, alignment: .leading)
-                }
-                ForEach(app.friendsManager.friends) { f in
-                    VStack(spacing: 6) {
-                        ZStack {
-                            Circle()
-                                .fill(LinearGradient(colors: [app.currentTheme.accent, Color(hex: "34D6A5")], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                .frame(width: 52, height: 52)
-                            Circle().fill(theme.screen).frame(width: 48, height: 48)
-                            Circle().fill(f.color).frame(width: 42, height: 42)
-                            Text(f.initials)
-                                .font(.nunito(15, .extraBold))
-                                .foregroundStyle(Color(hex: "241A14"))
-                        }
-                        Text(f.username)
-                            .font(.nunito(11, .semibold))
-                            .foregroundStyle(theme.textSecondary)
-                            .lineLimit(1)
-                    }
-                    .frame(width: 56)
-                    .contentShape(Rectangle())
-                    .onTapGesture { nearbyFriend = f }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Find \(f.username)")
-                    .accessibilityAddTraits(.isButton)
-                }
-            }
-            .padding(.horizontal, Spacing.container * k)
+        FriendsStrip(friendsManager: app.friendsManager, theme: theme, k: k, myId: app.authManager.currentUser?.id) { friend in
+            traceCandidate = friend
         }
-        .scrollClipDisabled()
     }
 
     @ViewBuilder

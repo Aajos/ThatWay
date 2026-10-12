@@ -60,19 +60,28 @@ final class FriendsManager: ObservableObject {
         }
     }
 
+    /// Exact-username lookup. Usernames are matched exactly as typed, so a lower-case retry covers the common slip of a
+    /// stray capital. (Your own account is never returned.)
     func searchUsers(query: String) async {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { searchResults = []; return }
         errorMessage = nil
         do {
-            var components = URLComponents()
-            components.queryItems = [URLQueryItem(name: "username", value: trimmed)]
-            let encodedQuery = components.percentEncodedQuery.map { "?\($0)" } ?? ""
-            searchResults = try await request(method: "GET", path: "/friends/search\(encodedQuery)") as [UserSearchResult]
+            var hits = try await lookUp(trimmed)
+            if hits.isEmpty, trimmed != trimmed.lowercased() { hits = try await lookUp(trimmed.lowercased()) }
+            let me = auth.currentUser?.id
+            searchResults = hits.filter { $0.id != me }
         } catch {
             errorMessage = error.localizedDescription
             searchResults = []
         }
+    }
+
+    private func lookUp(_ username: String) async throws -> [UserSearchResult] {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "username", value: username)]
+        let encodedQuery = components.percentEncodedQuery.map { "?\($0)" } ?? ""
+        return try await request(method: "GET", path: "/friends/search\(encodedQuery)")
     }
 
     @discardableResult
