@@ -1,28 +1,27 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, DeleteCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { makeHandler } from "./core.mjs";
 
-const client = new DynamoDBClient({ region: "ap-southeast-2" });
-const dynamodb = DynamoDBDocumentClient.from(client);
+const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: "ap-southeast-2" }));
 
-export const handler = async (event) => {
-  try {
-    const userId = event.requestContext.authorizer.jwt.claims.sub;
-    const friendId = event.pathParameters?.friendID ?? event.pathParameters?.friendId;
-
-    if (!friendId) {
-      return { statusCode: 400, body: JSON.stringify({ error: "friendId required" }) };
-    }
-
-    await dynamodb.send(
-      new DeleteCommand({ TableName: "Friends", Key: { userId, otherUserId: friendId } })
-    );
-    await dynamodb.send(
-      new DeleteCommand({ TableName: "Friends", Key: { userId: friendId, otherUserId: userId } })
-    );
-
-    return { statusCode: 200, body: JSON.stringify({ message: "Friend removed" }) };
-  } catch (error) {
-    console.error("Error removing friend:", error);
-    return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
-  }
+const db = {
+  get: async (TableName, Key) => (await dynamodb.send(new GetCommand({ TableName, Key, ConsistentRead: false }))).Item,
+  query: async (TableName, userId) =>
+    (await dynamodb.send(new QueryCommand({
+      TableName, ConsistentRead: false, KeyConditionExpression: "userId = :u", ExpressionAttributeValues: { ":u": userId },
+    }))).Items ?? [],
+  queryIndex: async (TableName, IndexName, attr, value) =>
+    (await dynamodb.send(new QueryCommand({
+      TableName, IndexName, KeyConditionExpression: "#a = :v", ExpressionAttributeNames: { "#a": attr }, ExpressionAttributeValues: { ":v": value },
+    }))).Items ?? [],
+  transact: (ops) =>
+    dynamodb.send(new TransactWriteCommand({
+      TransactItems: ops.map((op) =>
+        op.put
+          ? { Put: { TableName: op.put.table, Item: op.put.item,
+                     ...(op.put.absentKey ? { ConditionExpression: `attribute_not_exists(${op.put.absentKey[0]})` } : {}) } }
+          : { Delete: { TableName: op.remove.table, Key: op.remove.key } }),
+    })),
 };
+
+export const handler = makeHandler({ db });

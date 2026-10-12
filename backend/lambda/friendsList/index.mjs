@@ -1,52 +1,27 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { makeHandler } from "./core.mjs";
 
-const client = new DynamoDBClient({ region: "ap-southeast-2" });
-const dynamodb = DynamoDBDocumentClient.from(client);
+const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: "ap-southeast-2" }));
 
-const ALLOWED = ["ACCEPTED", "PENDING", "INCOMING"];
-
-export const handler = async (event) => {
-  try {
-    const userId = event.requestContext.authorizer.jwt.claims.sub;
-    const status = (event.queryStringParameters?.status || "ACCEPTED").toUpperCase();
-
-    if (!ALLOWED.includes(status)) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "status must be ACCEPTED, PENDING or INCOMING" })
-      };
-    }
-
-    const result = await dynamodb.send(
-      new QueryCommand({
-        TableName: "Friends",
-        KeyConditionExpression: "userId = :userId",
-        FilterExpression: "#status = :status",
-        ExpressionAttributeNames: { "#status": "status" },
-        ExpressionAttributeValues: { ":userId": userId, ":status": status }
-      })
-    );
-
-    const rows = result.Items || [];
-
-    const users = await Promise.all(
-      rows.map((row) =>
-        dynamodb.send(new GetCommand({ TableName: "Users", Key: { id: row.otherUserId } }))
-      )
-    );
-
-    const friends = rows.map((row, i) => ({
-      id: row.otherUserId,
-      username: users[i].Item?.username ?? "unknown",
-      status: row.status,
-      requestedAt: row.requestedAt ?? null,
-      acceptedAt: row.acceptedAt ?? null
-    }));
-
-    return { statusCode: 200, body: JSON.stringify(friends) };
-  } catch (error) {
-    console.error("Error:", error);
-    return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
-  }
+const db = {
+  get: async (TableName, Key) => (await dynamodb.send(new GetCommand({ TableName, Key, ConsistentRead: false }))).Item,
+  query: async (TableName, userId) =>
+    (await dynamodb.send(new QueryCommand({
+      TableName, ConsistentRead: false, KeyConditionExpression: "userId = :u", ExpressionAttributeValues: { ":u": userId },
+    }))).Items ?? [],
+  queryIndex: async (TableName, IndexName, attr, value) =>
+    (await dynamodb.send(new QueryCommand({
+      TableName, IndexName, KeyConditionExpression: "#a = :v", ExpressionAttributeNames: { "#a": attr }, ExpressionAttributeValues: { ":v": value },
+    }))).Items ?? [],
+  transact: (ops) =>
+    dynamodb.send(new TransactWriteCommand({
+      TransactItems: ops.map((op) =>
+        op.put
+          ? { Put: { TableName: op.put.table, Item: op.put.item,
+                     ...(op.put.absentKey ? { ConditionExpression: `attribute_not_exists(${op.put.absentKey[0]})` } : {}) } }
+          : { Delete: { TableName: op.remove.table, Key: op.remove.key } }),
+    })),
 };
+
+export const handler = makeHandler({ db });

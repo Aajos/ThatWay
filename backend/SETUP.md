@@ -350,3 +350,59 @@ CLIENT_ID=<app client id> API=<invoke url>/Dev backend/scripts/smoke.sh <confirm
 ```
 Prompts for the password (not echoed, not stored). Signs in, then calls `GET /friends`, `GET /nearby/offers` and
 checks the API rejects a call with no token. Exit code 0 means the wiring works.
+
+## 15. Doing the console work from a script
+
+`backend/scripts/aws.sh` does the checking and the proximity setup from the command line, so nothing needs clicking.
+Needs the AWS CLI (`brew install awscli`) signed in to the account (`aws login`, or `aws sso login`); credentials stay
+on your machine and are never pasted anywhere.
+
+```bash
+backend/scripts/aws.sh audit             # read-only: pool email settings, tables, functions, routes, authorizer audience
+backend/scripts/aws.sh nearby            # dry run: prints exactly what it would create
+backend/scripts/aws.sh nearby --apply    # creates NearbyOffers (+TTL), an extra IAM policy, the nearby Lambda, 3 routes, deploys Dev
+backend/scripts/aws.sh url               # the invoke URL for ThatWay/Config.swift
+```
+It prints only counts and AWS resource names (never usernames, emails or tokens), deletes nothing, and is safe to
+re-run. It was written without access to the account, so run `audit` and the dry run first. Not scripted on purpose:
+switching the pool to SES (Cognito's update call resets any setting you do not repeat) and the SES sender
+verification and production-access request.
+
+## 16. Friend tracing: the `trace` function
+
+Consent-based tracing at any range. The app asks a friend to be traced; nothing is shared until they accept; then each
+phone uploads its position and reads the other's. Positions live in DynamoDB for under 90 seconds, only for the accepted
+partner, and are never logged.
+
+```bash
+backend/scripts/aws.sh trace             # dry run
+backend/scripts/aws.sh trace --apply     # TraceSessions table (provisioned 10/10, TTL on expiresAt), policy, Lambda, 5 routes
+backend/scripts/smoke.sh <username>      # includes the trace checks
+backend/scripts/aws.sh nearby --apply    # re-deploys nearby (it now uses eventually consistent reads)
+```
+Routes (all with the JWT authorizer): `POST /trace/request`, `GET /trace`, `POST /trace/respond`, `PUT /trace/position`,
+`DELETE /trace/{friendId}`. Needs `GetItem` on `Friends` for the role (already granted by the original policy).
+By hand: create the table with partition key `userId` (String) and sort key `peerId` (String), TTL attribute
+`expiresAt`, upload `index.mjs` and `core.mjs` as `trace`, add the five routes. Cost: 15 of the 25 always-free
+read/write units are used by `NearbyOffers` and `TraceSessions` together, so they can throttle under heavy use but not bill.
+
+Sessions are kept alive by use: each person's row expires 60 minutes after their last position upload (a tunnel does not end
+a trace), and nothing lasts past 24 hours.
+
+## 17. The friends functions (rewrite)
+
+`backend/lambda/friends/core.mjs` is the one tested module behind the five friends Lambdas. After editing it run
+`backend/scripts/sync_friends.sh` (copies it into each function directory; `--check` fails if they drift), then:
+
+```bash
+backend/scripts/aws.sh friends            # dry run
+backend/scripts/aws.sh friends --apply    # updates the code of the five existing functions (no new resources)
+backend/scripts/friends_integration.sh    # end to end against the real tables with two throwaway users; cleans up
+```
+Changes: search returns `{id, username}` only (it used to include the email address); each friendship is written and
+removed in a single DynamoDB transaction; a request only succeeds if neither row exists (a condition inside the
+transaction); at most 50 open outgoing requests; errors never echo AWS messages. Same routes and response shapes, so the
+app needs no change. IAM: transactions use the existing `PutItem` / `DeleteItem` permissions.
+
+Not built yet: remote push for "Sam wants to trace you" (needs the Apple Developer Program: free teams have no push
+entitlement), so a request is seen while the app is running.

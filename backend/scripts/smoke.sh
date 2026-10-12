@@ -28,4 +28,10 @@ check "GET /nearby/offers (with token)"      "$(code "$API/nearby/offers" -H "Au
 check "GET /nearby/offers (no token refused)" "$(code "$API/nearby/offers")" 401
 check "PUT /nearby/offers to a stranger is refused" \
   "$(code -X PUT "$API/nearby/offers" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"friendId":"not-a-friend","token":"QUJD","kind":"uwb"}')" 403
+check "GET /trace (with token)"               "$(code "$API/trace" -H "Authorization: Bearer $TOKEN")" 200
+check "GET /trace (no token refused)"         "$(code "$API/trace")" 401
+check "POST /trace/request to a stranger is refused" \
+  "$(code -X POST "$API/trace/request" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"friendId":"not-a-friend"}')" 403
+check "PUT /trace/position with no trace is refused" \
+  "$(code -X PUT "$API/trace/position" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"friendId":"not-a-friend","lat":0,"lon":0}')" 409
 exit $fail
