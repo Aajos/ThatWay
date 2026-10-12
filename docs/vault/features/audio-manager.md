@@ -46,6 +46,7 @@ tags: [feature, area/audio-haptics, status/shipped, risk/high]
 - [[background-guidance]] — Background guidance, scene phases, screen awake
 - [[guidance-mode]] — Guidance mode lifecycle
 - [[settings-profile]] — Settings and Profile screen
+- [[walkie-talkie]] — Walkie talkie (push to talk in a trace)
 
 ## Failure points
 

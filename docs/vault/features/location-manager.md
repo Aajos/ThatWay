@@ -49,6 +49,7 @@ tags: [feature, area/location-sensors, status/shipped, risk/high]
 - [[heading]] — Heading pipeline
 - [[location-issues]] — Permission, precision and waiting-for-fix handling
 - [[point-mode]] — Point mode (straight-line pointing)
+- [[trace-friends]] — Trace a friend (consent, any range)
 
 ## Failure points
 

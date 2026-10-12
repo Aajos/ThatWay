@@ -45,11 +45,12 @@ tags: [feature, area/shared-modules, status/shipped, risk/high]
 ## Used by
 - [[bearing-math]] — Bearing and distance maths
 - [[continuous-angle]] — Continuous angles
-- [[nearby-proximity]] — Find a friend nearby (UWB)
+- [[nearby-proximity]] — Ultra Wideband last stretch (nearby)
 - [[phone-watch-link]] — iPhone-to-watch link (travel mode)
 - [[route-models]] — Route models
 - [[routing-provider-seam]] — Routing provider seam (OSRM + fallback)
 - [[theme-system]] — Themes and shared look
+- [[trace-friends]] — Trace a friend (consent, any range)
 - [[watch-app]] — Watch app UI
 
 ## Failure points

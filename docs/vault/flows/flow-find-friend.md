@@ -1,36 +1,39 @@
 ---
 id: flow-find-friend
-title: Find a friend nearby
+title: Trace a friend
 type: flow
-features: [auth, friends, nearby-proximity, phone-watch-link]
+features: [auth, friends, trace-friends, nearby-proximity, location-manager, heading]
 tags: [flow]
 ---
 
-# Find a friend nearby
+# Trace a friend
 
-**Trigger:** Two friends are close (a festival, a trailhead, a car park) and one taps the other's picture on the compass screen.
+**Trigger:** One person taps a friend on the compass screen and asks to trace them.
 
 ## Steps
 1. Both are signed in and accepted friends — [[auth]] [[friends]]
-2. One taps the friend's picture: the Find sheet opens, the phone checks it can range (UWB), makes a session and publishes its token — [[nearby-proximity]]
-3. The other opens Find on their phone; each polls for the other's token every 2 s — [[nearby-proximity]]
-4. Tokens meet; the phones range each other directly; the sheet shows distance, a band and (if supported) an arrow, with a haptic tick per band — [[nearby-proximity]]
-5. The phone tells the watch the friend's name, band and metres; the watch shows it and taps the wrist closer — [[phone-watch-link]]
-6. Closing the sheet stops the session and deletes both offers — [[nearby-proximity]]
+2. The asker taps the friend and confirms "Ask Sam to share their direction?"; a pill shows *you, request pending, them* — [[trace-friends]]
+3. The other person's app shows *them, Accept or Decline, you* (and, if the app is not in front, a local notification) — [[trace-friends]]
+4. They accept: both phones start sharing a position with each other, and keep doing so in the background for the whole trip; each pill shows *you, arrow and distance, them* — [[trace-friends]] [[location-manager]] [[heading]]
+5. Far apart, the arrow and distance come from GPS (any range); inside about 40 m the phones try Ultra Wideband and the readout becomes precise — [[nearby-proximity]]
+6. Either person can aim the compass at the other (Point me) or get turn-by-turn to their live position (Guide me); the destination moves with them — [[trace-friends]]
+7. Either side taps the cross, or 30 minutes pass, or they stop being friends: sharing stops and the other side is told — [[trace-friends]]
 
 ## Where it can break (the seams)
 
 | Seam | What breaks | Caught by |
 |---|---|---|
-| Hardware | The phone has no UWB (every iPhone SE, the simulator) | test: NearbyManagerTests::aPhoneWithoutUWBNeverTouchesTheBackend |
-| Backend address | Placeholder URL, so nothing connects | test: AuthManagerTests::friendsAndNearbyNeedTheServiceAddress; manual: smoke test |
-| Trust | A non-friend gets a token | test: backend/lambda/nearby/test.mjs |
-| Timing | One side waits forever because the other never opened Find | manual: two phones |
-| Link to the watch | Proximity overwrites the travel mode in the context | test: ProximityTests::watchPayloadRoundTripsAndCanEnd |
-| Real radio | Range, interference and suspension behave differently outdoors | manual: needs two UWB phones |
+| Consent | A position is relayed before acceptance | test: backend/lambda/trace/test.mjs; TraceManagerTests::nothingIsSharedUntilTheyAccept |
+| Visibility | A stranger or a stale position reaches the screen | test: backend/lambda/trace/test.mjs |
+| Heading | The arrow points the wrong way when the compass lies | manual: [[flow-compass-wrong]]; the arrow is dimmed when the heading is unreliable |
+| Notification | A request is missed because the app is suspended | manual: known gap until push (Apple Developer Program) |
+| Hardware | The phone has no UWB (iPhone SE, simulator) | test: TraceManagerTests::aPhoneWithoutUWBStaysOnGpsAtAnyDistance |
+| Radio | UWB behaves differently outdoors | manual: needs two UWB phones |
 
 ## Features touched
 - [[auth]] — Authentication (risk high)
 - [[friends]] — Friends (risk low)
-- [[nearby-proximity]] — Find a friend nearby (UWB) (risk high)
-- [[phone-watch-link]] — iPhone-to-watch link (travel mode) (risk medium)
+- [[trace-friends]] — Trace a friend (consent, any range) (risk high)
+- [[nearby-proximity]] — Ultra Wideband last stretch (nearby) (risk high)
+- [[location-manager]] — LocationManager (fixes and permission) (risk high)
+- [[heading]] — Heading pipeline (risk medium)

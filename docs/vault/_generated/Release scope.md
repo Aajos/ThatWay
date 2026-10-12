@@ -10,9 +10,9 @@ What each planned release contains, from each feature's `release`, `tier` and `v
 | Release | Features | Total value | Not yet shipped (spike, dormant, setting-only, planned) |
 |---|---|---|---|
 | v1.0 | 46 | 174 | [[friends]] [[synthetic-route]] |
-| v1.1 | 1 | 4 | [[nearby-proximity]] |
+| v1.1 | 2 | 9 | [[nearby-proximity]] [[trace-friends]] |
 | v1.2 | 2 | 5 | - |
-| later | 13 | 30 | [[avatars-social-decor]] [[haptics-ios]] [[heading-blender]] [[phone-watch-link]] [[route-tracker]] [[watch-app]] [[watch-drive-guard]] [[watch-gestures]] [[watch-haptics]] [[watch-session]] [[watch-spike-log]] [[watch-travel-modes]] [[watch-voice-search]] |
+| later | 14 | 34 | [[avatars-social-decor]] [[haptics-ios]] [[walkie-talkie]] [[heading-blender]] [[phone-watch-link]] [[route-tracker]] [[watch-app]] [[watch-drive-guard]] [[watch-gestures]] [[watch-haptics]] [[watch-session]] [[watch-spike-log]] [[watch-travel-modes]] [[watch-voice-search]] |
 | internal | 0 | 0 | - |
 
 ## v1.0
@@ -70,6 +70,7 @@ What each planned release contains, from each feature's `release`, `tier` and `v
 
 | Feature | Value | Tier | Status | Risk |
 |---|---|---|---|---|
+| [[trace-friends]] | 5 | paid | spike | high |
 | [[nearby-proximity]] | 4 | paid | spike | high |
 
 ## v1.2
@@ -83,6 +84,7 @@ What each planned release contains, from each feature's `release`, `tier` and `v
 
 | Feature | Value | Tier | Status | Risk |
 |---|---|---|---|---|
+| [[walkie-talkie]] | 4 | paid | planned | high |
 | [[watch-drive-guard]] | 4 | free | spike | high |
 | [[watch-app]] | 3 | free | spike | medium |
 | [[watch-haptics]] | 3 | free | spike | low |

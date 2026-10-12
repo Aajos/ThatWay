@@ -38,7 +38,7 @@ tags: [feature, area/watch, status/spike, risk/medium]
 - `PhoneLink` (watch) reads the stored context at launch and live messages
 - `WatchSync` payload shared in ThatWayCore
 - Watch target embedded in the iPhone app (`Embed Watch Content`), companion bundle id `...ThatWay.watchkitapp`
-- Also carries the proximity state (friend name, band, metres) in the same context: the context is replaced wholesale, so mode and proximity are always sent together
+- The payload and the watch chip for a friend's proximity still exist, but the phone no longer sends one: tracing is on the phone's main screen only for now, by decision (the watch integration comes later)
 - Verified between paired simulators
 
 ## Depends on
@@ -46,7 +46,6 @@ tags: [feature, area/watch, status/spike, risk/medium]
 - [[core-package]]
 
 ## Used by
-- [[nearby-proximity]] — Find a friend nearby (UWB)
 - [[watch-drive-guard]] — Watch drive guard
 
 ## Failure points

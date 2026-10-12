@@ -7,18 +7,20 @@ tags: [generated]
 
 | Feature | Area | Depends on | Used by | Fan-in | Fan-out |
 |---|---|---|---|---|---|
-| [[auth]] | accounts-backend | [[backend-config]] [[backend-lambda]] | [[friends]] [[nearby-proximity]] | 2 | 2 |
+| [[auth]] | accounts-backend | [[backend-config]] [[backend-lambda]] | [[friends]] [[nearby-proximity]] [[trace-friends]] | 3 | 2 |
 | [[backend-config]] | accounts-backend | - | [[auth]] [[friends]] [[routing-provider-seam]] | 3 | 0 |
 | [[backend-lambda]] | accounts-backend | - | [[auth]] | 1 | 0 |
-| [[friends]] | accounts-backend | [[auth]] [[backend-config]] | [[avatars-social-decor]] [[nearby-proximity]] | 2 | 2 |
-| [[nearby-proximity]] | accounts-backend | [[friends]] [[auth]] [[core-package]] [[phone-watch-link]] | - | 0 | 4 |
+| [[friends]] | accounts-backend | [[auth]] [[backend-config]] | [[avatars-social-decor]] [[nearby-proximity]] [[trace-friends]] | 3 | 2 |
+| [[nearby-proximity]] | accounts-backend | [[friends]] [[auth]] [[core-package]] | [[trace-friends]] | 1 | 3 |
+| [[trace-friends]] | accounts-backend | [[friends]] [[auth]] [[nearby-proximity]] [[core-package]] [[location-manager]] [[heading]] | [[walkie-talkie]] | 1 | 6 |
 | [[avatars-social-decor]] | app-shell | [[friends]] [[settings-profile]] | - | 0 | 2 |
 | [[persistence-defaults]] | app-shell | - | [[audio-manager]] [[destination-search]] [[settings-profile]] [[travel-modes]] [[trip-log]] [[watch-travel-modes]] | 6 | 0 |
 | [[settings-profile]] | app-shell | [[compass-tilt]] [[audio-manager]] [[theme-system]] [[trip-log]] [[persistence-defaults]] | [[avatars-social-decor]] [[haptics-ios]] | 2 | 5 |
 | [[store-skins]] | app-shell | [[theme-system]] [[dial-view]] | - | 0 | 2 |
 | [[audio-cue-plan]] | audio-haptics | [[route-progress]] [[travel-modes]] [[dead-reckoning]] | [[audio-manager]] | 1 | 3 |
-| [[audio-manager]] | audio-haptics | [[audio-cue-plan]] [[persistence-defaults]] | [[arrival]] [[background-guidance]] [[guidance-mode]] [[settings-profile]] | 4 | 2 |
+| [[audio-manager]] | audio-haptics | [[audio-cue-plan]] [[persistence-defaults]] | [[arrival]] [[background-guidance]] [[guidance-mode]] [[settings-profile]] [[walkie-talkie]] | 5 | 2 |
 | [[haptics-ios]] | audio-haptics | [[settings-profile]] | - | 0 | 1 |
+| [[walkie-talkie]] | audio-haptics | [[trace-friends]] [[audio-manager]] | - | 0 | 2 |
 | [[compass-screen-layout]] | guidance-ui | [[theme-system]] [[guidance-cards]] [[dial-view]] [[search-ui]] [[tab-bar]] | - | 0 | 5 |
 | [[dial-view]] | guidance-ui | [[heading]] [[continuous-angle]] [[compass-tilt]] [[theme-system]] [[redraw-model]] | [[compass-health]] [[compass-screen-layout]] [[point-mode]] [[store-skins]] | 4 | 5 |
 | [[guidance-cards]] | guidance-ui | [[route-progress]] [[theme-system]] [[redraw-model]] | [[compass-screen-layout]] | 1 | 3 |
@@ -30,9 +32,9 @@ tags: [generated]
 | [[background-guidance]] | location-sensors | [[location-manager]] [[audio-manager]] | [[guidance-mode]] | 1 | 2 |
 | [[compass-health]] | location-sensors | [[heading]] [[location-manager]] [[dial-view]] [[continuous-angle]] [[trip-log]] | [[guidance-mode]] | 1 | 5 |
 | [[continuous-angle]] | location-sensors | [[core-package]] | [[compass-health]] [[dial-view]] [[heading-blender]] | 3 | 1 |
-| [[heading]] | location-sensors | [[location-manager]] | [[compass-health]] [[dial-view]] [[point-mode]] | 3 | 1 |
+| [[heading]] | location-sensors | [[location-manager]] | [[compass-health]] [[dial-view]] [[point-mode]] [[trace-friends]] | 4 | 1 |
 | [[location-issues]] | location-sensors | [[location-manager]] | [[guidance-mode]] | 1 | 1 |
-| [[location-manager]] | location-sensors | [[location-profile]] | [[background-guidance]] [[compass-health]] [[dead-reckoning]] [[destination-search]] [[heading]] [[location-issues]] [[point-mode]] | 7 | 1 |
+| [[location-manager]] | location-sensors | [[location-profile]] | [[background-guidance]] [[compass-health]] [[dead-reckoning]] [[destination-search]] [[heading]] [[location-issues]] [[point-mode]] [[trace-friends]] | 8 | 1 |
 | [[location-profile]] | location-sensors | [[travel-modes]] | [[dead-reckoning]] [[location-manager]] | 2 | 1 |
 | [[arrival]] | navigation-core | [[route-progress]] [[travel-modes]] [[audio-manager]] [[trip-log]] [[route-persistence]] | - | 0 | 5 |
 | [[compass-tilt]] | navigation-core | [[route-progress]] | [[dial-view]] [[settings-profile]] | 2 | 1 |
@@ -55,10 +57,10 @@ tags: [generated]
 | [[routing-governor]] | routing | [[routing-provider-seam]] [[route-failure]] | [[guidance-mode]] [[mode-change-reroute]] [[off-route-reroute]] | 3 | 2 |
 | [[routing-provider-seam]] | routing | [[route-models]] [[backend-config]] [[core-package]] | [[route-failure]] [[routing-governor]] [[watch-voice-search]] | 3 | 3 |
 | [[bearing-math]] | shared-modules | [[core-package]] | [[point-mode]] [[route-progress]] [[route-tracker]] [[watch-voice-search]] | 4 | 1 |
-| [[core-package]] | shared-modules | - | [[bearing-math]] [[continuous-angle]] [[nearby-proximity]] [[phone-watch-link]] [[route-models]] [[routing-provider-seam]] [[theme-system]] [[watch-app]] | 8 | 0 |
+| [[core-package]] | shared-modules | - | [[bearing-math]] [[continuous-angle]] [[nearby-proximity]] [[phone-watch-link]] [[route-models]] [[routing-provider-seam]] [[theme-system]] [[trace-friends]] [[watch-app]] | 9 | 0 |
 | [[route-models]] | shared-modules | [[core-package]] | [[route-persistence]] [[route-progress]] [[route-tracker]] [[routing-provider-seam]] [[synthetic-route]] [[travel-modes]] | 6 | 1 |
 | [[heading-blender]] | watch | [[continuous-angle]] | [[watch-app]] | 1 | 1 |
-| [[phone-watch-link]] | watch | [[travel-modes]] [[core-package]] | [[nearby-proximity]] [[watch-drive-guard]] | 2 | 2 |
+| [[phone-watch-link]] | watch | [[travel-modes]] [[core-package]] | [[watch-drive-guard]] | 1 | 2 |
 | [[route-tracker]] | watch | [[route-models]] [[bearing-math]] [[travel-modes]] | [[watch-app]] [[watch-travel-modes]] [[watch-voice-search]] | 3 | 3 |
 | [[synthetic-route]] | watch | [[route-models]] | [[watch-app]] | 1 | 1 |
 | [[watch-app]] | watch | [[theme-system]] [[heading-blender]] [[route-tracker]] [[synthetic-route]] [[watch-haptics]] [[watch-session]] [[core-package]] [[watch-gestures]] [[watch-drive-guard]] | - | 0 | 9 |
@@ -77,15 +79,15 @@ tags: [generated]
 | [[travel-modes]] | 13 | medium |
 | [[route-progress]] | 11 | high |
 | [[theme-system]] | 9 | low |
-| [[core-package]] | 8 | high |
-| [[location-manager]] | 7 | high |
+| [[core-package]] | 9 | high |
+| [[location-manager]] | 8 | high |
 | [[persistence-defaults]] | 6 | low |
 | [[route-models]] | 6 | high |
+| [[audio-manager]] | 5 | high |
+| [[heading]] | 4 | medium |
 | [[trip-log]] | 4 | low |
 | [[dial-view]] | 4 | medium |
 | [[bearing-math]] | 4 | medium |
-| [[audio-manager]] | 4 | high |
-| [[continuous-angle]] | 3 | low |
 
 ## Cycles
 

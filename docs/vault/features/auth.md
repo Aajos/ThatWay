@@ -45,7 +45,8 @@ tags: [feature, area/accounts-backend, status/shipped, risk/high]
 
 ## Used by
 - [[friends]] — Friends
-- [[nearby-proximity]] — Find a friend nearby (UWB)
+- [[nearby-proximity]] — Ultra Wideband last stretch (nearby)
+- [[trace-friends]] — Trace a friend (consent, any range)
 
 ## Failure points
 

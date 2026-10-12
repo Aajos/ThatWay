@@ -13,6 +13,7 @@ Cues you hear and feel: audio session, tones and voice, cue timing, haptics.
 |---|---|---|---|
 | [[audio-manager]] | shipped | high | 1 |
 | [[audio-cue-plan]] | shipped | medium | 1 |
+| [[walkie-talkie]] | planned | high | 0 |
 | [[haptics-ios]] | setting-only | low | 0 |
 
 ## Reaches into other areas

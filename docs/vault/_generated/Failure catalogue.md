@@ -13,6 +13,7 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | RM-2 | [[route-models]] | high | Saved trips from an older app version fail to decode | none: no versioned migration | none |
 | RP-3 | [[route-progress]] | high | Two copies of the progress maths (`RoutingManager`, `RouteTracker`) drift apart | none: known duplicate | none |
 | RS-1 | [[routing-provider-seam]] | high | The public OSRM demo hosts are not production-grade (rate limits, no uptime promise) | none: replace before release | none |
+| TR-12 | [[trace-friends]] | high | Remote battery cost of 3 s polling and uploads | none: not measured; see [[P7 Optimisation checks]] | none |
 | WDG-3 | [[watch-drive-guard]] | high | Self-termination via exit() may be rejected in App Review | none: revisit before shipping | none |
 | DS-2 | [[destination-search]] | medium | Network failure shows 'No matches' rather than an error | none | none |
 | RP-B | [[route-persistence]] | medium | Schema change breaks old saved trips | none | none |
@@ -72,10 +73,13 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | GM-2 | [[guidance-mode]] | high | Guidance started before the first real fix routes from the wrong place | manual: cold start; guarded in `fetchRouteAndWait` | manual |
 | LM-2 | [[location-manager]] | high | Heading orientation followed the physical orientation and could flip the compass (was changed to portrait) | manual | manual |
 | LM-3 | [[location-manager]] | high | Approximate location gives kilometre-scale fixes | manual: reduced-accuracy card | manual |
+| NB-10 | [[nearby-proximity]] | high | UWB is blamed for a range it cannot reach (it is a last-10-to-20-metres tool) | manual: GPS carries the range; see [[trace-friends]] | manual |
 | NB-7 | [[nearby-proximity]] | high | The real NISession misbehaves (token never arrives, session suspended, range drops) | manual: needs two UWB phones | manual |
 | NB-8 | [[nearby-proximity]] | high | The route is not created in AWS, so the deploy workflow fails on its last step | manual: SETUP.md section 12 | manual |
 | RG-2 | [[routing-governor]] | high | Retry loop outlives guidance | manual: END during retries | manual |
 | RM-B | [[redraw-model]] | high | An equatable view skips a needed redraw because a shown value was left out of its state | manual | manual |
+| TR-10 | [[trace-friends]] | high | The arrow points the wrong way when the compass is wrong | manual: depends on [[compass-health]]; the arrow is dimmed when the heading is not reliable | manual |
+| TR-11 | [[trace-friends]] | high | An incoming request is never seen because the app is suspended (no push) | manual: known gap until the Apple Developer Program is enrolled | manual |
 | WDG-2 | [[watch-drive-guard]] | high | About 3 s between launching the watch app and learning the phone is driving | manual: seen in the simulator | manual |
 | WS-2 | [[watch-session]] | high | HealthKit capability refused on a free team | manual: Xcode signing | manual |
 | WS-3 | [[watch-session]] | high | Workout without a builder may not keep the app alive | manual: first thing to check | manual |
@@ -128,9 +132,23 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | NB-4 | [[nearby-proximity]] | high | Offers linger after the session or the friendship ends | test: backend/lambda/nearby/test.mjs (expired, unfriended and cleared offers) | test |
 | NB-5 | [[nearby-proximity]] | high | The distance readout or band flickers at an edge | test: ProximityTests::smootherDoesNotFlapAtAnEdge | test |
 | NB-6 | [[nearby-proximity]] | high | A token, id or body ends up in a server log | test: backend/lambda/nearby/test.mjs (log has the error name only) | test |
+| NB-9 | [[nearby-proximity]] | high | The friend's old offer lingers (app killed) and ranging sticks on a dead token | test: NearbyManagerTests::aDeadTokenIsReplacedWhenTheFriendComesBackWithANewOne | test |
 | OR-2 | [[off-route-reroute]] | high | Reroute fetch fails and the user is left with no feedback | test: failedModeChangeKeepsTheOldRouteAndShowsDiagnosis; manual offline | test |
 | RP-2 | [[route-progress]] | high | Estimate carries progress past a turn and the card flips forward then back | test: DeadReckoningRouteTests.estimateStopsShortOfTheNextManoeuvre | test |
 | RS-2 | [[routing-provider-seam]] | high | An engine change breaks parsing of a field the UI relies on | tests: OSRMParsingTests fixtures | test |
+| TR-1 | [[trace-friends]] | high | A position is shared before the other person accepts | test: TraceManagerTests::nothingIsSharedUntilTheyAccept; test: backend/lambda/trace/test.mjs (no position before consent) | test |
+| TR-13 | [[trace-friends]] | high | The trace stops partway through a long trip | test: backend/lambda/trace/test.mjs (a long trip does not drop the trace; a 40 minute dead zone does not end it) | test |
+| TR-14 | [[trace-friends]] | high | Chasing a moving friend hammers the routing service | test: FollowFriendTests::guidingFetchesOnceAndThenChasesOnlyWhenTheyMoveEnough | test |
+| TR-15 | [[trace-friends]] | high | A route to a friend is saved and resurrected on relaunch as a stale place | test: FollowFriendTests::aRouteToAMovingFriendIsNeverSavedForRelaunch | test |
+| TR-16 | [[trace-friends]] | high | A hard cap is missing, so a forgotten trace shares for days | test: backend/lambda/trace/test.mjs (the 24 hour cap) | test |
+| TR-2 | [[trace-friends]] | high | A position reaches someone who is not the partner of an active session | test: backend/lambda/trace/test.mjs (a third friend sees nothing; an outsider cannot post) | test |
+| TR-3 | [[trace-friends]] | high | A stale position is shown as live | test: backend/lambda/trace/test.mjs (stale position withheld); test: TraceTests::staleFriendIsFlagged | test |
+| TR-4 | [[trace-friends]] | high | A poll in flight brings back a trace the person just ended | test: TraceManagerTests::aPollThatWasInFlightCannotBringBackAnEndedTrace | test |
+| TR-5 | [[trace-friends]] | high | A dropped connection ends a trace | test: TraceManagerTests::aDroppedConnectionDoesNotEndATrace | test |
+| TR-6 | [[trace-friends]] | high | A request is spammed after a decline | test: backend/lambda/trace/test.mjs (cannot re-ask during the cool-off; open requests are capped) | test |
+| TR-7 | [[trace-friends]] | high | A position, id or body appears in a server log | test: backend/lambda/trace/test.mjs (log has the error name only) | test |
+| TR-8 | [[trace-friends]] | high | Unfriending leaves a live session | test: backend/lambda/trace/test.mjs (unfriended session hidden and cleaned up) | test |
+| TR-9 | [[trace-friends]] | high | UWB runs far away or never hands back to GPS | test: TraceManagerTests::theRadioStartsOnlyWhenClose; test: TraceTests::uwbEngagementHasHysteresis | test |
 | AC-2 | [[audio-cue-plan]] | medium | Cue repeats after a reroute resets the card | test: crossedPoint fired set per card id | test |
 | AR-2 | [[arrival]] | medium | Early arrival from a projected position | test: estimateNeverReachesArrival (arrival uses real fixes only) | test |
 | CH-2 | [[compass-health]] | medium | Ran while idle and showed a meaningless warning (was a real bug) | test: theCompassCheckOnlyAppliesWhileGuiding... | test |
@@ -142,4 +160,8 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | TM-1 | [[travel-modes]] | medium | A tuning value changed for one mode silently changes another feature (everything reads the table) | test: driving values pinned in TravelModeTests | test |
 | CT-2 | [[compass-tilt]] | low | Stage resets mid-leg and the dial jumps back | test: CompassTiltTests | test |
 | FR-1 | [[friends]] | low | Every call fails while `apiBaseURL` is the placeholder | test: AuthManagerTests::friendsAndNearbyNeedTheServiceAddress (now fails with a plain message instead of a network error); the real address is still to be set | test |
+| FR-2 | [[friends]] | low | Search leaked every user's email address to any signed-in searcher (was a real bug) | test: backend/lambda/friends/test.mjs (search never returns an email) | test |
+| FR-3 | [[friends]] | low | A failure between the two writes leaves half a friendship | test: backend/lambda/friends/test.mjs (a failure leaves neither row) | test |
+| FR-4 | [[friends]] | low | Two simultaneous requests overwrite each other | test: backend/lambda/friends/test.mjs (a race loses with a 409) | test |
+| FR-5 | [[friends]] | low | One account spams requests | test: backend/lambda/friends/test.mjs (too many open requests) | test |
 | TL-1 | [[trip-log]] | low | A log line accidentally includes a location or name | test: logsNeverContainCoordinatesOrNames | test |

@@ -8,15 +8,17 @@ tags: [process, backend]
 
 Everything about AWS, sign-in, the confirmation email, friends, the proximity (UWB) feature and the watch link, in one place, with what is **done**, what is **blocked on you**, and how to verify each step. The long console walkthrough is `backend/SETUP.md` (sections 1 to 11 the original build, **12 proximity, 13 email troubleshooting, 14 smoke test**).
 
-## Status on 2026-10-09 (verified by probing Cognito's public API, no accounts created)
+## Status on 2026-10-12 (audited with the AWS CLI; `backend/scripts/aws.sh audit` reproduces it)
 | Piece | State | Evidence |
 |---|---|---|
 | Cognito user pool and app client | **Live and reachable** | The client id answers; `USER_PASSWORD_AUTH` is enabled; email is the delivery medium; "prevent user existence errors" is on |
 | Custom auth (Sign in with Apple) | Not configured | Cognito: "Custom auth lambda trigger is not configured". Expected; parked |
-| **Friends API address** | **Not set.** `Config.apiBaseURL` is still `https://REPLACE_WITH_API_ID...` | `grep apiBaseURL ThatWay/Config.swift`. Every friends call fails until you paste the real invoke URL (with `/Dev`) |
-| Confirmation email | **Unverified: this is the open problem** | Cannot be diagnosed from outside AWS: see "The email" below |
+| **Friends API address** | **Set.** `https://7tjtxhleca.execute-api.ap-southeast-2.amazonaws.com/Dev`; the five friends routes exist and an unauthenticated call returns 401 | `aws.sh audit`, `curl` |
+| Confirmation email | **Configuration is correct; delivery uses Cognito's capped default sender** | Verification by code, email auto-verified, post-confirmation wired; 3 users, all confirmed, none stuck. `COGNITO_DEFAULT` = about 50 a day and often spam. SES is in sandbox and unused. Move to SES before launch |
 | App sign-up flow | **Fixed and tested** (resend code, unconfirmed sign-in recovery, clear errors) | `AuthManagerTests` |
-| `nearby` Lambda (UWB token relay) | **Written and tested; not yet created in AWS** | `backend/lambda/nearby`, 16 checks pass under `jsc`; SETUP.md section 12 |
+| friends Lambdas (rewritten) | **Rewritten, tested (32 checks); not yet deployed.** Fixes an email leak in search, makes each friendship one transaction, caps requests. `aws.sh friends --apply` then `friends_integration.sh` (real tables, throwaway users, cleans up) | `backend/lambda/friends/test.mjs` |
+| `trace` Lambda (consent + position relay, any range) | **Written and tested (39 checks); not yet created in AWS.** `aws.sh trace` is the dry run, `aws.sh trace --apply` creates `TraceSessions` (provisioned 10/10, always-free), a policy, the Lambda and 5 routes | `backend/lambda/trace/test.mjs`; the page [[trace-friends]] |
+| `nearby` Lambda (UWB token relay) | **Created in AWS (2026-10-12)** with table `NearbyOffers` (provisioned 5/5, always-free), an extra IAM policy, 3 routes; unauthenticated calls return 401; a signed-in call succeeds; a stranger is refused | `aws.sh audit`; `smoke.sh` passed 2026-10-12 (6 of 6) |
 | Watch link | Phone to watch mode **and** proximity state | `WatchLink`, `PhoneLink`, tests in `ProximityTests` |
 | UWB itself | **Cannot run on the test phone**: the iPhone SE has no UWB chip | see "UWB reality" |
 
@@ -47,7 +49,32 @@ The app side was checked end to end against Cognito's public API: sign-up, confi
 7. **SES evidence:** Sending statistics show sends, bounces, complaints; the suppression list explains one address that never receives anything.
 If after all that it still fails, copy the pool's **Messaging** settings and the SES region and identity into a note here (no secrets) and compare with the list.
 
-## Proximity (UWB): how it works
+## Tracing a friend (any range, with consent): how it works
+```mermaid
+sequenceDiagram
+  participant A as Asker
+  participant API as Backend (trace Lambda)
+  participant B as Friend
+  A->>API: POST /trace/request {friend}
+  API-->>A: OUTGOING (pending, 10 min)
+  loop every 4 s while the app is in front
+    B->>API: GET /trace
+  end
+  API-->>B: INCOMING from the asker
+  B->>API: POST /trace/respond {accept}
+  API-->>B: ACTIVE (30 min)
+  loop every 3 s while ACTIVE
+    A->>API: PUT /trace/position
+    B->>API: PUT /trace/position
+    A->>API: GET /trace (partner position, under 90 s old)
+    B->>API: GET /trace
+  end
+  Note over A,B: each phone shows direction and distance only; inside about 40 m UWB takes over
+  A->>API: DELETE /trace/{friend} (either side, any time)
+```
+Positions exist on the server for under 90 s, only for an accepted partner, and are never logged. No map is ever drawn. Remote push needs the Apple Developer Program; until then a request is seen while the app is running (and by a local notification if it is alive in the background).
+
+## Proximity (UWB): the last stretch
 ```mermaid
 sequenceDiagram
   participant A as Alice's phone
@@ -70,8 +97,8 @@ sequenceDiagram
 ```
 - The server learns **who is looking for whom and when**, nothing about where. Offers expire after 120 s and are deleted when Find closes.
 - Only accepted friends can exchange tokens (the Lambda checks that the caller's own `Friends` row for that person is ACCEPTED, on write and again on every read).
-- The phone shows the distance and bands (Right here, Very close, Close, Nearby, Farther away) with a haptic tick per band; if the hardware gives direction there is an arrow.
-- The watch shows the friend's name and distance and taps the wrist as they get closer. The phone does the ranging; the watch only displays it.
+- UWB is a last-10-to-20-metres tool; GPS carries the range and UWB takes over inside about 40 m of GPS distance (see [[trace-friends]]).
+- Nothing about a trace is sent to the watch for now.
 
 ### UWB reality (read this before promising it to anyone)
 - **Ultra Wideband needs the U1 or U2 chip**: iPhone 11 and later, and Apple Watch Series 6 and later (not the Watch SE), but **no iPhone SE**. The test phone, an iPhone SE 2nd generation, cannot range at all, and neither can the simulator. The app says so instead of failing.

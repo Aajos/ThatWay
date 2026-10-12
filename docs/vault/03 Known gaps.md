@@ -10,7 +10,7 @@ Hand-kept list of things that are known to be missing, unwired or unproven. The 
 ## Unwired or dead (the app promises, the code does not deliver)
 - "Voice of directions", "Haptics on turns", "Share destination" settings: stored, read by nothing. See [[settings-profile]], [[haptics-ios]].
 - Visibility, close-by radius, achievements, avatar photo options: decorative. See [[avatars-social-decor]].
-- Friends and the API: dormant behind a placeholder URL (the app now says so plainly). See [[friends]], [[backend-config]], [[P10 Backend and proximity runbook]].
+- Friends and the API: the address is set (2026-10-12) but friends have not been exercised end to end from the app. See [[friends]], [[backend-config]], [[P10 Backend and proximity runbook]].
 
 ## Not persisted
 - iPhone theme, skin, tilt, units, default mode, visibility reset on every launch. See [[persistence-defaults]].
@@ -35,9 +35,16 @@ Hand-kept list of things that are known to be missing, unwired or unproven. The 
 - Demo OSRM hosts: [[routing-provider-seam]].
 - Sign-up confirmation email not arriving (AWS side, unresolved); the app now recovers: resend code, unconfirmed sign-in goes back to the code step. Test builds run with the gate off: [[auth]], [[backend-config]], [[P10 Backend and proximity runbook]].
 
+## Tracing friends (new)
+- A trace request is only seen while the app is running: remote push needs the Apple Developer Program (not enrolled; free teams have no push entitlement). A local notification covers a running or backgrounded-but-alive app. See [[trace-friends]].
+- Polling every 3 s and uploading a position every 3 to 15 s while active: battery cost not measured.
+- The watch does not show friends (deliberate for now).
+- No walkie talkie yet; the design and the safety questions are in [[walkie-talkie]].
+- Background sharing only lasts while iOS keeps the app alive (an accepted trace keeps location running; a force-quit app stops sharing, which is the safe failure).
+
 ## Proximity (new)
 - UWB needs two UWB phones; the iPhone SE (the test phone) and the simulator cannot range. Logic and backend are tested; the radio is not. See [[nearby-proximity]].
-- The `nearby` Lambda, table and routes are written but not created in AWS. See [[P10 Backend and proximity runbook]].
+- The `nearby` Lambda, table and routes now exist in AWS (2026-10-12); the authenticated smoke test passed on 2026-10-12. See [[P10 Backend and proximity runbook]].
 - No Bluetooth fallback and no push yet.
 
 ## Accessibility (new, measured 2026-10-09)

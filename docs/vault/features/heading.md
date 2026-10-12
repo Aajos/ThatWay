@@ -43,6 +43,7 @@ tags: [feature, area/location-sensors, status/shipped, risk/medium]
 - [[compass-health]] — Compass health, ghost overlay, GPS direction
 - [[dial-view]] — Compass dial and needle
 - [[point-mode]] — Point mode (straight-line pointing)
+- [[trace-friends]] — Trace a friend (consent, any range)
 
 ## Failure points
 

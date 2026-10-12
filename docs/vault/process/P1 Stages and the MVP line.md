@@ -88,6 +88,8 @@ Gate:
 - [ ] Trip logs collected from every tester ([[P6 Live testing]]) and read
 - [ ] Every crash and "that felt wrong" turned into a failure point in the vault, with the test that would have caught it
 
+> **Date to remember:** the AWS Free Plan expires on **24 March 2027** ([[P3 Costs]]). Upgrade the account before then, or the backend closes in the middle of v1.1.
+
 ### S4. External beta *(to 20 Dec 2026 recruit, to 10 Jan 2027 finish, t04 and t05)*
 Gate:
 - [ ] 20 to 50 outside testers invited; feedback form live

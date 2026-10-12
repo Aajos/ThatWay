@@ -33,6 +33,7 @@ flowchart LR
   P6 --> P1
   P9["P9 How the app works"] --> P8
   P10["P10 Backend and proximity runbook"] --> P6
+  P11["P11 Apple Developer Program"] --> P6
 ```
 
 | Note | Use it when |
@@ -47,6 +48,7 @@ flowchart LR
 | [[P8 Before you push or commit]] | Every commit and every push; the gate |
 | [[P9 How the app works]] | Onboarding yourself (or anyone) to what the app does end to end |
 | [[P10 Backend and proximity runbook]] | Anything touching AWS, sign-in, email, friends, UWB or the watch link |
+| [[P11 Getting the Apple Developer Program]] | Enrolling, the bundle ID, push, the watch on a real wrist, TestFlight |
 
 ## Generated companions (rebuilt by `python3 scripts/vault/check_vault.py --fix --write`)
 - [[Feature ledger]]: every feature with first-commit date, dev build, release, CPU / memory / battery on the SE 2nd gen

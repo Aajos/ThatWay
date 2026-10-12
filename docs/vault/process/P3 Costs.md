@@ -18,6 +18,12 @@ python3 scripts/vault/model_finance.py --write
 
 ![[Finance model#Costs]]
 
+## The AWS Free Plan and the date that matters
+The account is on the **AWS Free Plan** (checked 2026-10-12): about US$140 of credits remained, and **the plan expires on 24 March 2027**. While it is active nothing can be billed. After it ends the account must be upgraded to a paid plan or AWS closes it (resources are kept for a recovery period, but the app's backend would stop). That is *before* the paid tier ships (30 April 2027), so:
+- [ ] Before 24 Mar 2027: upgrade to a paid plan on purpose, with the budget alert already in place (a US$20 monthly cost budget exists).
+- [ ] Until then keep usage inside the always-free allowances (the `NearbyOffers` table is provisioned 5/5 so it cannot bill).
+- [ ] Put the date in your calendar; it is also a milestone in the plan's "Money and site" lane.
+
 ## What each cost is and what moves it
 | Cost | Why you pay it | What would make it jump | The check |
 |---|---|---|---|

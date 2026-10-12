@@ -7,6 +7,7 @@ tags: [generated]
 
 ## High-risk features with no automated tests
 - [[backend-config]]
+- [[walkie-talkie]]
 - [[background-guidance]]
 - [[watch-session]]
 
@@ -17,6 +18,7 @@ tags: [generated]
 - [[settings-profile]] (low, shipped)
 - [[store-skins]] (low, shipped)
 - [[haptics-ios]] (low, setting-only)
+- [[walkie-talkie]] (high, planned)
 - [[compass-screen-layout]] (medium, shipped)
 - [[guidance-cards]] (medium, shipped)
 - [[route-line]] (medium, shipped)
@@ -41,6 +43,7 @@ tags: [generated]
 
 ## Failure points nothing catches
 - WVS-2 [[watch-voice-search]]: Query or place name ends up in a log
+- TR-12 [[trace-friends]]: Remote battery cost of 3 s polling and uploads
 - CA-1 [[continuous-angle]]: Angle value grows without bound over a very long session
 - RP-B [[route-persistence]]: Schema change breaks old saved trips
 - HI-1 [[haptics-ios]]: A setting that does nothing erodes trust
@@ -61,8 +64,10 @@ tags: [generated]
 ## Not fully real (status is not shipped/external)
 - [[friends]]: dormant
 - [[nearby-proximity]]: spike
+- [[trace-friends]]: spike
 - [[avatars-social-decor]]: setting-only
 - [[haptics-ios]]: setting-only
+- [[walkie-talkie]]: planned
 - [[heading-blender]]: spike
 - [[phone-watch-link]]: spike
 - [[route-tracker]]: spike

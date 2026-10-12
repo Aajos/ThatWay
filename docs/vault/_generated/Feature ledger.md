@@ -71,3 +71,5 @@ Every feature: when it was first committed, in which internal dev build, what re
 | [[watch-travel-modes]] | watch | spike | 2026-10-05 | 0.10 | later | free | 2 | not measured | not measured | not measured |
 | [[watch-voice-search]] | watch | spike | 2026-10-05 | 0.10 | later | free | 3 | not measured | not measured | not measured |
 | [[nearby-proximity]] | accounts-backend | spike | 2026-10-09 | unreleased | v1.1 | paid | 4 | not measured (ranging runs only while the Find sheet is open) | not measured | not measured (needs two UWB phones) |
+| [[trace-friends]] | accounts-backend | spike | 2026-10-12 | unreleased | v1.1 | paid | 5 | not measured (polls every 3 s while a trace is active, every 10 s otherwise, only while the app is in front) | not measured | not measured (needs a device trace; uploads a position every 3 to 15 s while active) |
+| [[walkie-talkie]] | audio-haptics | planned | 2026-10-12 | unreleased | later | paid | 4 | not measured (not built) | not measured (not built) | not measured (not built) |

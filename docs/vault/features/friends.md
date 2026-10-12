@@ -15,8 +15,12 @@ memory: "not measured"
 battery: "not measured"
 files:
   - ThatWay/Managers/FriendsManager.swift
+  - ThatWay/Compass/FriendsStrip.swift
+  - backend/lambda/friends/core.mjs
+  - backend/scripts/friends_integration.sh
 tests:
   - ThatWayTests/AuthManagerTests.swift::friendsAndNearbyNeedTheServiceAddress
+  - backend/lambda/friends/test.mjs
 manual_checks:
 depends_on: [auth, backend-config]
 tags: [feature, area/accounts-backend, status/dormant, risk/low]
@@ -31,6 +35,8 @@ tags: [feature, area/accounts-backend, status/dormant, risk/low]
 ## What it covers
 - Search, request, respond, list, remove
 - Token refresh on 401
+- The friends bar: swipe left to reveal a round search icon; it opens a search over your friends and, after 0.75 s of no typing with no friend matching, looks up the exact username and offers **+ Add** (a lower-case retry covers a stray capital)
+- Backend rewrite: one tested core behind the five Lambdas; a friendship is written and removed in one transaction; a duplicate request loses cleanly; open requests are capped; search returns `{id, username}` only (it used to return every user's email)
 
 ## Depends on
 - [[auth]] — Authentication
@@ -38,12 +44,17 @@ tags: [feature, area/accounts-backend, status/dormant, risk/low]
 
 ## Used by
 - [[avatars-social-decor]] — Avatars, visibility and friends row
-- [[nearby-proximity]] — Find a friend nearby (UWB)
+- [[nearby-proximity]] — Ultra Wideband last stretch (nearby)
+- [[trace-friends]] — Trace a friend (consent, any range)
 
 ## Failure points
 
 | ID | What breaks | Caught by |
 |---|---|---|
+| FR-2 | Search leaked every user's email address to any signed-in searcher (was a real bug) | test: backend/lambda/friends/test.mjs (search never returns an email) |
+| FR-3 | A failure between the two writes leaves half a friendship | test: backend/lambda/friends/test.mjs (a failure leaves neither row) |
+| FR-4 | Two simultaneous requests overwrite each other | test: backend/lambda/friends/test.mjs (a race loses with a 409) |
+| FR-5 | One account spams requests | test: backend/lambda/friends/test.mjs (too many open requests) |
 | FR-1 | Every call fails while `apiBaseURL` is the placeholder | test: AuthManagerTests::friendsAndNearbyNeedTheServiceAddress (now fails with a plain message instead of a network error); the real address is still to be set |
 
 ## Tests

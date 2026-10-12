@@ -69,9 +69,9 @@ Internal dev builds (see `scripts/vault/versions.json`). These are not App Store
 
 ## Build unreleased (2026-10-09): Dynamic Type pass, auth hardening, resend-code flow, proximity (UWB) and watch relay
 
-[[nearby-proximity]]
+[[nearby-proximity]], [[trace-friends]], [[walkie-talkie]]
 
-1 feature(s).
+3 feature(s).
 
 ## Features first committed per build
 
@@ -80,5 +80,5 @@ xychart-beta
     title "Features first committed per dev build"
     x-axis ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.10", "unreleased"]
     y-axis "features" 0 --> 22
-    bar [15, 0, 2, 2, 3, 2, 20, 3, 1, 13, 1]
+    bar [15, 0, 2, 2, 3, 2, 20, 3, 1, 13, 3]
 ```
