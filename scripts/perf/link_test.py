@@ -11,7 +11,7 @@ Numbers only: no coordinates are written anywhere.
 """
 import argparse, json, math, os, subprocess, sys, time
 
-BUNDLE = "com.aadittesting.ThatWay.ThatWay"
+BUNDLE = "com.thatway.app"
 SE2 = "com.apple.CoreSimulator.SimDeviceType.iPhone-SE--2nd-generation-"
 RUNTIME = "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
 SECONDS = 120

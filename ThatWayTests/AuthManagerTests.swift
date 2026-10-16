@@ -119,6 +119,49 @@ struct AuthManagerTests {
         #expect(auth.codeDestination == nil)
     }
 
+    @Test func forgotPasswordEmailsACodeAndMovesToTheResetStep() async {
+        let stub = CognitoStub(); stub.ok("ForgotPassword", delivery)
+        let auth = makeManager(stub)
+        await auth.forgotPassword(username: " sam ")
+        #expect(auth.authState == .resettingPassword(username: "sam"))
+        #expect(auth.codeDestination == "j***@g***")
+        #expect(stub.targets == ["ForgotPassword"])
+    }
+
+    @Test func forgotPasswordNeedsAUsername() async {
+        let stub = CognitoStub()
+        let auth = makeManager(stub)
+        await auth.forgotPassword(username: "  ")
+        #expect(stub.targets.isEmpty)
+        #expect(auth.errorMessage?.contains("username") == true)
+        #expect(auth.authState == .signedOut)
+    }
+
+    @Test func resetWithTheRightCodeReturnsToSignIn() async {
+        let stub = CognitoStub(); stub.ok("ForgotPassword", delivery); stub.ok("ConfirmForgotPassword")
+        let auth = makeManager(stub)
+        await auth.forgotPassword(username: "sam")
+        await auth.confirmPasswordReset(username: "sam", code: "123456", newPassword: "NewPassw0rd!")
+        #expect(auth.authState == .signedOut)
+        #expect(auth.noticeMessage?.contains("Password changed") == true)
+    }
+
+    @Test func aWrongResetCodeKeepsTheStepOpen() async {
+        let stub = CognitoStub(); stub.ok("ForgotPassword", delivery); stub.fail("ConfirmForgotPassword", type: "CodeMismatchException")
+        let auth = makeManager(stub)
+        await auth.forgotPassword(username: "sam")
+        await auth.confirmPasswordReset(username: "sam", code: "000000", newPassword: "NewPassw0rd!")
+        #expect(auth.authState == .resettingPassword(username: "sam"))
+        #expect(auth.errorMessage?.contains("isn't right") == true)
+    }
+
+    @Test func anUnconfirmedAccountIsSentTheSignUpCodeInstead() async {
+        let stub = CognitoStub(); stub.fail("ForgotPassword", type: "InvalidParameterException"); stub.ok("ResendConfirmationCode", delivery)
+        let auth = makeManager(stub)
+        await auth.forgotPassword(username: "sam")
+        #expect(auth.authState == .needsConfirmation(username: "sam"))
+    }
+
     @Test func namespacedExceptionTypesAreRecognised() {
         let error = AuthError.cognito(type: "com.amazonaws.cognito.identity.idp.model#UserNotConfirmedException", message: "x")
         #expect(error.cognitoName == "UserNotConfirmedException")

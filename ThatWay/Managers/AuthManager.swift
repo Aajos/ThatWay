@@ -15,6 +15,8 @@ enum AuthState: Equatable {
     case restoring
     case signedOut
     case needsConfirmation(username: String)
+    /// A reset code has been emailed: the person types it with a new password.
+    case resettingPassword(username: String)
     /// First-ever Sign in with Apple for this person — the backend has a verified identity
     /// but no handle to search/display them by yet, so the app needs to collect one.
     case needsAppleUsername
@@ -167,6 +169,44 @@ final class AuthManager: ObservableObject {
         } catch {
             if (error as? AuthError)?.cognitoName != "InvalidParameterException" { errorMessage = error.localizedDescription }
             return false
+        }
+    }
+
+    // MARK: Forgot password
+
+    /// Emails a reset code. Cognito answers the same way whether or not the username exists, so nothing is revealed.
+    func forgotPassword(username: String) async {
+        let name = username.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { errorMessage = "Type your username first, then tap Forgot password."; return }
+        isLoading = true; errorMessage = nil; noticeMessage = nil
+        defer { isLoading = false }
+        do {
+            let json = try await cognitoRequest(target: "ForgotPassword", body: ["ClientId": Config.cognitoAppClientId, "Username": name])
+            codeDestination = Self.destination(in: json)
+            noticeMessage = "If that account exists, we've sent a reset code. It can take a minute, and may land in spam."
+            authState = .resettingPassword(username: name)
+        } catch let error as AuthError where error.cognitoName == "InvalidParameterException" {
+            // An account that never confirmed its email cannot reset yet: send the sign-up code instead.
+            if await requestNewCode(for: name) { noticeMessage = "That email isn't confirmed yet. We've sent a code to confirm it first." }
+            else { errorMessage = "We couldn't start a reset for that account." }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func confirmPasswordReset(username: String, code: String, newPassword: String) async {
+        isLoading = true; errorMessage = nil; noticeMessage = nil
+        defer { isLoading = false }
+        do {
+            _ = try await cognitoRequest(target: "ConfirmForgotPassword", body: [
+                "ClientId": Config.cognitoAppClientId, "Username": username,
+                "ConfirmationCode": code, "Password": newPassword,
+            ])
+            codeDestination = nil
+            noticeMessage = "Password changed. Sign in with your new one."
+            authState = .signedOut
+        } catch {
+            errorMessage = error.localizedDescription      // wrong or expired code, weak password: the step stays open
         }
     }
 

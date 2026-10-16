@@ -34,6 +34,7 @@ tags: [feature, area/accounts-backend, status/shipped, risk/high]
 
 ## What it covers
 - Sign up / confirm code / sign in / sign out
+- Forgot password: Cognito emails a reset code, the person enters it with a new password; an unconfirmed account is sent the sign-up code instead; a wrong or expired code keeps the step open
 - Send a new code, start over, and recovery from an unconfirmed account (sign-in or a repeated sign-up goes back to the code step)
 - Session restore at launch: the cached id token restores the signed-in state immediately (works offline); the refresh runs in the background and only a server rejection signs the user out; other failures keep the tokens. Requests time out at 10 s
 - Gate: `Config.backendEnabled` true shows AuthScreen when signed out
@@ -53,6 +54,7 @@ tags: [feature, area/accounts-backend, status/shipped, risk/high]
 | ID | What breaks | Caught by |
 |---|---|---|
 | AU-1 | Confirmation email never arrives, so no one can get past the gate | manual: still open on the AWS side (SETUP.md section 13); the app now offers Send a new code, and sign-in with an unconfirmed account goes back to the code step |
+| AU-5 | A forgotten password is a dead end (no way back in without an admin) | test: AuthManagerTests::resetWithTheRightCodeReturnsToSignIn; AuthManagerTests::aWrongResetCodeKeepsTheStepOpen |
 | AU-4 | A sign-up left unconfirmed becomes a dead end (sign-in error, username taken) | test: AuthManagerTests::signingInBeforeConfirmingSendsANewCodeInsteadOfDeadEnding |
 | AU-3 | Launching with no network signed the user out or showed a blank screen (was a real bug) | manual: gate-on build in airplane mode; fixed |
 | AU-2 | Gate on while the API URL is a placeholder | manual: see backend-config |

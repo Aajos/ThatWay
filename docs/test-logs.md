@@ -13,7 +13,7 @@ off. A sample is taken every 10 s, including while the screen is locked (guidanc
 
 ## Getting the files to Claude
 1. **Cable (simplest):** plug the phone in and say so — I copy the folder directly:
-   `xcrun devicectl device copy from --device <id> --domain-type appDataContainer --domain-identifier com.aadittesting.ThatWay.ThatWay --source Documents/TripLogs --destination <folder>`
+   `xcrun devicectl device copy from --device <id> --domain-type appDataContainer --domain-identifier com.thatway.app --source Documents/TripLogs --destination <folder>`
 2. **Share button:** Profile ▸ Test logs ▸ **Share logs** → AirDrop to the Mac, or save to Files / send to yourself.
 3. **Files app:** On My iPhone ▸ ThatWay ▸ TripLogs (file sharing is switched on in the app).
 The newest 60 trips are kept; **Clear** deletes them all.

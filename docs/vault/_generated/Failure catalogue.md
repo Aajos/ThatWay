@@ -124,6 +124,7 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | WTM-1 | [[watch-travel-modes]] | low | A mode change mid-route for cycling leaves the old walking route on screen if the refetch fails | manual: change mode with Airplane Mode on | manual |
 | WTM-2 | [[watch-travel-modes]] | low | Swipe ambiguity: a vertical swipe read as horizontal | manual on a real wrist | manual |
 | AU-4 | [[auth]] | high | A sign-up left unconfirmed becomes a dead end (sign-in error, username taken) | test: AuthManagerTests::signingInBeforeConfirmingSendsANewCodeInsteadOfDeadEnding | test |
+| AU-5 | [[auth]] | high | A forgotten password is a dead end (no way back in without an admin) | test: AuthManagerTests::resetWithTheRightCodeReturnsToSignIn; AuthManagerTests::aWrongResetCodeKeepsTheStepOpen | test |
 | GM-4 | [[guidance-mode]] | high | Clearing the destination while a trip is running left guidance running with no place, or left the compass pointing at the old place | test: ClearDestinationTests | test |
 | GM-5 | [[guidance-mode]] | high | DONE on the arrival screen left the compass pointing at the place just reached instead of idle | test: ClearDestinationTests.doneOnTheArrivalScreenReturnsToIdleNotToPointingAtTheOldPlace | test |
 | NB-1 | [[nearby-proximity]] | high | A phone without UWB tries to start a session | test: NearbyManagerTests::aPhoneWithoutUWBNeverTouchesTheBackend | test |

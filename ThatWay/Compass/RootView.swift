@@ -25,7 +25,7 @@ struct RootView: View {
                 switch app.authManager.authState {
                 case .restoring:
                     EmptyView()
-                case .signedOut, .needsConfirmation, .needsAppleUsername:
+                case .signedOut, .needsConfirmation, .needsAppleUsername, .resettingPassword:
                     AuthScreen()
                 case .signedIn:
                     signedInContent

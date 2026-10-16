@@ -49,7 +49,7 @@ The app writes numbers only (never coordinates, place names or routes; this is e
 1. **Cable:** plug in and run
    ```bash
    xcrun devicectl device copy from --device <id> --domain-type appDataContainer \
-     --domain-identifier com.aadittesting.ThatWay.ThatWay --source Documents/TripLogs --destination ./triplogs
+     --domain-identifier com.thatway.app --source Documents/TripLogs --destination ./triplogs
    ```
    (`xcrun devicectl list devices` shows the id.)
 2. **Share button:** Profile, Test logs, **Share logs**, AirDrop to the Mac.

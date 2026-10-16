@@ -21,6 +21,7 @@ struct AuthScreen: View {
     @State private var password = ""
     @State private var confirmationCode = ""
     @State private var appleUsername = ""
+    @State private var newPassword = ""
 
     var body: some View {
         let theme = app.currentTheme
@@ -35,12 +36,19 @@ struct AuthScreen: View {
 
                 if case .needsConfirmation(let pendingUsername) = auth.authState {
                     confirmSection(theme: theme, username: pendingUsername)
+                } else if case .resettingPassword(let pendingUsername) = auth.authState {
+                    resetSection(theme: theme, username: pendingUsername)
                 } else if case .needsAppleUsername = auth.authState {
                     appleUsernameSection(theme: theme)
                 } else {
                     modePicker(theme: theme)
                     fields(theme: theme)
                     primaryButton(theme: theme)
+                    if mode == .signIn {
+                        Button("Forgot password?") { Task { await auth.forgotPassword(username: username) } }
+                            .font(.nunito(13, .extraBold)).foregroundStyle(theme.accent)
+                            .disabled(auth.isLoading)
+                    }
                     if Config.appleSignInEnabled {
                         orDivider(theme: theme)
                         appleButton(theme: theme)
@@ -77,6 +85,7 @@ struct AuthScreen: View {
             if let destination = auth.codeDestination { return "We sent a 6-digit code to \(destination)" }
             return "Check your email for a code"
         }
+        if case .resettingPassword = auth.authState { return "Choose a new password" }
         if case .needsAppleUsername = auth.authState { return "Pick a username for your friends" }
         return mode == .signIn ? "Sign in to find your friends" : "Create an account"
     }
@@ -230,6 +239,38 @@ struct AuthScreen: View {
                 .font(.nunito(11, .semibold))
                 .foregroundStyle(theme.textSecondary)
                 .multilineTextAlignment(.center)
+        }
+    }
+
+    @ViewBuilder
+    private func resetSection(theme: AppTheme, username pendingUsername: String) -> some View {
+        VStack(spacing: 14) {
+            Text(auth.codeDestination.map { "Enter the 6-digit code sent to \($0) and a new password." } ?? "Enter the 6-digit code from your email and a new password.")
+                .font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary).multilineTextAlignment(.center)
+            field("6-digit code", text: $confirmationCode, theme: theme, keyboard: .numberPad)
+            field("New password (8+ characters)", text: $newPassword, theme: theme, isSecure: true)
+
+            Button {
+                Task {
+                    await auth.confirmPasswordReset(username: pendingUsername, code: confirmationCode, newPassword: newPassword)
+                    if case .signedOut = auth.authState { username = pendingUsername; password = ""; mode = .signIn; confirmationCode = ""; newPassword = "" }
+                }
+            } label: {
+                ZStack {
+                    if auth.isLoading { ProgressView().tint(theme.onAccent) } else { Text("CHANGE PASSWORD").font(.nunito(14, .black)).tracking(0.8) }
+                }
+                .foregroundStyle(theme.onAccent)
+                .frame(maxWidth: .infinity).frame(height: 50)
+                .background(RoundedRectangle(cornerRadius: 16).fill(theme.accent))
+                .opacity(confirmationCode.count == 6 && newPassword.count >= 8 ? 1 : 0.5)
+            }
+            .buttonStyle(.plain)
+            .disabled(confirmationCode.count != 6 || newPassword.count < 8 || auth.isLoading)
+
+            Button("Send a new code") { Task { await auth.forgotPassword(username: pendingUsername) } }
+                .font(.nunito(13, .extraBold)).foregroundStyle(theme.accent).disabled(auth.isLoading)
+            Button("Back to sign in") { confirmationCode = ""; newPassword = ""; auth.cancelConfirmation() }
+                .font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary).disabled(auth.isLoading)
         }
     }
 

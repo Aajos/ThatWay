@@ -66,5 +66,5 @@ enum Config {
         verifiedProfiles.contains(profile)
     }
 
-    static let userAgent = "ThatWay/1.0 (\(Bundle.main.bundleIdentifier ?? "com.aadittesting.ThatWay.ThatWay"))"
+    static let userAgent = "ThatWay/1.0 (\(Bundle.main.bundleIdentifier ?? "com.thatway.app"))"
 }

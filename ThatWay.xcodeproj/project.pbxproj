@@ -543,7 +543,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.aadittesting.ThatWay.ThatWay;
+				PRODUCT_BUNDLE_IDENTIFIER = com.thatway.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -579,7 +579,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.aadittesting.ThatWay.ThatWay;
+				PRODUCT_BUNDLE_IDENTIFIER = com.thatway.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -600,7 +600,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.aadittesting.ThatWay.ThatWayTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.thatway.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -621,7 +621,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.aadittesting.ThatWay.ThatWayTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.thatway.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -640,7 +640,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.aadittesting.ThatWay.ThatWayUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.thatway.app.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -659,7 +659,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.aadittesting.ThatWay.ThatWayUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.thatway.app.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -686,14 +686,14 @@
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Spike test: starts a temporary workout session to stay awake. The workout is discarded, never saved to Health.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Uses your location to point the compass and measure heading accuracy during a test walk. Only speeds and angles are logged, never places.";
 				INFOPLIST_KEY_WKApplication = YES;
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.aadittesting.ThatWay.ThatWay;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.thatway.app;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.aadittesting.ThatWay.ThatWay.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.thatway.app.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = NO;
@@ -720,14 +720,14 @@
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Spike test: starts a temporary workout session to stay awake. The workout is discarded, never saved to Health.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Uses your location to point the compass and measure heading accuracy during a test walk. Only speeds and angles are logged, never places.";
 				INFOPLIST_KEY_WKApplication = YES;
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.aadittesting.ThatWay.ThatWay;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.thatway.app;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.aadittesting.ThatWay.ThatWay.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.thatway.app.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = NO;

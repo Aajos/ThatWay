@@ -8,6 +8,11 @@ tags: [process, money]
 
 Needed for: TestFlight, the App Store, **push notifications** (trace requests), Sign in with Apple, a signed watch app on a real watch, and App Store Connect. Your plan puts enrolment at **15 November 2026** (milestone c01); identity checks can take days, so start earlier than you think.
 
+## Status (checked 2026-10-17)
+- Enrolled as an **Individual** (team *Aadit Joshi*, ID `K5N4HVV7VG`, a paid team, not a free one); Xcode has the account and the project already points at the team with automatic signing.
+- The SE 2nd gen is visible to the Mac as a paired, available device, so the app can be installed on it now.
+- Still to do, in order: install on the phone (and the watch); create the App Store Connect record and upload to TestFlight; build real push (APNs key, device tokens, a sender); Paid Applications agreement, banking and tax; Small Business Program.
+
 ## Before you start (10 minutes)
 - [ ] An **Apple ID** you will keep long-term (the app, the money and the review history are tied to it). Turn on two-factor authentication.
 - [ ] Decide **Individual or Organization**:
@@ -24,7 +29,7 @@ Needed for: TestFlight, the App Store, **push notifications** (trace requests), 
 4. Wait for the email: **"Welcome to the Apple Developer Program"**. Status shows at developer.apple.com/account.
 
 ## After approval (the part that unblocks the app)
-- [ ] **Decide the bundle ID now.** It is currently `com.aadittesting.ThatWay.ThatWay` ("aadittesting" is a test name). The bundle ID cannot change after the first App Store submission without becoming a different app. Pick the final reverse-DNS name (for example `au.com.yourdomain.thatway`) **before** the first TestFlight upload, then change it in Xcode for the iPhone app and the watch app (`...watchkitapp`) and the AWS Sign in with Apple notes.
+- [x] **Bundle ID chosen (2026-10-17): `com.thatway.app`** (watch: `com.thatway.app.watchkitapp`). It cannot change after the first App Store submission without becoming a different app. If Apple refuses it as already taken when Xcode registers it, pick another before any App Store Connect record exists.
 - [ ] Xcode, **Settings → Accounts**: add the Apple ID. On both targets (ThatWay, ThatWayWatch) choose the new **Team** under Signing & Capabilities. This is the step that lets the watch app install on a real watch.
 - [ ] Add capabilities: **Push Notifications**, **Sign in with Apple** (re-add `CODE_SIGN_ENTITLEMENTS = ThatWay/ThatWay.entitlements`, set `Config.appleSignInEnabled = true`), and background modes you already use.
 - [ ] Create an **APNs key**: developer.apple.com → Certificates, Identifiers & Profiles → Keys → + → Apple Push Notifications service. Download the `.p8` once (it cannot be downloaded again), keep it **out of the repo**; it is what the backend will use to send "Sam wants to trace you".

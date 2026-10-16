@@ -17,7 +17,7 @@ Simulator numbers are for CPU and memory trends only: energy needs a real device
 """
 import argparse, json, math, os, re, subprocess, sys, threading, time
 
-BUNDLE = "com.aadittesting.ThatWay.ThatWay"
+BUNDLE = "com.thatway.app"
 SE2 = "com.apple.CoreSimulator.SimDeviceType.iPhone-SE--2nd-generation-"
 RUNTIME = "com.apple.CoreSimulator.SimRuntime.iOS-26-5"
 SPEEDS = {"walk": 1.4, "run": 3.0, "cycle": 6.0, "drive": 11.5}  # m/s

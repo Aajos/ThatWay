@@ -19,10 +19,10 @@ test in about two minutes of setup, how the logs become the numbers, and what we
 launch, which takes about 3 s to arrive on a cold start. An unpaired or out-of-range watch is not blocked. watchOS has no "quit", so the app calls
 `exit(0)`: fine for the spike, but App Review dislikes it, so revisit before shipping.
 
-**The watch app is now the iPhone app's companion** (embedded in it, bundle id `com.aadittesting.ThatWay.ThatWay.watchkitapp`), which the phone-to-watch link
+**The watch app is now the iPhone app's companion** (embedded in it, bundle id `com.thatway.app.watchkitapp`), which the phone-to-watch link
 requires. Consequence: building the iPhone app **for a real device** now also signs the watch app, so Xcode needs your account signed in
 (Settings > Accounts) and the watch registered. Simulator builds and tests are unaffected. Install by running the **ThatWay** scheme from Xcode with the paired
-iPhone as destination; it installs both. (The container id for pulling logs is now `com.aadittesting.ThatWay.ThatWay.watchkitapp`.)
+iPhone as destination; it installs both. (The container id for pulling logs is now `com.thatway.app.watchkitapp`.)
 
 ## 1. What was built
 
@@ -95,7 +95,7 @@ Run each set; the analyser prints correct/total per set and per event, with what
 
 ### Getting the logs to Claude
 Plug the watch's paired iPhone in with the cable, then:
-`xcrun devicectl device copy from --device <watch-id> --domain-type appDataContainer --domain-identifier com.aadittesting.ThatWay.ThatWay.watchkitapp --source Documents/SpikeLogs --destination <folder>`
+`xcrun devicectl device copy from --device <watch-id> --domain-type appDataContainer --domain-identifier com.thatway.app.watchkitapp --source Documents/SpikeLogs --destination <folder>`
 (or Xcode → Window → Devices and Simulators → the watch → ThatWayWatch → Download Container). Then:
 `python3 scripts/watch/analyze_spike_log.py <folder>`. Logs hold numbers only — never coordinates.
 

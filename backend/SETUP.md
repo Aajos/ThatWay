@@ -194,7 +194,7 @@ Apple isn't available to free/personal teams at all; see `Config.appleSignInEnab
 app), and the pieces below were never actually provisioned. Whenever it's picked back up:
 
 1. **Apple Developer portal** (developer.apple.com/account → **Identifiers**) → open the App ID
-   for `com.aadittesting.ThatWay.ThatWay` → enable the **Sign in with Apple** capability and
+   for `com.thatway.app` → enable the **Sign in with Apple** capability and
    save. (Nothing else Apple-side is needed — no Services ID, no key, no redirect URI; that
    machinery is only for the Hosted-UI/web OAuth approach, which this isn't.)
 2. In Xcode, re-add `CODE_SIGN_ENTITLEMENTS = ThatWay/ThatWay.entitlements;` to both build
