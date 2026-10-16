@@ -6,3 +6,4 @@ DerivedData/
 .swiftpm/
 docs/vault/.obsidian/workspace*.json
 docs/vault/.obsidian/cache
+docs/vault/.obsidian/appearance.json
