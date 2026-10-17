@@ -1,0 +1,80 @@
+{
+  "identifier" : "A1B2C3D4",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : false,
+      "internalID" : "6740000001",
+      "localizations" : [
+        { "description" : "3 hours of tracing. Buy again to add more time.", "displayName" : "trace3", "locale" : "en_US" }
+      ],
+      "productID" : "com.thatway.trace3",
+      "referenceName" : "trace3",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "6740000002",
+      "localizations" : [
+        { "description" : "24 hours of tracing. Buy again to add more time.", "displayName" : "trace24", "locale" : "en_US" }
+      ],
+      "productID" : "com.thatway.trace24",
+      "referenceName" : "trace24",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "499.00",
+      "familyShareable" : false,
+      "internalID" : "6740000004",
+      "localizations" : [
+        { "description" : "Pay once. Tracing for as long as ThatWay exists.", "displayName" : "lifetrace", "locale" : "en_US" }
+      ],
+      "productID" : "com.thatway.lifetrace",
+      "referenceName" : "lifetrace",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21000001",
+      "localizations" : [
+
+      ],
+      "name" : "trace",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "7.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6740000003",
+          "introductoryOffer" : null,
+          "localizations" : [
+            { "description" : "Monthly. Renews automatically until you cancel it.", "displayName" : "trace+", "locale" : "en_US" }
+          ],
+          "productID" : "com.thatway.traceplus",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "trace+",
+          "subscriptionGroupID" : "21000001",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

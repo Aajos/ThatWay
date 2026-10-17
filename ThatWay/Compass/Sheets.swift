@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import ThatWayUI
 
 struct AvatarSheet: View {
     @EnvironmentObject var app: AppModel

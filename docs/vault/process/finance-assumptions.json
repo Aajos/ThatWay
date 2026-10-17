@@ -1,0 +1,83 @@
+{
+  "_comment": "Every number here is an ASSUMPTION you can overwrite. Costs come from thatway_execution_plan.html (its own caveat: estimates, not checked against current prices). Prices, installs, conversion and retention are NOT from data: replace them with TestFlight and App Store numbers as soon as they exist. After editing run: python3 scripts/vault/model_finance.py --write Each scenario has a target_net_12m (net revenue in the first 12 paid months); the script scales installs to hit it, so the table shows the installs that target demands.",
+  "currency": "AUD",
+  "first_month": "2026-10",
+  "last_month": "2028-12",
+  "free_launch_month": "2027-01",
+  "paid_launch_month": "2027-05",
+  "price_one_time": 9.99,
+  "store_cut": 0.15,
+  "marketing": {
+    "ratio": 1.0,
+    "cap": 800,
+    "first_month": "2026-12",
+    "last_month": "2027-09"
+  },
+  "costs": [
+    {
+      "name": "Apple Developer Program",
+      "amount": 150,
+      "start": "2026-11",
+      "repeat": "yearly"
+    },
+    {
+      "name": "Domain and website hosting",
+      "amount": 100,
+      "start": "2026-12",
+      "repeat": "yearly"
+    },
+    {
+      "name": "AWS, after credits and free tier",
+      "amount": 25,
+      "start": "2026-11",
+      "repeat": "monthly"
+    },
+    {
+      "name": "Routing server, if self-hosted",
+      "amount": 45,
+      "start": "2027-01",
+      "repeat": "monthly"
+    }
+  ],
+  "scenarios": {
+    "Conservative": {
+      "note": "Below the plan's own range: a quiet launch, little word of mouth. Target: A$1.5k net in the first 12 paid months.",
+      "burst_installs": 250,
+      "burst_months": 2,
+      "organic_start": 40,
+      "organic_growth": 0.05,
+      "organic_cap": 250,
+      "conversion": 0.02,
+      "existing_upgrade": 0.04,
+      "activation": 0.55,
+      "monthly_retention": 0.78,
+      "target_net_12m": 1500
+    },
+    "Plan low": {
+      "note": "The bottom of the plan's stated range: A$5k net in the first 12 paid months.",
+      "burst_installs": 700,
+      "burst_months": 2,
+      "organic_start": 120,
+      "organic_growth": 0.07,
+      "organic_cap": 700,
+      "conversion": 0.03,
+      "existing_upgrade": 0.06,
+      "activation": 0.6,
+      "monthly_retention": 0.82,
+      "target_net_12m": 5000
+    },
+    "Plan high": {
+      "note": "The top of the plan's stated range: A$25k net in the first 12 paid months.",
+      "burst_installs": 2500,
+      "burst_months": 3,
+      "organic_start": 600,
+      "organic_growth": 0.09,
+      "organic_cap": 3500,
+      "conversion": 0.04,
+      "existing_upgrade": 0.08,
+      "activation": 0.65,
+      "monthly_retention": 0.85,
+      "target_net_12m": 25000
+    }
+  }
+}

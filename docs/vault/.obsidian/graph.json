@@ -1,0 +1,79 @@
+{
+  "collapse-filter": false,
+  "search": "-path:_generated",
+  "showTags": false,
+  "showAttachments": false,
+  "hideUnresolved": true,
+  "showOrphans": true,
+  "collapse-color-groups": false,
+  "colorGroups": [
+    {
+      "query": "path:process",
+      "color": {
+        "a": 1,
+        "rgb": 3900150
+      }
+    },
+    {
+      "query": "path:flows",
+      "color": {
+        "a": 1,
+        "rgb": 10980346
+      }
+    },
+    {
+      "query": "path:areas",
+      "color": {
+        "a": 1,
+        "rgb": 16112012
+      }
+    },
+    {
+      "query": "tag:#risk/high",
+      "color": {
+        "a": 1,
+        "rgb": 15026253
+      }
+    },
+    {
+      "query": "tag:#status/spike",
+      "color": {
+        "a": 1,
+        "rgb": 16098596
+      }
+    },
+    {
+      "query": "tag:#status/dormant",
+      "color": {
+        "a": 1,
+        "rgb": 9145227
+      }
+    },
+    {
+      "query": "tag:#status/setting-only",
+      "color": {
+        "a": 1,
+        "rgb": 9145227
+      }
+    },
+    {
+      "query": "tag:#status/shipped",
+      "color": {
+        "a": 1,
+        "rgb": 3133339
+      }
+    }
+  ],
+  "collapse-display": false,
+  "showArrow": true,
+  "textFadeMultiplier": -0.4,
+  "nodeSizeMultiplier": 1.1,
+  "lineSizeMultiplier": 1,
+  "collapse-forces": true,
+  "centerStrength": 0.45,
+  "repelStrength": 12,
+  "linkStrength": 1,
+  "linkDistance": 200,
+  "scale": 0.5080278532435081,
+  "close": true
+}
