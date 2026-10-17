@@ -32,6 +32,7 @@ tags: [feature, area/guidance-ui, status/shipped, risk/low]
 **Area:** [[area-guidance-ui]] · **Status:** shipped · **Risk:** low
 
 ## What it covers
+- **Tide is the default theme everywhere** (iPhone and watch), to match the green app icon; Paper stays an explicit choice
 - Palettes and mode colours
 - Light-theme rules (paler glows, stronger tints, bold outlines)
 - Nunito registered from the package at launch

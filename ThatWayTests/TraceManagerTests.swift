@@ -75,6 +75,8 @@ private final class Rig {
     let bob = Friend(id: "bob-id", username: "bob", status: "ACCEPTED", requestedAt: nil, acceptedAt: nil)
     var manager: TraceManager!
 
+    var entitled = true
+
     init() {
         manager = TraceManager(
             api: api, ranging: ranging, notifier: notifier,
@@ -82,7 +84,8 @@ private final class Rig {
             myPosition: { [unowned self] in self.me },
             now: { [unowned self] in self.clock },
             sleep: { _ in },
-            loopEnabled: false)
+            loopEnabled: false,
+            isEntitled: { [unowned self] in self.entitled })
     }
 
     /// A position `metres` north of me, as the server would relay it.
@@ -318,6 +321,43 @@ struct TraceManagerTests {
         r.api.sessions = [r.session(.active, peer: r.peer(metres: 25))]
         await r.manager.poll()
         #expect(r.manager.reading?.source == .gps, "radio readings older than 3 s no longer count")
+    }
+
+    // MARK: The paid switch
+
+    @Test func withoutTheEntitlementAskingShowsThePaywallAndSendsNothing() async {
+        let r = Rig(); r.entitled = false
+        await r.manager.request(r.bob)
+        #expect(r.api.requests.isEmpty)
+        #expect(r.manager.needsUpgrade)
+        #expect(r.manager.state == nil)
+    }
+
+    @Test func withoutTheEntitlementAcceptingAndFollowingAreBlockedButDecliningIsNot() async {
+        let r = Rig(); r.entitled = false
+        r.api.sessions = [r.session(.incoming)]
+        await r.manager.poll()
+        await r.manager.accept()
+        #expect(r.api.responses.isEmpty, "accepting is paid")
+        #expect(r.manager.needsUpgrade)
+        r.manager.needsUpgrade = false
+        await r.manager.decline()
+        #expect(r.api.responses.first?.accept == false, "declining is always free")
+
+        let f = Rig(); f.entitled = false
+        f.api.sessions = [f.session(.active, peer: f.peer(metres: 1_000))]
+        await f.manager.poll()
+        var followed = 0
+        f.manager.onFollow = { _, _, _ in followed += 1 }
+        f.manager.follow(guide: true)
+        #expect(followed == 0 && f.manager.needsUpgrade)
+    }
+
+    @Test func payingTurnsEverythingOn() async {
+        let r = Rig()
+        await r.manager.request(r.bob)
+        #expect(r.api.requests == ["bob-id"])
+        #expect(r.manager.needsUpgrade == false)
     }
 
     // MARK: Following a friend (point and guide)

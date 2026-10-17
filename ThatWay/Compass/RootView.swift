@@ -58,7 +58,10 @@ struct RootView: View {
 
             VStack {
                 Spacer()
-                TabBar()
+                // The selection is passed in (not read from the environment inside the bar): RootView is what re-renders
+                // when the screen changes, and the bar used to keep showing WAY as selected while another tab was open.
+                TabBar(selected: app.screen, navigating: !app.isIdle)
+                    .id(app.screen)      // rebuilt on every change: without this the bar kept showing WAY as selected
             }
 
             if app.avatarSheet {
@@ -83,22 +86,46 @@ private struct TabBar: View {
         return inset == 0 ? 6 : 0   // unknown (no window yet) counts as none
     }
 
+    let selected: AppScreen
+    let navigating: Bool
+    @Namespace private var bubble
+
     var body: some View {
         let theme = app.currentTheme
-        HStack(spacing: 18) {
+        HStack(spacing: 10) {
             ForEach(AppScreen.allCases) { s in
-                Button { app.selectTab(s) } label: {
-                    VStack(spacing: 6) {
-                        Image(systemName: s.symbolName)
-                            .font(.system(size: 19, weight: .semibold))
-                            .foregroundStyle(app.screen == s ? theme.accent : theme.ink)
-                        Text(s.label).font(.nunito(11, .extraBold)).tracking(0.6).foregroundStyle(theme.ink)
+                let isSelected = selected == s
+                Button { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { app.selectTab(s) } } label: {
+                    VStack(spacing: 5) {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: s.symbolName)
+                                .font(.system(size: 19, weight: .semibold))
+                            // Navigating or pointing is a separate signal from "this tab is open": a small dot on WAY.
+                            if s == .compass, navigating {
+                                Circle().fill(theme.accent).frame(width: 8, height: 8)
+                                    .overlay(Circle().stroke(theme.screen, lineWidth: 1.5))
+                                    .offset(x: 6, y: -3)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                        Text(s.label).font(.nunito(11, .extraBold)).tracking(0.6)
                     }
-                    .opacity(app.screen == s ? 1 : 0.34)
+                    .foregroundStyle(isSelected ? theme.accent : theme.ink.opacity(0.5))
                     .frame(width: 74)
                     .padding(.vertical, 8)
+                    .background {
+                        if isSelected {
+                            // The bubble slides to whichever tab is open.
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(theme.accent.opacity(theme.light ? 0.16 : 0.2))
+                                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(theme.accent.opacity(0.45), lineWidth: 1))
+                                .matchedGeometryEffect(id: "tabBubble", in: bubble)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(s.label.capitalized + (s == .compass && navigating ? ", navigating" : ""))
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
             }
         }
         .padding(.top, 8)
@@ -111,6 +138,6 @@ private struct TabBar: View {
         )
         .opacity(app.avatarSheet || app.searchOpen || app.cardsExpanded ? 0 : 1)
         .offset(y: 20 - bottomLeeway)
-        .sensoryFeedback(.selection, trigger: app.screen)
+        .sensoryFeedback(.selection, trigger: selected)
     }
 }

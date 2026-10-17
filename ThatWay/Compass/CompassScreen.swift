@@ -346,6 +346,7 @@ struct CompassScreen: View {
         } message: {
             Text("They have to accept first. Only direction and distance are shown, never a map, and either of you can stop at any time.")
         }
+        .sheet(isPresented: paywallBinding) { paywallSheet }
         .alert("Couldn't start the trace", isPresented: Binding(
             get: { app.traceManager.errorMessage != nil },
             set: { _ in }
@@ -732,10 +733,19 @@ struct CompassScreen: View {
 
     /// The friends roster. Tapping a friend asks (after a confirmation) to trace them: nothing is shared until they
     /// accept, and the pill below takes this row's place for as long as the trace lasts.
+    private var paywallBinding: Binding<Bool> {
+        Binding(get: { app.traceManager.needsUpgrade }, set: { app.traceManager.needsUpgrade = $0 })
+    }
+
+    private var paywallSheet: some View {
+        PaywallSheet(entitlements: app.entitlements, theme: app.currentTheme) { app.traceManager.needsUpgrade = false }
+    }
+
     @ViewBuilder
     private func friendsRow(k: CGFloat, theme: AppTheme) -> some View {
         FriendsStrip(friendsManager: app.friendsManager, theme: theme, k: k, myId: app.authManager.currentUser?.id) { friend in
-            traceCandidate = friend
+            // Adding friends is free; tracing one is the paid part.
+            if app.entitlements.canTraceFriends { traceCandidate = friend } else { app.traceManager.needsUpgrade = true }
         }
     }
 

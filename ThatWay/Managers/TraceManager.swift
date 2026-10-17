@@ -55,6 +55,8 @@ final class TraceManager: ObservableObject {
     @Published private(set) var errorMessage: String?
     /// The friend the compass is currently pointing or guiding to (the pill shows "Stop following" for them).
     @Published private(set) var following: String?
+    /// Set when a paid action was attempted without the entitlement: the screen shows the paywall.
+    @Published var needsUpgrade = false
 
     /// Wired by AppModel: point or guide to the friend's live position.
     var onFollow: ((Friend, CLLocationCoordinate2D, _ guide: Bool) -> Void)?
@@ -73,6 +75,7 @@ final class TraceManager: ObservableObject {
     private let now: () -> Date
     private let sleep: (TimeInterval) async -> Void
     private let loopEnabled: Bool
+    private let isEntitled: () -> Bool
 
     // MARK: Timing (seconds)
     private let activeInterval: TimeInterval
@@ -114,11 +117,12 @@ final class TraceManager: ObservableObject {
          idleInterval: TimeInterval = 10,
          now: @escaping () -> Date = Date.init,
          sleep: @escaping (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) },
-         loopEnabled: Bool = true) {
+         loopEnabled: Bool = true,
+         isEntitled: @escaping () -> Bool = { true }) {
         self.api = api; self.ranging = ranging; self.notifier = notifier; self.friends = friends
         self.refreshFriends = refreshFriends; self.myPosition = myPosition; self.myAccuracy = myAccuracy
         self.activeInterval = activeInterval; self.pendingInterval = pendingInterval; self.idleInterval = idleInterval
-        self.now = now; self.sleep = sleep; self.loopEnabled = loopEnabled
+        self.now = now; self.sleep = sleep; self.loopEnabled = loopEnabled; self.isEntitled = isEntitled
         ranging.onReading = { [weak self] in self?.recomputeReading() }
     }
 
@@ -198,6 +202,7 @@ final class TraceManager: ObservableObject {
 
     /// Point (or guide) the compass at the friend's live position. A moving target: the destination follows them.
     func follow(guide: Bool) {
+        guard isEntitled() else { needsUpgrade = true; return }
         guard case .active(let friend) = state, let peer = peerPosition else { return }
         following = friend.id
         onFollow?(friend, peer.coordinate, guide)
@@ -216,6 +221,7 @@ final class TraceManager: ObservableObject {
 
     /// Ask a friend to be traced. Nothing is shared until they accept.
     func request(_ friend: Friend) async {
+        guard isEntitled() else { needsUpgrade = true; return }
         guard !isBusy else { return }
         epoch += 1
         errorMessage = nil
@@ -234,6 +240,7 @@ final class TraceManager: ObservableObject {
 
     private func answer(accept: Bool) async {
         guard case .incoming(let friend) = state else { return }
+        if accept, !isEntitled() { needsUpgrade = true; return }       // declining is always allowed
         epoch += 1
         errorMessage = nil
         clearNotification()

@@ -2,8 +2,8 @@
 //  FriendsStrip.swift
 //  ThatWay
 //
-//  The friends bar on the compass screen. Friends sit in a row; swipe left and a round search icon is revealed at the end.
-//  Tap it and the bar opens into a search field that searches *your friends* as you type. If nothing among them matches and
+//  The friends bar on the compass screen: a labelled Find button first (so it is never buried behind a long list), then the
+//  friends. Tap Find and the bar opens into a search field that searches *your friends* as you type. If nothing among them matches and
 //  you stop typing for three quarters of a second, the app looks up that exact username and offers "+ Add", so a request can
 //  be sent from here too. Tapping a friend asks to trace them (the caller confirms; nothing is shared until they accept).
 //
@@ -24,7 +24,6 @@ struct FriendsStrip: View {
     @State private var settledFor: String?          // the query the server last answered
     @State private var lookingUp = false
     @State private var requested = Set<String>()    // ids asked this session (until the lists refresh)
-    @State private var viewWidth: CGFloat = 0
     @FocusState private var focused: Bool
 
     /// How long the person has to stop typing, with no friend matching, before the server is asked.
@@ -47,13 +46,16 @@ struct FriendsStrip: View {
     private var row: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 12) {
+                // First, so it is always in reach however many friends there are.
+                findButton
                 if friendsManager.friends.isEmpty {
-                    Text("No friends yet. Tap the magnifier to find someone")
+                    Text("No friends yet. Tap Find to add someone by their username")
                         .font(.nunito(12, .semibold))
                         .foregroundStyle(theme.textSecondary)
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 220, alignment: .leading)
+                        .frame(maxWidth: 200, alignment: .leading)
+                        .padding(.top, 8)
                 }
                 ForEach(friendsManager.friends) { f in
                     VStack(spacing: 6) {
@@ -70,34 +72,31 @@ struct FriendsStrip: View {
                     .accessibilityLabel("Trace \(f.username)")
                     .accessibilityAddTraits(.isButton)
                 }
-                searchBubble
             }
             .padding(.horizontal, 16 * k)
-            // With friends in the row the bubble sits just past the right edge: swipe left to reveal it.
-            .frame(minWidth: friendsManager.friends.isEmpty ? 0 : viewWidth + 44, alignment: .leading)
         }
         .scrollClipDisabled()
-        .background(GeometryReader { g in
-            Color.clear
-                .onAppear { viewWidth = g.size.width }
-                .onChange(of: g.size.width) { _, w in viewWidth = w }
-        })
     }
 
-    private var searchBubble: some View {
+    /// "Find" with a person-plus icon: finds a friend you have, or adds one you don't. (A magnifier here was confused with
+    /// the place search above it.)
+    private var findButton: some View {
         Button {
             searching = true
             focused = true
         } label: {
-            ZStack {
-                Circle().fill(theme.surface(0.1)).frame(width: 52, height: 52)
-                Circle().stroke(theme.accent.opacity(0.7), lineWidth: 1.5).frame(width: 52, height: 52)
-                Image(systemName: "magnifyingglass").font(.system(size: 18, weight: .bold)).foregroundStyle(theme.accent)
+            VStack(spacing: 6) {
+                ZStack {
+                    Circle().fill(theme.accent.opacity(0.16)).frame(width: 52, height: 52)
+                    Circle().stroke(theme.accent.opacity(0.8), lineWidth: 1.5).frame(width: 52, height: 52)
+                    Image(systemName: "person.badge.plus").font(.system(size: 19, weight: .bold)).foregroundStyle(theme.accent)
+                }
+                Text("Find").font(.nunito(11, .extraBold)).foregroundStyle(theme.accent)
             }
             .frame(width: 56)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Search friends or add someone by username")
+        .accessibilityLabel("Find or add a friend")
     }
 
     // MARK: The search panel

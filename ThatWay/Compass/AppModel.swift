@@ -20,8 +20,9 @@ final class AppModel: ObservableObject {
         didSet { updateBackgroundTracking() }
     }
     @Published var skin: SkinID = .needle
-    @Published var theme: ThemeID = .ember
-    @Published var lastDark: ThemeID = .ember
+    // Tide is the default everywhere: it matches the green app icon.
+    @Published var theme: ThemeID = .tide
+    @Published var lastDark: ThemeID = .tide
     @Published var ownedSkins: Set<SkinID> = [.needle, .wheel, .clock]
     @Published var ownedAvatars: Set<AvatarID> = [.initials, .dot, .ring]
     @Published var avatar: AvatarID = .initials
@@ -54,6 +55,9 @@ final class AppModel: ObservableObject {
     let authManager = AuthManager()
     lazy var friendsManager = FriendsManager(auth: authManager)
     /// Consent-based friend tracing: a request, an acceptance, then direction and distance at any range.
+    /// The single switch for anything paid (today a dummy purchase).
+    let entitlements = Entitlements()
+
     lazy var traceManager = TraceManager(
         api: friendsManager,
         ranging: nearbyManager,
@@ -64,7 +68,8 @@ final class AppModel: ObservableObject {
             guard let self, self.hasRealLocation else { return nil }
             return self.currentPosition
         },
-        myAccuracy: { [weak self] in self?.locationManager.location?.horizontalAccuracy ?? 10 }
+        myAccuracy: { [weak self] in self?.locationManager.location?.horizontalAccuracy ?? 10 },
+        isEntitled: { [weak self] in self?.entitlements.canTraceFriends ?? false }
     )
 
     // MARK: - Following a traced friend

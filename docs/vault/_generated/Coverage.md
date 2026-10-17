@@ -10,7 +10,7 @@ tags: [generated]
 | [[auth]] | shipped | high | 1 | 1 | 5 (2 / 3 / 0 / 0) |
 | [[backend-config]] | shipped | high | 0 | 1 | 2 (0 / 0 / 1 / 1) |
 | [[backend-lambda]] | external | medium | 0 | 0 | 1 (0 / 1 / 0 / 0) |
-| [[friends]] | dormant | low | 2 | 0 | 5 (5 / 0 / 0 / 0) |
+| [[friends]] | dormant | low | 3 | 0 | 5 (5 / 0 / 0 / 0) |
 | [[nearby-proximity]] | spike | high | 3 | 4 | 10 (7 / 3 / 0 / 0) |
 | [[trace-friends]] | spike | high | 4 | 8 | 16 (13 / 2 / 1 / 0) |
 | [[avatars-social-decor]] | setting-only | low | 0 | 0 | 1 (0 / 0 / 1 / 0) |
@@ -26,7 +26,7 @@ tags: [generated]
 | [[guidance-cards]] | shipped | medium | 0 | 2 | 2 (0 / 2 / 0 / 0) |
 | [[route-line]] | shipped | medium | 0 | 1 | 2 (0 / 0 / 0 / 2) |
 | [[search-ui]] | shipped | low | 0 | 1 | 1 (0 / 1 / 0 / 0) |
-| [[tab-bar]] | shipped | low | 0 | 1 | 1 (0 / 1 / 0 / 0) |
+| [[tab-bar]] | shipped | low | 0 | 1 | 2 (0 / 2 / 0 / 0) |
 | [[theme-system]] | shipped | low | 0 | 1 | 2 (0 / 2 / 0 / 0) |
 | [[travel-mode-carousel]] | shipped | low | 0 | 1 | 1 (0 / 1 / 0 / 0) |
 | [[background-guidance]] | shipped | high | 0 | 2 | 3 (0 / 3 / 0 / 0) |
@@ -72,4 +72,4 @@ tags: [generated]
 | [[watch-travel-modes]] | spike | low | 1 | 1 | 2 (0 / 2 / 0 / 0) |
 | [[watch-voice-search]] | spike | medium | 0 | 2 | 3 (0 / 1 / 1 / 1) |
 
-**Totals:** 64 features, 157 failure points: 43 caught by tests, 61 by manual checks, 35 partly, 18 not caught at all.
+**Totals:** 64 features, 158 failure points: 43 caught by tests, 62 by manual checks, 35 partly, 18 not caught at all.

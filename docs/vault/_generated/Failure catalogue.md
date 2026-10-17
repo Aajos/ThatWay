@@ -117,6 +117,7 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | SS-1 | [[store-skins]] | low | Donate action has no real destination yet | manual | manual |
 | SU-1 | [[search-ui]] | low | Panel extends under the keyboard and rows are unreachable | manual: fixed | manual |
 | TB-1 | [[tab-bar]] | low | Labels touch the screen edge on Home-button phones (was a real bug) | manual: fixed with leeway | manual |
+| TB-9 | [[tab-bar]] | low | The bar shows WAY selected while another tab is open (was a real bug) | manual: tap each tab in the simulator and check the bubble follows | manual |
 | TC-1 | [[travel-mode-carousel]] | low | Tap swallowed by a child gesture | manual: fixed once | manual |
 | TS-1 | [[theme-system]] | low | Font not registered before first use falls back silently to the system font | manual: visual; `ThatWayFonts.register()` runs in App.init | manual |
 | TS-2 | [[theme-system]] | low | Dark-glow regressions on light themes | manual: Paper | manual |

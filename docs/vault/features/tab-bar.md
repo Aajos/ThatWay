@@ -29,6 +29,9 @@ tags: [feature, area/guidance-ui, status/shipped, risk/low]
 **Area:** [[area-guidance-ui]] · **Status:** shipped · **Risk:** low
 
 ## What it covers
+- A bubble behind the open tab (accent tint and outline) and accent-coloured icon and label for it; the others are dimmed
+- A small dot on WAY while navigating or pointing: a separate signal from "this tab is open"
+- The selection is passed in from RootView and the bar is rebuilt on each change (it used to keep WAY highlighted while another tab was open)
 - Four tabs with selection haptic
 - Hidden during search / curtain / avatar sheet
 - Bottom leeway on devices without a bottom safe-area inset
@@ -43,6 +46,7 @@ tags: [feature, area/guidance-ui, status/shipped, risk/low]
 
 | ID | What breaks | Caught by |
 |---|---|---|
+| TB-9 | The bar shows WAY selected while another tab is open (was a real bug) | manual: tap each tab in the simulator and check the bubble follows |
 | TB-1 | Labels touch the screen edge on Home-button phones (was a real bug) | manual: fixed with leeway |
 
 ## Tests
