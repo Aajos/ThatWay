@@ -99,10 +99,30 @@ struct CompassHealthTests {
         #expect(h.steadyCourse(at: now) == nil)
     }
 
-    @Test func poorReportedAccuracyIsSuspectImmediately() {
+    @Test func poorReportedAccuracyIsSuspectOnlyOnceItHasLasted() {
         var h = CompassHealth()
-        #expect(h.evaluate(heading: 10, headingAccuracy: 45, at: t0) == .suspect)
-        #expect(h.evaluate(heading: 10, headingAccuracy: -1, at: t0) == .suspect, "no reading: nothing judged, status kept")
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        #expect(h.evaluate(heading: 10, headingAccuracy: 45, at: t0) == .unknown, "a phone just out of a pocket reads badly for a moment")
+        #expect(h.evaluate(heading: 10, headingAccuracy: 45, at: t0.addingTimeInterval(9)) == .unknown)
+        #expect(h.evaluate(heading: 10, headingAccuracy: 45, at: t0.addingTimeInterval(11)) == .suspect, "10 seconds of it is real")
+        #expect(h.evaluate(heading: 10, headingAccuracy: -1, at: t0.addingTimeInterval(12)) == .suspect, "no reading: nothing judged, status kept")
+    }
+
+    @Test func theWarningGoesAsSoonAsIOSReportsAGoodHeading() {
+        var h = CompassHealth()
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        _ = h.evaluate(heading: 10, headingAccuracy: 45, at: t0)
+        #expect(h.evaluate(heading: 10, headingAccuracy: 45, at: t0.addingTimeInterval(12)) == .suspect)
+        #expect(h.evaluate(heading: 10, headingAccuracy: 12, at: t0.addingTimeInterval(13)) == .unknown, "no walking needed to clear a warning iOS itself raised")
+    }
+
+    @Test func aBriefPoorReadingNeverBuildsUpToAWarning() {
+        var h = CompassHealth()
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        for i in 0..<6 {
+            _ = h.evaluate(heading: 10, headingAccuracy: 45, at: t0.addingTimeInterval(Double(i) * 8))
+            #expect(h.evaluate(heading: 10, headingAccuracy: 15, at: t0.addingTimeInterval(Double(i) * 8 + 4)) == .unknown)
+        }
     }
 
     @Test func noValidReadingJudgesNothing() {

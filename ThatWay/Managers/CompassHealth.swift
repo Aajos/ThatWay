@@ -12,7 +12,9 @@
 //    - agreement lengthens the gap to the next check: 1 min, then 3, then 5;
 //    - a disagreement is re-checked 10 s later, and only a second one marks the compass suspect;
 //    - while suspect it keeps checking every 10 s, and two agreements in a row clear it;
-//    - a heading iOS itself reports as poorly calibrated (accuracy worse than 30°) is suspect at once.
+//    - a heading iOS itself reports as poorly calibrated (accuracy worse than 30°) is suspect once it has stayed that bad for
+//      10 seconds (taking the phone out of a pocket is poor for a moment), and the warning goes by itself as soon as iOS
+//      reports a good heading again.
 //
 //  Pure value type with an injected clock, so every rule is unit-tested.
 //
@@ -29,6 +31,8 @@ struct CompassHealth {
     static let checkIntervals: [TimeInterval] = [60, 180, 300]
     static let recheckDelay: TimeInterval = 10
     static let poorAccuracy: CLLocationDirection = 30
+    /// How long a poor reported accuracy must last before the compass is called suspect.
+    static let poorAccuracyGrace: TimeInterval = 10
     /// How long the course must hold steady (and the traveller keep moving) to count as a clean sample.
     static let steadyWindow: TimeInterval = 6
     static let steadySpread: CLLocationDirection = 20
@@ -40,6 +44,8 @@ struct CompassHealth {
     private(set) var intervalIndex = 0
     private(set) var nextCheckAt = Date.distantPast
     private var disagreements = 0
+    private var poorSince: Date?
+    private var suspectFromAccuracy = false
     private var agreementsWhileSuspect = 0
     private var samples: [(at: Date, course: CLLocationDirection)] = []
 
@@ -72,9 +78,20 @@ struct CompassHealth {
         guard headingAccuracy >= 0 else { return status }
 
         if headingAccuracy > Self.poorAccuracy {
-            // iOS itself says the compass can't be trusted: no need to wait for a comparison.
-            markSuspect(at: now)
+            // iOS itself says the compass can't be trusted. Not at the first poor reading (a phone just out of a pocket reads
+            // badly for a moment), but once it has stayed that way.
+            let since = poorSince ?? now
+            poorSince = since
+            if now.timeIntervalSince(since) >= Self.poorAccuracyGrace {
+                markSuspect(at: now)
+                suspectFromAccuracy = true
+            }
             return status
+        }
+        poorSince = nil
+        if suspectFromAccuracy {                  // iOS is happy with the heading again: so are we
+            suspectFromAccuracy = false
+            status = .unknown; predictedHeading = nil; intervalIndex = 0; agreementsWhileSuspect = 0; nextCheckAt = .distantPast
         }
         guard now >= nextCheckAt, let course = steadyCourse(at: now) else { return status }
         predictedHeading = course
@@ -114,12 +131,14 @@ struct CompassHealth {
         agreementsWhileSuspect = 0
         disagreements = 0
         status = .suspect
+        suspectFromAccuracy = true          // after the figure-8, iOS reporting a good heading is enough to clear it
         nextCheckAt = now.addingTimeInterval(8)
     }
 
     mutating func reset() { self = CompassHealth() }
 
     private mutating func markSuspect(at now: Date) {
+        suspectFromAccuracy = false
         status = .suspect
         intervalIndex = 0
         agreementsWhileSuspect = 0
