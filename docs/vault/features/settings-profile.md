@@ -31,6 +31,7 @@ tags: [feature, area/app-shell, status/shipped, risk/low]
 **Area:** [[area-app-shell]] · **Status:** shipped · **Risk:** low
 
 ## What it covers
+- The Achievements section is gone (replaced by a better idea); "Visible to" (map visibility) is replaced by the Friends setting, see [[friends]]
 - WIRED: Compass skin, Theme, Compass tilt (Off/Slight/Hard), Audio guidance (Off/Tone/Voice), Units, Default mode, Record test logs
 - Rows open their options in place (inline picker) instead of the system Menu, which scrolled the page to the top and sat detached from its row
 - NOT WIRED (stored in memory only, nothing reads them): Voice of directions, Haptics on turns, Share destination

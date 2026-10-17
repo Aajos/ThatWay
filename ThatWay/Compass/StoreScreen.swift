@@ -26,7 +26,7 @@ struct StoreScreen: View {
 
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Store").font(.nunito(24, .black))
+                Text("Buy").font(.nunito(24, .black))
                 Text("Navigation is free, forever, no ads. Prices in AUD.")
                     .font(.nunito(13, .semibold)).foregroundStyle(theme.ink.opacity(0.68))
             }

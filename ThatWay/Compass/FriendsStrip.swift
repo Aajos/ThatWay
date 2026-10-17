@@ -18,6 +18,8 @@ struct FriendsStrip: View {
     let k: CGFloat
     let myId: String?
     let onTrace: (Friend) -> Void
+    /// Opens the You page, where every request can be read and answered.
+    let onOpenRequests: () -> Void
 
     @State private var searching = false
     @State private var query = ""
@@ -48,6 +50,7 @@ struct FriendsStrip: View {
             HStack(alignment: .top, spacing: 12) {
                 // First, so it is always in reach however many friends there are.
                 findButton
+                latestRequest
                 if friendsManager.friends.isEmpty {
                     Text("No friends yet. Tap Find to add someone by their username")
                         .font(.nunito(12, .semibold))
@@ -76,6 +79,52 @@ struct FriendsStrip: View {
             .padding(.horizontal, 16 * k)
         }
         .scrollClipDisabled()
+    }
+
+    /// Only the newest request is shown here (with a count for the rest), so a pile of requests can never crowd the row.
+    @ViewBuilder
+    private var latestRequest: some View {
+        if friendsManager.requestPolicy == .requestsOnly, let latest = friendsManager.incomingRequests.first {
+            VStack(spacing: 5) {
+                ZStack(alignment: .topTrailing) {
+                    avatar(latest, size: 52)
+                    Circle().fill(theme.needleRed).frame(width: 12, height: 12)
+                        .overlay(Circle().stroke(theme.screen, lineWidth: 2)).offset(x: 2, y: -2)
+                }
+                HStack(spacing: 6) {
+                    miniButton("xmark", filled: false) { Task { await friendsManager.respond(to: latest.id, accept: false) } }
+                        .accessibilityLabel("Decline \(latest.username)")
+                    miniButton("checkmark", filled: true) { Task { await friendsManager.respond(to: latest.id, accept: true) } }
+                        .accessibilityLabel("Accept \(latest.username)")
+                }
+            }
+            .frame(width: 64)
+            .accessibilityElement(children: .contain)
+            if friendsManager.incomingRequests.count > 1 {
+                Button(action: onOpenRequests) {
+                    VStack(spacing: 6) {
+                        ZStack {
+                            Circle().fill(theme.ink.opacity(0.1)).frame(width: 52, height: 52)
+                            Text("+\(friendsManager.incomingRequests.count - 1)").font(.nunito(15, .black)).foregroundStyle(theme.ink)
+                        }
+                        Text("more").font(.nunito(11, .semibold)).foregroundStyle(theme.textSecondary)
+                    }
+                    .frame(width: 56)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(friendsManager.incomingRequests.count - 1) more friend requests")
+            }
+        }
+    }
+
+    private func miniButton(_ icon: String, filled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.system(size: 11, weight: .bold))
+                .foregroundStyle(filled ? theme.onAccent : theme.ink.opacity(0.7))
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(filled ? theme.accent : theme.ink.opacity(0.1)))
+        }
+        .buttonStyle(.plain)
     }
 
     /// "Find" with a person-plus icon: finds a friend you have, or adds one you don't. (A magnifier here was confused with

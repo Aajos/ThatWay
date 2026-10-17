@@ -28,6 +28,11 @@ final class FriendsManager: ObservableObject {
     @Published var searchResults: [UserSearchResult] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var requestPolicy: FriendRequestPolicy = FriendRequestPolicy.load() {
+        didSet { requestPolicy.save(); if requestPolicy == .autoAccept { Task { await autoAcceptPending() } } }
+    }
+    private var autoAcceptTried = Set<String>()
+    private var autoAccepting = false
 
     private let auth: AuthManager
     private var cancellables = Set<AnyCancellable>()
@@ -55,6 +60,8 @@ final class FriendsManager: ObservableObject {
             async let incoming: [Friend] = request(method: "GET", path: "/friends?status=INCOMING")
             async let outgoing: [Friend] = request(method: "GET", path: "/friends?status=PENDING")
             (friends, incomingRequests, outgoingRequests) = try await (accepted, incoming, outgoing)
+            incomingRequests.sort { ($0.requestedAt ?? "") > ($1.requestedAt ?? "") }     // latest first
+            await autoAcceptPending()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -62,6 +69,26 @@ final class FriendsManager: ObservableObject {
 
     /// Exact-username lookup. Usernames are matched exactly as typed, so a lower-case retry covers the common slip of a
     /// stray capital. (Your own account is never returned.)
+    /// With "Auto accept" on, requests that arrive are accepted without asking. Done by the app while it is open (the
+    /// server has no such setting yet), once per request so a failure cannot loop.
+    func autoAcceptPending() async {
+        guard !autoAccepting else { return }
+        let ids = requestPolicy.idsToAutoAccept(incoming: incomingRequests, alreadyTried: autoAcceptTried)
+        guard !ids.isEmpty else { return }
+        autoAccepting = true
+        defer { autoAccepting = false }
+        for id in ids {
+            autoAcceptTried.insert(id)
+            let _: EmptyResponse? = try? await request(method: "POST", path: "/friends/respond", body: ["requesterId": id, "action": "accept"])
+        }
+        // Refresh the lists once (the guard above stops this from recursing).
+        if let accepted: [Friend] = try? await request(method: "GET", path: "/friends?status=ACCEPTED"),
+           let incoming: [Friend] = try? await request(method: "GET", path: "/friends?status=INCOMING") {
+            friends = accepted
+            incomingRequests = incoming.sorted { ($0.requestedAt ?? "") > ($1.requestedAt ?? "") }
+        }
+    }
+
     func searchUsers(query: String) async {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { searchResults = []; return }

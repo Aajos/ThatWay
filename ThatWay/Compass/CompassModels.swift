@@ -149,7 +149,7 @@ enum AppScreen: String, CaseIterable, Identifiable {
         switch self {
         case .compass: return "WAY"
         case .map: return "MAP"
-        case .store: return "STORE"
+        case .store: return "BUY"
         case .profile: return "YOU"
         }
     }
@@ -167,9 +167,24 @@ enum AppScreen: String, CaseIterable, Identifiable {
 
 enum NavMode { case point, guidance }
 enum DestKind { case none, place }
-enum Visibility: String, CaseIterable, Identifiable {
-    case friends = "Friends", close = "Close ones", nobody = "Nobody"
+/// What happens to a friend request that arrives: accepted straight away, or held for the person to decide.
+enum FriendRequestPolicy: String, CaseIterable, Identifiable {
+    case autoAccept = "Auto accept"
+    case requestsOnly = "Requests only"
     var id: String { rawValue }
+
+    /// Persisted (a safe default of "Requests only": nobody becomes a friend without being asked).
+    static let defaultsKey = "friends.requestPolicy"
+    static func load(_ defaults: UserDefaults = .standard) -> FriendRequestPolicy {
+        defaults.string(forKey: defaultsKey).flatMap(FriendRequestPolicy.init(rawValue:)) ?? .requestsOnly
+    }
+    func save(_ defaults: UserDefaults = .standard) { defaults.set(rawValue, forKey: Self.defaultsKey) }
+
+    /// The requests to accept on their own, given the incoming list and the ones already tried this session.
+    func idsToAutoAccept(incoming: [Friend], alreadyTried: Set<String>) -> [String] {
+        guard self == .autoAccept else { return [] }
+        return incoming.map(\.id).filter { !alreadyTried.contains($0) }
+    }
 }
 
 struct NavOptions {

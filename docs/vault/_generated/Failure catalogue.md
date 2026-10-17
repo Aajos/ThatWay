@@ -113,6 +113,7 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | WG-1 | [[watch-gestures]] | medium | Swipes fight system gestures at the screen edge | manual on a real wrist | manual |
 | WG-2 | [[watch-gestures]] | medium | A swipe starting on a button triggers the button instead | manual | manual |
 | WVS-3 | [[watch-voice-search]] | medium | Search or route fails offline | manual | manual |
+| FR-6 | [[friends]] | low | A pile of friend requests crowds the home screen | manual: the home bar shows one request plus a count; the You dropdown scrolls inside 260 pt | manual |
 | SP-3 | [[settings-profile]] | low | The system Menu scrolled the Profile page to the top and looked detached for a few seconds after a choice | manual: inline picker, verified in the simulator | manual |
 | SS-1 | [[store-skins]] | low | Donate action has no real destination yet | manual | manual |
 | SU-1 | [[search-ui]] | low | Panel extends under the keyboard and rows are unreachable | manual: fixed | manual |

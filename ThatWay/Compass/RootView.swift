@@ -60,7 +60,7 @@ struct RootView: View {
                 Spacer()
                 // The selection is passed in (not read from the environment inside the bar): RootView is what re-renders
                 // when the screen changes, and the bar used to keep showing WAY as selected while another tab was open.
-                TabBar(selected: app.screen, navigating: !app.isIdle)
+                TabBar(selected: app.screen, navigating: !app.isIdle, friends: app.friendsManager)
                     .id(app.screen)      // rebuilt on every change: without this the bar kept showing WAY as selected
             }
 
@@ -88,6 +88,7 @@ private struct TabBar: View {
 
     let selected: AppScreen
     let navigating: Bool
+    @ObservedObject var friends: FriendsManager
     @Namespace private var bubble
 
     var body: some View {
@@ -107,6 +108,13 @@ private struct TabBar: View {
                                     .offset(x: 6, y: -3)
                                     .accessibilityHidden(true)
                             }
+                            // A friend request is waiting (only when they are held for a decision): a dot on YOU.
+                            if s == .profile, friends.requestPolicy == .requestsOnly, !friends.incomingRequests.isEmpty {
+                                Circle().fill(theme.needleRed).frame(width: 9, height: 9)
+                                    .overlay(Circle().stroke(theme.screen, lineWidth: 1.5))
+                                    .offset(x: 7, y: -3)
+                                    .accessibilityHidden(true)
+                            }
                         }
                         Text(s.label).font(.nunito(11, .extraBold)).tracking(0.6)
                     }
@@ -124,7 +132,7 @@ private struct TabBar: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(s.label.capitalized + (s == .compass && navigating ? ", navigating" : ""))
+                .accessibilityLabel(s.label.capitalized + (s == .compass && navigating ? ", navigating" : "") + (s == .profile && friends.requestPolicy == .requestsOnly && !friends.incomingRequests.isEmpty ? ", friend request waiting" : ""))
                 .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
             }
         }

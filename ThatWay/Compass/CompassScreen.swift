@@ -746,6 +746,8 @@ struct CompassScreen: View {
         FriendsStrip(friendsManager: app.friendsManager, theme: theme, k: k, myId: app.authManager.currentUser?.id) { friend in
             // Adding friends is free; tracing one is the paid part.
             if app.entitlements.canTraceFriends { traceCandidate = friend } else { app.traceManager.needsUpgrade = true }
+        } onOpenRequests: {
+            app.selectTab(.profile)
         }
     }
 

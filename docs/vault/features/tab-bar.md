@@ -29,6 +29,7 @@ tags: [feature, area/guidance-ui, status/shipped, risk/low]
 **Area:** [[area-guidance-ui]] · **Status:** shipped · **Risk:** low
 
 ## What it covers
+- The Store tab is now **BUY**; a red dot on YOU while a friend request is waiting (only in Requests only mode)
 - A bubble behind the open tab (accent tint and outline) and accent-coloured icon and label for it; the others are dimmed
 - A small dot on WAY while navigating or pointing: a separate signal from "this tab is open"
 - The selection is passed in from RootView and the bar is rebuilt on each change (it used to keep WAY highlighted while another tab was open)

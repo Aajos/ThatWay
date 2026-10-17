@@ -26,13 +26,11 @@ struct ProfileScreen: View {
                 header(theme: theme)
                 if Config.backendEnabled {
                     addFriendSection(theme: theme)
-                    friendRequestsSection(theme: theme)
                 } else {
                     backendDisabledNotice(theme: theme)
                 }
-                visibilitySection(theme: theme)
+                friendsSettingSection(theme: theme)
                 defaultNavModeSection(theme: theme)
-                achievementsSection(theme: theme)
                 settingsSection(theme: theme)
                 testLogsSection(theme: theme)
                 if Config.backendEnabled {
@@ -163,43 +161,6 @@ struct ProfileScreen: View {
     }
 
     @ViewBuilder
-    private func friendRequestsSection(theme: AppTheme) -> some View {
-        if !friendsManager.incomingRequests.isEmpty || !friendsManager.outgoingRequests.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("FRIEND REQUESTS").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
-                VStack(spacing: 8) {
-                    ForEach(friendsManager.incomingRequests) { req in
-                        HStack {
-                            Text(req.username).font(.nunito(14, .semibold))
-                            Spacer()
-                            Button { Task { await friendsManager.respond(to: req.id, accept: false) } } label: {
-                                Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.ink.opacity(0.6))
-                                    .frame(width: 32, height: 32)
-                                    .background(Circle().fill(theme.ink.opacity(0.08)))
-                            }.buttonStyle(.plain)
-                            Button { Task { await friendsManager.respond(to: req.id, accept: true) } } label: {
-                                Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.onAccent)
-                                    .frame(width: 32, height: 32)
-                                    .background(Circle().fill(theme.accent))
-                            }.buttonStyle(.plain)
-                        }
-                    }
-                    ForEach(friendsManager.outgoingRequests) { req in
-                        HStack {
-                            Text(req.username).font(.nunito(14, .semibold))
-                            Spacer()
-                            Text("Pending").font(.nunito(11, .semibold)).foregroundStyle(theme.textSecondary)
-                        }
-                    }
-                }
-                .padding(14)
-                .background(RoundedRectangle(cornerRadius: 16).fill(theme.ink.opacity(0.05)))
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.ink.opacity(0.09)))
-            }
-        }
-    }
-
-    @ViewBuilder
     private func signOutSection(theme: AppTheme) -> some View {
         Button {
             app.authManager.signOut()
@@ -246,27 +207,26 @@ struct ProfileScreen: View {
     }
 
     private var visLine: String {
-        switch app.vis {
-        case .nobody: return "Invisible on the map"
-        case .close: return "Visible to close ones within \(Int(app.closeKm)) km"
-        case .friends: return "Visible to friends"
-        }
+        "Friend requests: \(friendsManager.requestPolicy.rawValue.lowercased())"
     }
 
+    @State private var requestsOpen = false
+
+    /// FRIENDS: what happens to a request that arrives. "Requests only" holds them in a dropdown to answer.
     @ViewBuilder
-    private func visibilitySection(theme: AppTheme) -> some View {
+    private func friendsSettingSection(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("VISIBLE TO").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
-            let choices = ForEach(Visibility.allCases) { v in
-                Button { app.vis = v } label: {
+            Text("FRIENDS").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
+            let choices = ForEach(FriendRequestPolicy.allCases) { v in
+                Button { friendsManager.requestPolicy = v } label: {
                     Text(v.rawValue)
                         .font(.nunito(13, .extraBold))
                         .foregroundStyle(theme.ink)
-                        .opacity(app.vis == v ? 1 : 0.45)
+                        .opacity(friendsManager.requestPolicy == v ? 1 : 0.45)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 9)
-                        .background(RoundedRectangle(cornerRadius: 12).fill(app.vis == v ? theme.accent.opacity(0.22) : .clear))
+                        .background(RoundedRectangle(cornerRadius: 12).fill(friendsManager.requestPolicy == v ? theme.accent.opacity(0.22) : .clear))
                 }
             }
             Group {
@@ -276,54 +236,83 @@ struct ProfileScreen: View {
             .background(RoundedRectangle(cornerRadius: 16).fill(theme.ink.opacity(0.05)))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.ink.opacity(0.09)))
 
-            if app.vis == .close {
-                VStack(spacing: 12) {
-                    HStack {
-                        Text("Close ones within").font(.nunito(12, .semibold)).foregroundStyle(theme.ink.opacity(0.7))
-                        Spacer()
-                        Text("\(Int(app.closeKm)) km").font(.nunito(15, .black)).foregroundStyle(theme.accent)
+            Text(friendsManager.requestPolicy == .autoAccept
+                 ? "Anyone who asks becomes a friend straight away (while the app is open)."
+                 : "Requests wait here until you accept or decline them.")
+                .font(.nunito(11, .semibold)).foregroundStyle(theme.textSecondary)
+
+            if (Config.backendEnabled || !friendsManager.incomingRequests.isEmpty), friendsManager.requestPolicy == .requestsOnly { requestsDropdown(theme: theme) }
+        }
+    }
+
+    @ViewBuilder
+    private func requestsDropdown(theme: AppTheme) -> some View {
+        let incoming = friendsManager.incomingRequests
+        VStack(spacing: 0) {
+            Button { withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { requestsOpen.toggle() } } label: {
+                HStack(spacing: 10) {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "person.crop.circle.badge.questionmark").font(.system(size: 18, weight: .bold)).foregroundStyle(theme.accent)
+                        if !incoming.isEmpty {
+                            Circle().fill(theme.needleRed).frame(width: 9, height: 9)
+                                .overlay(Circle().stroke(theme.screen, lineWidth: 1.5)).offset(x: 4, y: -3)
+                        }
                     }
-                    Slider(value: $app.closeKm, in: 2...20, step: 1).tint(theme.accent)
-                    HStack {
-                        Text("2 km").font(.nunito(10, .semibold)).foregroundStyle(theme.ink.opacity(0.6))
-                        Spacer()
-                        Text("20 km").font(.nunito(10, .semibold)).foregroundStyle(theme.ink.opacity(0.6))
-                    }
+                    Text("Requests").font(.nunito(14, .extraBold)).foregroundStyle(theme.ink)
+                    Text(incoming.isEmpty ? "none waiting" : "\(incoming.count) waiting")
+                        .font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary)
+                    Spacer()
+                    Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.ink.opacity(0.6))
+                        .rotationEffect(.degrees(requestsOpen ? 180 : 0))
                 }
                 .padding(14)
-                .background(RoundedRectangle(cornerRadius: 18).fill(theme.ink.opacity(0.05)))
-                .overlay(RoundedRectangle(cornerRadius: 18).stroke(theme.ink.opacity(0.09)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(incoming.isEmpty ? "Requests, none waiting" : "Requests, \(incoming.count) waiting")
+
+            if requestsOpen {
+                Divider().overlay(theme.ink.opacity(0.09))
+                // However many arrive, the list scrolls inside a fixed height: it never takes over the page.
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(incoming) { req in
+                            HStack {
+                                Text(req.username).font(.nunito(14, .semibold)).foregroundStyle(theme.ink)
+                                Spacer()
+                                Button { Task { await friendsManager.respond(to: req.id, accept: false) } } label: {
+                                    Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.ink.opacity(0.6))
+                                        .frame(width: 34, height: 34).background(Circle().fill(theme.ink.opacity(0.08)))
+                                }.buttonStyle(.plain).accessibilityLabel("Decline \(req.username)")
+                                Button { Task { await friendsManager.respond(to: req.id, accept: true) } } label: {
+                                    Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.onAccent)
+                                        .frame(width: 34, height: 34).background(Circle().fill(theme.accent))
+                                }.buttonStyle(.plain).accessibilityLabel("Accept \(req.username)")
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 8)
+                        }
+                        if incoming.isEmpty {
+                            Text("No requests right now.").font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary).padding(14)
+                        }
+                        if !friendsManager.outgoingRequests.isEmpty {
+                            Text("SENT").font(.nunito(10, .extraBold)).tracking(1.6).foregroundStyle(theme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.top, 10)
+                            ForEach(friendsManager.outgoingRequests) { req in
+                                HStack {
+                                    Text(req.username).font(.nunito(14, .semibold)).foregroundStyle(theme.ink)
+                                    Spacer()
+                                    Text("Pending").font(.nunito(11, .semibold)).foregroundStyle(theme.textSecondary)
+                                }
+                                .padding(.horizontal, 14).padding(.vertical, 8)
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 260)
             }
         }
-    }
-
-    @ViewBuilder
-    private func achievementsSection(theme: AppTheme) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("ACHIEVEMENTS").font(.nunito(10, .extraBold)).tracking(1.8).foregroundStyle(theme.ink.opacity(0.68))
-            let badges = Group {
-                badge("✦", "First 10 km", 1, theme: theme)
-                badge("◔", "Dawn run", 1, theme: theme)
-                badge("◇", "No wrong turns", 0.4, theme: theme)
-            }
-            if stacked { VStack(spacing: 10) { badges } } else { HStack(spacing: 10) { badges } }
-        }
-    }
-
-    @ViewBuilder
-    private func badge(_ glyph: String, _ name: String, _ op: Double, theme: AppTheme) -> some View {
-        VStack(spacing: 8) {
-            Circle()
-                .strokeBorder(theme.accent, lineWidth: 2)
-                .frame(width: 34, height: 34)
-                .overlay(Text(glyph).font(.nunito(14, .extraBold)).foregroundStyle(theme.accent))
-            Text(name).font(.nunito(10, .semibold)).foregroundStyle(theme.ink.opacity(0.78)).multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14).padding(.horizontal, 10)
-        .background(RoundedRectangle(cornerRadius: 18).fill(theme.ink.opacity(0.05)))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(theme.ink.opacity(0.09)))
-        .opacity(op)
+        .background(RoundedRectangle(cornerRadius: 16).fill(theme.ink.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.ink.opacity(0.09)))
+        .clipped()
     }
 
     @ViewBuilder

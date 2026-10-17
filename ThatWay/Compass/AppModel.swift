@@ -154,8 +154,6 @@ final class AppModel: ObservableObject {
 
 
     // Profile
-    @Published var vis: Visibility = .friends
-    @Published var closeKm: Double = 8
     /// Which mode picking a destination (a search result) drops straight into.
     /// Point mode is a straight-line bearing with no live route tracking — cheap on
     /// battery. Guidance keeps fetching/baking real turn-by-turn data continuously, which
@@ -193,6 +191,13 @@ final class AppModel: ObservableObject {
                 self?.friendsManager.friends = ["sam", "ellie", "marcus", "priya", "jo"].enumerated().map {
                     Friend(id: "p\($0.offset)", username: $0.element, status: "ACCEPTED", requestedAt: nil, acceptedAt: nil)
                 }
+            }
+        }
+        if ProcessInfo.processInfo.arguments.contains("-tw-preview-requests") {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(8))      // after the real session's refresh has finished
+                self?.friendsManager.friends = ["sam", "ellie"].enumerated().map { Friend(id: "p\($0.offset)", username: $0.element, status: "ACCEPTED", requestedAt: nil, acceptedAt: nil) }
+                self?.friendsManager.incomingRequests = (1...100).map { Friend(id: "r\($0)", username: "user\($0)", status: "INCOMING", requestedAt: String(format: "2026-10-%02d", min(28, $0 % 28 + 1)), acceptedAt: nil) }.sorted { ($0.requestedAt ?? "") > ($1.requestedAt ?? "") }
             }
         }
         if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-tw-preview-trace"), i + 1 < ProcessInfo.processInfo.arguments.count {

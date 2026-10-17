@@ -24,6 +24,7 @@ tests:
   - ThatWayTests/AuthManagerTests.swift::friendsAndNearbyNeedTheServiceAddress
   - backend/lambda/friends/test.mjs
   - ThatWayTests/EntitlementsTests.swift
+  - ThatWayTests/FriendRequestPolicyTests.swift
 manual_checks:
 depends_on: [auth, backend-config]
 tags: [feature, area/accounts-backend, status/dormant, risk/low]
@@ -39,6 +40,7 @@ tags: [feature, area/accounts-backend, status/dormant, risk/low]
 - Search, request, respond, list, remove
 - Token refresh on 401
 - Tracing, pointing at and guiding to a friend are **paid** behind one switch (`Entitlements.canTraceFriends`, with `Entitlements.friendTracingRequiresPayment` to turn the paywall off for everyone); adding friends is always free. Today the purchase is a dummy (no money moves)
+- **Friends setting** (was "Visible to"): *Auto accept* or *Requests only* (default; remembered). Requests only holds incoming requests in an openable dropdown on the You page (scrolls inside a fixed height, so 100 requests never take over the page); a dot marks it, and the YOU tab. The home friends bar shows only the newest request (with accept and decline) plus a "+N more" chip. Auto accept is done by the app while it is open (the server has no setting yet)
 - The friends bar: a labelled **Find** button comes first, then the friends; swipe left to reveal a round search icon; it opens a search over your friends and, after 0.75 s of no typing with no friend matching, looks up the exact username and offers **+ Add** (a lower-case retry covers a stray capital)
 - Backend rewrite: one tested core behind the five Lambdas; a friendship is written and removed in one transaction; a duplicate request loses cleanly; open requests are capped; search returns `{id, username}` only (it used to return every user's email)
 
@@ -55,6 +57,7 @@ tags: [feature, area/accounts-backend, status/dormant, risk/low]
 
 | ID | What breaks | Caught by |
 |---|---|---|
+| FR-6 | A pile of friend requests crowds the home screen | manual: the home bar shows one request plus a count; the You dropdown scrolls inside 260 pt |
 | FR-2 | Search leaked every user's email address to any signed-in searcher (was a real bug) | test: backend/lambda/friends/test.mjs (search never returns an email) |
 | FR-3 | A failure between the two writes leaves half a friendship | test: backend/lambda/friends/test.mjs (a failure leaves neither row) |
 | FR-4 | Two simultaneous requests overwrite each other | test: backend/lambda/friends/test.mjs (a race loses with a 409) |
