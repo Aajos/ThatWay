@@ -115,14 +115,7 @@ struct RootView: View {
 private struct TabBar: View {
     @EnvironmentObject var app: AppModel
 
-    /// Phones with a Home button (iPhone SE) have no bottom safe-area inset, so the bar's labels sat
-    /// right on the screen's edge; lift the bar a little there. Face ID phones already clear the
-    /// home indicator and get none.
-    private var bottomLeeway: CGFloat {
-        let inset = UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom }.first
-        return inset == 0 ? 6 : 0   // unknown (no window yet) counts as none
-    }
+    private var bottomLeeway: CGFloat { TabBarMetrics.leeway }
 
     let selected: AppScreen
     let navigating: Bool
@@ -193,5 +186,16 @@ private struct TabBar: View {
         .opacity(app.avatarSheet || app.searchOpen || app.cardsExpanded ? 0 : 1)
         .offset(y: 20 - bottomLeeway)
         .sensoryFeedback(.selection, trigger: selected)
+    }
+}
+
+/// Phones with a Home button (iPhone SE) have no bottom safe-area inset, so the bar's selected bubble was cut off by the screen's
+/// edge and crowded the content above it. The bar is lifted by this much there, and screens that sit above it reserve the same.
+/// Face ID phones already clear the home indicator and get none.
+enum TabBarMetrics {
+    static var leeway: CGFloat {
+        let inset = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom }.first
+        return inset == 0 ? 22 : 0      // unknown (no window yet) counts as none
     }
 }

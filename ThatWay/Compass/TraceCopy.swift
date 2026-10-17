@@ -63,7 +63,7 @@ enum TraceCopy {
         "They choose how long to allow (up to what you ask) and whether it is a one-off or ongoing. You will not be told exactly how long you have.",
         "They will see that you are tracing them, when you last looked, and roughly how far away you were (for example “under 200 m” or “about 2 km”).",
         "You can ask for a new location once every 2 minutes. You see their location as a direction and a distance, never on a map.",
-        "If they say no, don’t answer in 30 minutes, or can’t be traced for any other reason, you will only see: “\(cannotTrace)”.",
+        "This request will expire in 30 minutes.",
     ]
     /// Shown to the TRACED person, who decides.
     static func kindExplanation(_ kind: GrantKindChoice, name: String) -> String {

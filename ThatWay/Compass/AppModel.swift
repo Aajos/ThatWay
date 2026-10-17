@@ -228,6 +228,8 @@ final class AppModel: ObservableObject {
                 self?.friendsManager.incomingRequests = (1...100).map { Friend(id: "r\($0)", username: "user\($0)", status: "INCOMING", requestedAt: String(format: "2026-10-%02d", min(28, $0 % 28 + 1)), acceptedAt: nil) }.sorted { ($0.requestedAt ?? "") > ($1.requestedAt ?? "") }
             }
         }
+        if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-tw-tab"), i + 1 < ProcessInfo.processInfo.arguments.count,
+           let tab = AppScreen.allCases.first(where: { "\($0)" == ProcessInfo.processInfo.arguments[i + 1] }) { screen = tab }
         if ProcessInfo.processInfo.arguments.contains("-tw-preview-theme-flip") {      // switches to the light theme after 3 s
             Task { @MainActor [weak self] in try? await Task.sleep(for: .seconds(3)); self?.setTheme(.paper) }
         }

@@ -77,7 +77,7 @@ struct CompassScreen: View {
     /// Reserve room below the content for RootView's floating tab bar so the
     /// destination card never sits under it — trimmed down so the card sits closer to
     /// the (now lower, more spread-out) tab bar instead of floating far above it.
-    private let tabBarClearance: CGFloat = 56
+    private var tabBarClearance: CGFloat { 56 + (TabBarMetrics.leeway > 0 ? TabBarMetrics.leeway + 14 : 0) }
 
     var body: some View {
         GeometryReader { geo in
@@ -95,7 +95,7 @@ struct CompassScreen: View {
                 ? min(geo.size.width * 0.62, geo.size.height * 0.31)
                 : (app.guiding && !app.arrived
                     ? min(geo.size.width * 0.80, geo.size.height * 0.395)
-                    : min(geo.size.width * 0.85, geo.size.height * 0.42, 420))
+                    : min(geo.size.width * 0.85, geo.size.height * (app.traceManager.state != nil ? 0.30 : 0.42), 420))
             let dialK = dialSize / 286
             // Short screens (iPhone SE) shrink the instruction cards instead of letting them run into the tab bar.
             let _ = Perf.hit("body.compass")
@@ -141,7 +141,7 @@ struct CompassScreen: View {
                             )
                             .onPreferenceChange(SearchBarFramePreferenceKey.self) { searchBarFrame = $0 }
 
-                        TraceSlot(trace: app.traceManager, app: app, theme: theme, myName: app.authManager.currentUser?.username ?? "You", inset: Spacing.container * k) {
+                        TraceSlot(trace: app.traceManager, app: app, theme: theme, myName: app.authManager.currentUser?.username ?? "You", inset: Spacing.container * k, compact: geo.size.height < 700) {
                             friendsRow(k: k, theme: theme)
                         }
                             .dynamicTypeSize(...DynamicTypeSize.xLarge)
@@ -173,7 +173,7 @@ struct CompassScreen: View {
                     // While guiding the friends row is not shown, but a trace must never be invisible: the pill
                     // sits here, above the instruction, for as long as one is pending or active.
                     if app.guiding, !app.arrived {
-                        TraceSlot(trace: app.traceManager, app: app, theme: theme, myName: app.authManager.currentUser?.username ?? "You") {
+                        TraceSlot(trace: app.traceManager, app: app, theme: theme, myName: app.authManager.currentUser?.username ?? "You", compact: geo.size.height < 700) {
                             EmptyView()
                         }
                         .dynamicTypeSize(...DynamicTypeSize.xLarge)

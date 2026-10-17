@@ -196,7 +196,7 @@ struct MapScreen: View {
         Button(action: action) {
             VStack(spacing: 2) {
                 Image(systemName: icon).font(.system(size: 15, weight: .semibold))
-                Text(label).font(.nunito(8, .extraBold)).tracking(0.4)
+                Text(label).font(.nunito(8, .extraBold)).tracking(0.2).lineLimit(1).minimumScaleFactor(0.6)
             }
             .foregroundStyle(.primary)
             .frame(width: 44, height: 44)

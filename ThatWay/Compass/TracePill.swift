@@ -26,6 +26,7 @@ struct TraceSlot<Row: View>: View {
     let myName: String
     /// The screen's side margin (the friends row brings its own, the pill needs it added).
     var inset: CGFloat = 0
+    var compact = false
     @ViewBuilder var row: () -> Row
 
     var body: some View {
@@ -35,7 +36,7 @@ struct TraceSlot<Row: View>: View {
                       locate: { Task { await trace.locate(manual: true) } },
                       precise: { trace.findPrecisely() },
                       follow: { guide in trace.follow(guide: guide) },
-                      stopFollowing: { trace.stopFollowing() })
+                      stopFollowing: { trace.stopFollowing() }, compact: compact)
                 .padding(.horizontal, inset)
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
         } else {
@@ -55,6 +56,8 @@ struct TracePill: View {
     let precise: () -> Void
     let follow: (Bool) -> Void
     let stopFollowing: () -> Void
+    /// A short screen (iPhone SE): one row of small buttons instead of two, so the compass still fits under the pill.
+    var compact = false
 
     var body: some View {
         content
@@ -106,22 +109,25 @@ struct TracePill: View {
                     avatar(initials: friend.initials, color: friend.color, label: friend.username)
                     closeButton(label: "Stop looking at \(friend.username)", action: end)
                 }
-                if reading != nil {
-                    HStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    if reading != nil {
                         if trace.following == friend.id {
-                            chip("Following \(friend.username)", icon: "scope", filled: true) {}
+                            chip(compact ? "Following" : "Following \(friend.username)", icon: "scope", filled: true) {}
                                 .allowsHitTesting(false)
                             chip("Stop", icon: "xmark", filled: false, action: stopFollowing)
                         } else {
-                            chip("Point me", icon: "location.north.line", filled: false) { follow(false) }
-                            chip("Guide me", icon: "arrowshape.turn.up.right", filled: true) { follow(true) }
+                            chip(compact ? "Point" : "Point me", icon: "location.north.line", filled: false) { follow(false) }
+                            chip(compact ? "Guide" : "Guide me", icon: "arrowshape.turn.up.right", filled: true) { follow(true) }
                         }
                     }
+                    if !compact { EmptyView() } else { locateChip }
                 }
-                HStack(spacing: 8) {
-                    locateChip
-                    if app.nearbyManager.capability.canRange, reading?.source != .uwb {
-                        chip("Find precisely", icon: "dot.radiowaves.left.and.right", filled: false, action: precise)
+                if !compact {
+                    HStack(spacing: 8) {
+                        locateChip
+                        if app.nearbyManager.capability.canRange, reading?.source != .uwb {
+                            chip("Find precisely", icon: "dot.radiowaves.left.and.right", filled: false, action: precise)
+                        }
                     }
                 }
                 if let ends = planLine { Text(ends).font(.nunito(10, .semibold)).foregroundStyle(theme.textSecondary) }
@@ -143,7 +149,7 @@ struct TracePill: View {
             Button(action: locate) {
                 HStack(spacing: 5) {
                     Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .bold))
-                    Text(wait > 0 ? "New location in \(TraceWindow.countdown(seconds: wait))" : "Request new location")
+                    Text(wait > 0 ? (compact ? TraceWindow.countdown(seconds: wait) : "New location in \(TraceWindow.countdown(seconds: wait))") : (compact ? "Refresh" : "Request new location"))
                         .font(.nunito(12, .extraBold)).lineLimit(1).minimumScaleFactor(0.75)
                 }
                 .foregroundStyle(wait > 0 ? theme.textSecondary : theme.ink)
