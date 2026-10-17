@@ -117,12 +117,12 @@ struct AuthScreen: View {
     @ViewBuilder
     private func fields(theme: AppTheme) -> some View {
         VStack(spacing: 10) {
-            field("Username", text: $username, theme: theme, autocapitalization: .never)
+            field("Username", text: $username, theme: theme, autocapitalization: .never, content: .username)
             if mode == .signUp { usernameFeedback(theme: theme) }
             if mode == .signUp {
-                field("Email", text: $email, theme: theme, keyboard: .emailAddress, autocapitalization: .never)
+                field("Email", text: $email, theme: theme, keyboard: .emailAddress, autocapitalization: .never, content: .emailAddress)
             }
-            field("Password", text: $password, theme: theme, isSecure: true)
+            field("Password", text: $password, theme: theme, isSecure: true, content: mode == .signUp ? .newPassword : .password)
         }
     }
 
@@ -166,12 +166,13 @@ struct AuthScreen: View {
     @ViewBuilder
     private func field(_ placeholder: String, text: Binding<String>, theme: AppTheme,
                         keyboard: UIKeyboardType = .default, autocapitalization: TextInputAutocapitalization = .sentences,
-                        isSecure: Bool = false) -> some View {
+                        isSecure: Bool = false, content: UITextContentType? = nil) -> some View {
         Group {
             if isSecure {
-                SecureField(placeholder, text: text)
+                SecureField(placeholder, text: text).textContentType(content)
             } else {
                 TextField(placeholder, text: text)
+                    .textContentType(content)
                     .keyboardType(keyboard)
                     .textInputAutocapitalization(autocapitalization)
                     .autocorrectionDisabled()
@@ -230,7 +231,7 @@ struct AuthScreen: View {
     @ViewBuilder
     private func confirmSection(theme: AppTheme, username pendingUsername: String) -> some View {
         VStack(spacing: 14) {
-            field("6-digit code", text: $confirmationCode, theme: theme, keyboard: .numberPad)
+            field("6-digit code", text: $confirmationCode, theme: theme, keyboard: .numberPad, content: .oneTimeCode)
 
             Button {
                 Task {
@@ -287,8 +288,8 @@ struct AuthScreen: View {
         VStack(spacing: 14) {
             Text(auth.codeDestination.map { "Enter the 6-digit code sent to \($0) and a new password." } ?? "Enter the 6-digit code from your email and a new password.")
                 .font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary).multilineTextAlignment(.center)
-            field("6-digit code", text: $confirmationCode, theme: theme, keyboard: .numberPad)
-            field("New password (8+ characters)", text: $newPassword, theme: theme, isSecure: true)
+            field("6-digit code", text: $confirmationCode, theme: theme, keyboard: .numberPad, content: .oneTimeCode)
+            field("New password (8+ characters)", text: $newPassword, theme: theme, isSecure: true, content: .newPassword)
 
             Button {
                 Task {
