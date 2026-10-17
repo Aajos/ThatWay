@@ -1,6 +1,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, DeleteCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { makeHandler } from "./core.mjs";
+import { sendPush } from "./push.mjs";
 
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: "ap-southeast-2" }));
 const partitionKey = { Grants: "traceeId", Blocks: "blockerId", Reports: "reportId" };   // every other table partitions on userId
@@ -37,4 +38,13 @@ const planUntil = async (userId) => {
   return row?.planUntil ?? null;
 };
 
-export const handler = makeHandler({ db, planUntil });
+// A push to every phone the person has signed in on. Dead tokens (Apple says gone) are forgotten.
+const notify = async (userId, kind, from) => {
+  const name = (await db.get("Users", { id: from }))?.username ?? "A friend";
+  for (const d of await db.query("Devices", userId)) {
+    const result = await sendPush({ deviceToken: d.token, environment: d.environment, kind, name });
+    if (result === "gone") await db.remove("Devices", { userId, token: d.token });
+  }
+};
+
+export const handler = makeHandler({ db, planUntil, notify });

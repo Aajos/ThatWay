@@ -33,7 +33,7 @@ struct RootView: View {
                     if app.safetyManager.needsReactivation {
                         // A deactivated account that signs in must choose before anything else.
                         ReactivationScreen(safety: app.safetyManager, theme: app.currentTheme,
-                                           deleteInstead: { closingAccount = true }, signOut: { app.authManager.signOut() })
+                                           deleteInstead: { closingAccount = true }, signOut: { app.signOutEverywhere() })
                             .sheet(isPresented: $closingAccount) { closeAccountSheet }
                     } else {
                         signedInContent

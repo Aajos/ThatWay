@@ -24,6 +24,7 @@ final class LocalTraceNotifier: TraceNotifying {
     }
 
     func incomingRequest(from name: String) {
+        guard !Config.remotePushEnabled else { return }       // the server pushes it now
         let content = UNMutableNotificationContent()
         content.title = "\(name) wants to trace you"
         content.body = "Open ThatWay to review it. Nothing is shared unless you say yes."
@@ -38,6 +39,7 @@ final class LocalTraceNotifier: TraceNotifying {
     }
 
     func stillTracing(name: String) {
+        guard !Config.remotePushEnabled else { return }
         let content = UNMutableNotificationContent()
         content.title = "\(name) is still tracing you"
         content.body = "Open ThatWay to stop it."

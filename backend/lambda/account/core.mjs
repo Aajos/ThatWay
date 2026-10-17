@@ -46,6 +46,7 @@ export function makeHandler({ db, auth, now = () => Date.now() }) {
       ops.push({ table: "TraceSessions", key: { userId: me, peerId: t.peerId } });
       ops.push({ table: "TraceSessions", key: { userId: t.peerId, peerId: me } });
     }
+    for (const d of await db.query("Devices", me)) ops.push({ table: "Devices", key: { userId: me, token: d.token } });
     for (const o of await db.query("NearbyOffers", me)) ops.push({ table: "NearbyOffers", key: { userId: me, fromUserId: o.fromUserId } });
     await removeAll(ops);
     await db.remove("Positions", { userId: me });

@@ -182,6 +182,18 @@ final class FriendsManager: ObservableObject {
     }
 }
 
+extension FriendsManager {
+    /// Tells the server this phone's push token (so requests reach a closed app).
+    func registerDevice(token: String, environment: String) async {
+        let _: EmptyResponse? = try? await request(method: "PUT", path: "/devices", body: ["token": token, "environment": environment])
+    }
+
+    /// Sign-out: this phone stops receiving this account's pushes.
+    func removeDevice(token: String?) async {
+        let _: EmptyResponse? = try? await request(method: "POST", path: "/devices/remove", body: token.map { ["token": $0] } ?? [:])
+    }
+}
+
 struct EmptyResponse: Decodable {}
 private struct ErrorBody: Decodable { let error: String?; let message: String?; let retryAfter: Double? }
 

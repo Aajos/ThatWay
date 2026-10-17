@@ -213,7 +213,7 @@ struct ProfileScreen: View {
     @ViewBuilder
     private func signOutSection(theme: AppTheme) -> some View {
         Button {
-            app.authManager.signOut()
+            app.signOutEverywhere()
         } label: {
             Text("SIGN OUT")
                 .font(.nunito(12, .black)).tracking(0.6)

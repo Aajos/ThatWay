@@ -529,6 +529,7 @@
 				DEVELOPMENT_TEAM = K5N4HVV7VG;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				CODE_SIGN_ENTITLEMENTS = ThatWay/ThatWay.entitlements;
 				INFOPLIST_FILE = ThatWay/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "ThatWay uses your location while the app is open or a trip is being guided, and never tracks you in the background otherwise. If you let a friend trace you, they can see your location only while the app is open, and only for the time you allowed.";
@@ -565,6 +566,7 @@
 				DEVELOPMENT_TEAM = K5N4HVV7VG;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				CODE_SIGN_ENTITLEMENTS = ThatWay/ThatWay.entitlements;
 				INFOPLIST_FILE = ThatWay/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "ThatWay uses your location while the app is open or a trip is being guided, and never tracks you in the background otherwise. If you let a friend trace you, they can see your location only while the app is open, and only for the time you allowed.";

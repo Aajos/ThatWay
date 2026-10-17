@@ -41,7 +41,7 @@ jobs:
           set -euo pipefail
           for fn in $FUNCTIONS; do
             echo "Packaging $fn"
-            (cd "$fn" && zip -qr "/tmp/$fn.zip" index.mjs $(ls core.mjs appleJws.mjs 2>/dev/null))
+            (cd "$fn" && zip -qr "/tmp/$fn.zip" index.mjs $(ls core.mjs appleJws.mjs push.mjs 2>/dev/null))
             echo "Deploying $fn"
             aws lambda update-function-code \
               --function-name "$fn" \

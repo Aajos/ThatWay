@@ -27,6 +27,7 @@ cleanup() {
     [ -z "$id" ] && continue
     aws dynamodb delete-item --region "$REGION" --table-name Users --key "{\"id\":{\"S\":\"$id\"}}" >/dev/null 2>&1
     aws dynamodb delete-item --region "$REGION" --table-name Positions --key "{\"userId\":{\"S\":\"$id\"}}" >/dev/null 2>&1
+    aws dynamodb delete-item --region "$REGION" --table-name Devices --key "{\"userId\":{\"S\":\"$id\"},\"token\":{\"S\":\"$(printf 'ab%.0s' $(seq 32))\"}}" >/dev/null 2>&1
     aws dynamodb delete-item --region "$REGION" --table-name Entitlements --key "{\"userId\":{\"S\":\"$id\"}}" >/dev/null 2>&1
     for y in "${N[@]}"; do
       o="$(sub $y)"; [ -z "$o" ] && continue
@@ -101,6 +102,13 @@ r=$(api c POST /grants/locate "{\"traceeId\":\"$B\",\"distanceM\":10}"); check "
 check "word for word" "$(j "$r" "d['error']")" "User cannot be traced"
 r=$(api b GET /grants); check "b is told someone is still tracing" "$(j "$r" "d['asTraced'][0].get('stillTracing')")" True
 check "b sees a band, not a number" "$(j "$r" "d['asTraced'][0]['band']")" "about 2 km"
+
+# ---- push: Apple accepts our credentials (a fake token is refused as a bad token, which removes it; a bad key would keep it)
+r=$(api b PUT /devices '{"token":"'"$(printf 'ab%.0s' $(seq 32))"'","environment":"sandbox"}'); check "a phone token is stored" "$(st "$r")" 200
+r=$(api b POST /grants/revoke "{\"tracerId\":\"$A\"}")
+r=$(api a POST /grants/request "{\"friendId\":\"$B\",\"hours\":1}"); check "a request still succeeds with push on" "$(st "$r")" 200
+n=$(aws dynamodb query --region "$REGION" --table-name Devices --key-condition-expression "userId = :u" --expression-attribute-values "{\":u\":{\"S\":\"$B\"}}" --select COUNT --query Count --output text)
+check "Apple answered, so the fake token was dropped (credentials are accepted)" "$n" 0
 
 # ---- ending it
 r=$(api b POST /grants/revoke "{\"tracerId\":\"$A\"}"); check "b stops it" "$(st "$r")" 200

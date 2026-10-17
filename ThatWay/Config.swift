@@ -26,6 +26,9 @@ enum Config {
     /// to both build configs in project.pbxproj once you're on a paid team.
     static let appleSignInEnabled = false
 
+    /// Requests and "still tracing you" arrive as real pushes from the server (APNs), so the local stand-ins stay quiet.
+    static let remotePushEnabled = true
+
     static let awsRegion = "ap-southeast-2"
     static let cognitoUserPoolId = "ap-southeast-2_I6w74AQkj"
     static let cognitoAppClientId = "2ute5p0mqgufhech5u59sn1is7"

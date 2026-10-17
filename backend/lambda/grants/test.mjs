@@ -6,7 +6,7 @@ if (typeof console === "undefined") globalThis.console = { log: out, error() {} 
 let failures = 0, passed = 0;
 const check = (name, ok) => { if (ok) passed++; else { failures++; out("FAIL: " + name); } };
 
-const PK = { Grants: ["traceeId", "tracerId"], Blocks: ["blockerId", "blockedId"], Friends: ["userId", "otherUserId"], TraceSessions: ["userId", "peerId"], NearbyOffers: ["userId", "fromUserId"], Positions: ["userId"], Reports: ["reportId"], Users: ["id"] };
+const PK = { Grants: ["traceeId", "tracerId"], Blocks: ["blockerId", "blockedId"], Friends: ["userId", "otherUserId"], TraceSessions: ["userId", "peerId"], NearbyOffers: ["userId", "fromUserId"], Positions: ["userId"], Reports: ["reportId"], Users: ["id"], Devices: ["userId", "token"] };
 const keyOf = (t, o) => PK[t].map((k) => o[k]).join("|");
 function fakeDb() {
   const t = {}; for (const n of Object.keys(PK)) t[n] = new Map();
@@ -30,7 +30,9 @@ const FAR = 4_000_000_000;                                     // a plan that ou
 const plans = new Map([["tracer", FAR], ["tracer2", FAR]]);    // userId -> when that plan ends (epoch seconds)
 const db = fakeDb();
 let ids = 0;
-const h = makeHandler({ db, now: () => clock, planUntil: async (id) => plans.get(id) ?? null, newId: () => `r${++ids}` });
+const pushes = [];
+let pushFails = false;
+const h = makeHandler({ db, now: () => clock, planUntil: async (id) => plans.get(id) ?? null, newId: () => `r${++ids}`, notify: async (u, k, f) => { if (pushFails) throw new Error("apns down"); pushes.push([u, k, f]); } });
 for (const [a, b] of [["tracer", "tracee"], ["tracer2", "tracee"], ["tracer", "other"]]) befriend(db, a, b);
 const call = async (route, sub, body, pp) => h(ev(route, sub, body, pp));
 let nextKind = "window";
@@ -275,6 +277,26 @@ r = await call("POST /reports", "tracee", { userId: "tracee", category: "other" 
 for (let i = 0; i < 30; i++) r = await call("POST /reports", "tracee", { userId: "tracer", category: "threat" });
 check("reporting is never throttled", r.statusCode === 200 && db.t.Reports.size === 31);
 r = await call("POST /reports", "tracee", { userId: "tracer", category: "other" }); check("(still counting)", r.statusCode === 200);
+
+// ---------- push
+pushes.length = 0; db.t.Grants.clear(); db.t.Friends.clear(); befriend(db, "tracer", "tracee");
+await request();
+check("a real request pushes the traced person once", pushes.length === 1 && pushes[0][0] === "tracee" && pushes[0][1] === "request" && pushes[0][2] === "tracer");
+db.t.Blocks.set("tracee|tracer", { blockerId: "tracee", blockedId: "tracer" }); pushes.length = 0; db.t.Grants.clear();
+await request(); check("a request to someone who blocked you pushes nothing", pushes.length === 0);
+db.t.Blocks.clear(); pushFails = true; r = await request();
+check("a push that fails never fails the request", r.statusCode === 200 && J(r).status === "WAITING"); pushFails = false;
+pushes.length = 0; await grant(24); await upload(); await locate();
+check("the first look pushes 'still tracing you'", pushes.length === 1 && pushes[0][1] === "still" && pushes[0][0] === "tracee");
+tick(LOCATE_MIN_INTERVAL + 1); await locate(); check("a look within 30 minutes does not push again", pushes.length === 1);
+tick(NOTICE_MIN_INTERVAL); await locate(); check("after 30 minutes it pushes again", pushes.length === 2);
+r = await call("PUT /devices", "tracee", { token: "ab".repeat(32), environment: "sandbox" });
+check("a phone token is stored", r.statusCode === 200 && db.t.Devices.size === 1);
+r = await call("PUT /devices", "tracee", { token: "not a token", environment: "sandbox" }); check("a bad token is refused", r.statusCode === 400);
+r = await call("PUT /devices", "tracee", { token: "ab".repeat(32), environment: "beta" }); check("an unknown environment is refused", r.statusCode === 400);
+await call("PUT /devices", "tracee", { token: "cd".repeat(32), environment: "production" });
+r = await call("POST /devices/remove", "tracee", { token: "ab".repeat(32) }); check("sign-out removes that phone only", db.t.Devices.size === 1);
+await call("POST /devices/remove", "tracee", {}); check("or all of them", db.t.Devices.size === 0);
 
 // ---------- failures never leak
 const broken = makeHandler({ db: { ...db, get: async () => { throw Object.assign(new Error("arn:aws lat -37.8"), { name: "Boom" }); } }, now: () => clock });

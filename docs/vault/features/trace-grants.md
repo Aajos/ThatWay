@@ -119,7 +119,7 @@ Starts automatically inside about 40 m of GPS distance when both phones have the
 - Block, report and the emergency control (opens the dialler only) are one press-and-hold on a friend, with no limits.
 
 ## Not built / still open
-- **Remote push** (a request or "still tracing you" reaching a closed app) needs your APNs key; until then these show next time the app opens, and the consent text says so.
+- **Remote push** is built (2026-10-17): the server sends a request or "still tracing you" through APNs using the team key in Parameter Store (`/thatway/apns/*`), to phones registered with `PUT /devices`. Apple accepted our credentials in the real-AWS test; **delivery to a real phone is not yet seen**. A push says only who is asking. Debug builds use the sandbox server, TestFlight and App Store builds production.
 - **Who reads reports** and how fast: reports are stored for a year in the `Reports` table; nobody is told when one arrives. Decide this before launch; the app promises no reply time.
 - **Terms and a privacy policy** (App Store requires them for the subscription and for user-to-user content) and a lawyer's review of the consent and deletion wording.
 - UWB on real hardware; a two-phone test; the age gate (17+ or similar).

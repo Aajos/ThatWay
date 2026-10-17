@@ -269,7 +269,7 @@ deploy_function() {
   local role_arn; role_arn=$(aws iam get-role --role-name "$ROLE_NAME" --query Role.Arn --output text 2>/dev/null)
   [ -z "$role_arn" ] && { echo "IAM role $ROLE_NAME not found."; exit 1; }
   local auth; auth=$(aws apigatewayv2 get-authorizers --region "$REGION" --api-id "$api" --query "Items[0].AuthorizerId" --output text)
-  local zip="/tmp/${fn}.zip"; rm -f "$zip"; (cd "$HERE/../lambda/$fn" && zip -q "$zip" index.mjs core.mjs $(ls appleJws.mjs 2>/dev/null))
+  local zip="/tmp/${fn}.zip"; rm -f "$zip"; (cd "$HERE/../lambda/$fn" && zip -q "$zip" index.mjs core.mjs $(ls appleJws.mjs push.mjs 2>/dev/null))
   if aws lambda get-function --region "$REGION" --function-name "$fn" >/dev/null 2>&1; then
     run aws lambda update-function-code --region "$REGION" --function-name "$fn" --zip-file "fileb://$zip"
   else
@@ -313,6 +313,7 @@ provision_grants() {
   ensure_table Blocks blockerId blockedId "" byBlocked blockedId KEYS_ONLY
   ensure_table Reports reportId "" expiresAt
   ensure_table Entitlements userId
+  ensure_table Devices userId token
   echo "   Friends rows now carry expiresAt on waiting requests: turn on TTL so DynamoDB removes the old ones."
   local t; t=$(aws dynamodb describe-time-to-live --region "$REGION" --table-name Friends --query TimeToLiveDescription.TimeToLiveStatus --output text 2>/dev/null)
   if [ "$t" = "ENABLED" ] || [ "$t" = "ENABLING" ]; then ok "TTL on Friends.expiresAt already $t"; else
@@ -326,7 +327,8 @@ provision_grants() {
 {"Version":"2012-10-17","Statement":[
  {"Sid":"ThatWayNewTables","Effect":"Allow",
   "Action":["dynamodb:GetItem","dynamodb:PutItem","dynamodb:UpdateItem","dynamodb:DeleteItem","dynamodb:Query","dynamodb:ConditionCheckItem"],
-  "Resource":["${tbl}/Grants","${tbl}/Grants/index/*","${tbl}/Positions","${tbl}/Blocks","${tbl}/Blocks/index/*","${tbl}/Reports","${tbl}/Entitlements"]},
+  "Resource":["${tbl}/Grants","${tbl}/Grants/index/*","${tbl}/Positions","${tbl}/Blocks","${tbl}/Blocks/index/*","${tbl}/Reports","${tbl}/Entitlements","${tbl}/Devices"]},
+ {"Sid":"ThatWayApnsKey","Effect":"Allow","Action":["ssm:GetParameters","ssm:GetParameter"],"Resource":["arn:aws:ssm:${REGION}:${ACCT}:parameter/thatway/apns/*"]},
  {"Sid":"ThatWayExistingTablesForSafety","Effect":"Allow",
   "Action":["dynamodb:GetItem","dynamodb:DeleteItem","dynamodb:Query","dynamodb:PutItem","dynamodb:ConditionCheckItem"],
   "Resource":["${tbl}/Friends","${tbl}/TraceSessions","${tbl}/NearbyOffers"]}
@@ -335,9 +337,9 @@ JSON
   run aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name thatway-grants-access --policy-document "file://$pol"
 
   echo; echo "== 3. Lambda grants and its routes"
-  deploy_function grants 10 128 "grants*" "blocks*" "reports*" -- \
+  deploy_function grants 15 256 "grants*" "blocks*" "reports*" "devices*" -- \
     "POST /grants/request" "GET /grants" "POST /grants/respond" "POST /grants/revoke" "POST /grants/release" "PUT /grants/position" "POST /grants/locate" \
-    "POST /blocks" "GET /blocks" "DELETE /blocks/{userId}" "POST /reports"
+    "POST /blocks" "GET /blocks" "DELETE /blocks/{userId}" "POST /reports" "PUT /devices" "POST /devices/remove"
   echo; echo "The plan check inside grants and nearby is OFF (PLAN_CHECK unset) until purchases are verified on the server."
 }
 

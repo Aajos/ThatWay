@@ -6,7 +6,7 @@ if (typeof console === "undefined") globalThis.console = { log: out, error() {} 
 let failures = 0, passed = 0;
 const check = (name, ok) => { if (ok) passed++; else { failures++; out("FAIL: " + name); } };
 
-const PK = { Users: ["id"], Friends: ["userId", "otherUserId"], Grants: ["traceeId", "tracerId"], Blocks: ["blockerId", "blockedId"], TraceSessions: ["userId", "peerId"], NearbyOffers: ["userId", "fromUserId"], Positions: ["userId"], Entitlements: ["userId"], Reports: ["reportId"] };
+const PK = { Users: ["id"], Friends: ["userId", "otherUserId"], Grants: ["traceeId", "tracerId"], Blocks: ["blockerId", "blockedId"], TraceSessions: ["userId", "peerId"], NearbyOffers: ["userId", "fromUserId"], Positions: ["userId"], Entitlements: ["userId"], Reports: ["reportId"], Devices: ["userId", "token"] };
 const keyOf = (t, o) => PK[t].map((k) => o[k]).join("|");
 const INDEX = { "Grants.byTracer": "tracerId", "Blocks.byBlocked": "blockedId" };
 function fakeDb() {
@@ -47,10 +47,11 @@ function populate() {
   db.t.TraceSessions.set("me|a", { userId: "me", peerId: "a" }); db.t.TraceSessions.set("a|me", { userId: "a", peerId: "me" });
   db.t.NearbyOffers.set("me|a", { userId: "me", fromUserId: "a" });
   db.t.Entitlements.set("me", { userId: "me", planUntil: 4_100_000_000 }); db.t.Entitlements.set("a", { userId: "a", planUntil: 1 });
+  db.t.Devices.set("me|tok", { userId: "me", token: "tok" });
   db.t.Reports.set("r1", { reportId: "r1", reporterId: "a", reportedId: "me" });
   deleted.length = 0;
 }
-const holdsMe = () => [...["Friends", "Grants", "Blocks", "TraceSessions", "NearbyOffers", "Positions", "Entitlements", "Users"].flatMap((n) => [...db.t[n].entries()].filter(([k, v]) => JSON.stringify(v).includes('"me"') || k.includes("me")).map(([k]) => `${n}:${k}`))];
+const holdsMe = () => [...["Friends", "Grants", "Blocks", "TraceSessions", "NearbyOffers", "Positions", "Entitlements", "Devices", "Users"].flatMap((n) => [...db.t[n].entries()].filter(([k, v]) => JSON.stringify(v).includes('"me"') || k.includes("me")).map(([k]) => `${n}:${k}`))];
 
 // ---------- guards
 let r = await h({ routeKey: "POST /account/delete", requestContext: {} });

@@ -66,6 +66,25 @@ final class AppModel: ObservableObject {
         store.onStatus = { [weak self] status in self?.entitlements.applyServerPlan(until: status.until, forever: status.forever) }
         return store
     }()
+    /// Sign out, first telling the server this phone should stop getting this account's pushes.
+    func signOutEverywhere() {
+        Task {
+            await friendsManager.removeDevice(token: PushRegistrar.token)
+            authManager.signOut()
+        }
+    }
+
+    private func startPush() {
+        PushRegistrar.onToken = { [weak self] token in
+            Task { @MainActor in
+                guard let self, self.authManager.authState == .signedIn else { return }
+                await self.friendsManager.registerDevice(token: token, environment: PushRegistrar.environment)
+            }
+        }
+        if let token = PushRegistrar.token { PushRegistrar.onToken?(token) }
+        UIApplication.shared.registerForRemoteNotifications()
+    }
+
     /// Block, report, and closing the account.
     lazy var safetyManager = SafetyManager(api: friendsManager)
 
@@ -252,6 +271,7 @@ final class AppModel: ObservableObject {
                     self.traceManager.setSceneActive(self.sceneActive)
                     Task { await self.safetyManager.checkAccount(); await self.safetyManager.loadBlocked() }
                     self.planStore.start()
+                    self.startPush()
                 } else {
                     self.traceManager.reset(); self.safetyManager.reset(); self.planStore.stop()
                 }

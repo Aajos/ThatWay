@@ -54,7 +54,9 @@ const randomId = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toStr
  * `planUntil(userId)` says when that person's plan (trace3, trace24, trace+, lifetrace) ends, as epoch seconds: the server's
  * own record. null/0/undefined means no plan; Infinity means it never ends (or the check is switched off).
  */
-export function makeHandler({ db, now = () => Date.now(), planUntil = async () => Infinity, newId = randomId }) {
+export function makeHandler({ db, now = () => Date.now(), planUntil = async () => Infinity, newId = randomId, notify = async () => {} }) {
+  // notify(userId, "request" | "still", fromUserId): a push to that person's phones. Best effort: a failure never fails the request.
+  const tell = async (userId, kind, from) => { try { await notify(userId, kind, from); } catch { /* push is a convenience, never a dependency */ } };
   const sec = () => Math.floor(now() / 1000);
 
   const blockedEitherWay = async (a, b) =>
@@ -114,6 +116,7 @@ export function makeHandler({ db, now = () => Date.now(), planUntil = async () =
         const requestedHours = hoursBetween(body.hours, GRANT_MIN_SECONDS / 3600, GRANT_MAX_SECONDS / 3600, 1);
         // Not reachable (blocked, not friends, unknown): stored as a phantom so it looks exactly like an unanswered request.
         await db.put("Grants", { traceeId: friendId, tracerId: me, status: "REQUESTED", kind: "window", requestedHours, requestedAt: sec(), expiresAt: sec() + REQUEST_TTL_SECONDS, ...(ok ? {} : { phantom: true }) });
+        if (ok) await tell(friendId, "request", me);                  // a phantom (blocked) request never reaches the person
         return reply(200, { status: "WAITING", expiresAt: sec() + REQUEST_TTL_SECONDS });
       }
 
@@ -213,8 +216,23 @@ export function makeHandler({ db, now = () => Date.now(), planUntil = async () =
         if (band) { next.band = band; next.bandAt = sec(); }
         if (sec() - (row.lastNoticeAt ?? 0) >= NOTICE_MIN_INTERVAL) { next.lastNoticeAt = sec(); next.noticePending = true; }
         await db.put("Grants", next);
+        if (next.noticePending && next.lastNoticeAt === sec()) await tell(traceeId, "still", me);
         const position = pos && pos.expiresAt > sec() ? { lat: pos.lat, lon: pos.lon, acc: pos.acc, age: sec() - pos.at } : null;
         return reply(200, { position, retryAfter: LOCATE_MIN_INTERVAL });
+      }
+
+      // ---- push: this phone's token, so requests can reach a closed app
+      if (route === "PUT /devices") {
+        const { token, environment } = body;
+        if (typeof token !== "string" || !/^[0-9a-fA-F]{32,200}$/.test(token)) return reply(400, { error: "token required" });
+        if (environment !== "sandbox" && environment !== "production") return reply(400, { error: "environment required" });
+        await db.put("Devices", { userId: me, token: token.toLowerCase(), environment, updatedAt: sec() });
+        return reply(200, { ok: true });
+      }
+      if (route === "POST /devices/remove") {                                   // sign-out: this phone stops receiving this person's pushes
+        const token = typeof body.token === "string" ? body.token.toLowerCase() : null;
+        for (const d of await db.query("Devices", me)) if (!token || d.token === token) await db.remove("Devices", { userId: me, token: d.token });
+        return reply(200, { ok: true });
       }
 
       // ---- blocking (never throttled; the blocked person is told nothing)

@@ -10,6 +10,7 @@ import ThatWayUI
 
 @main
 struct ThatWayApp: App {
+    @UIApplicationDelegateAdaptor(PushRegistrar.self) private var pushRegistrar
     init() {
         // The Nunito font ships inside ThatWayUI (shared with the watch app) and is registered here, before any view asks for it.
         ThatWayFonts.register()
