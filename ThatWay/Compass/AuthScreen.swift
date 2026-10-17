@@ -22,6 +22,7 @@ struct AuthScreen: View {
     @State private var confirmationCode = ""
     @State private var appleUsername = ""
     @State private var newPassword = ""
+    @State private var usernameStatus: UsernameStatus = .unchecked
 
     var body: some View {
         let theme = app.currentTheme
@@ -117,11 +118,49 @@ struct AuthScreen: View {
     private func fields(theme: AppTheme) -> some View {
         VStack(spacing: 10) {
             field("Username", text: $username, theme: theme, autocapitalization: .never)
+            if mode == .signUp { usernameFeedback(theme: theme) }
             if mode == .signUp {
                 field("Email", text: $email, theme: theme, keyboard: .emailAddress, autocapitalization: .never)
             }
             field("Password", text: $password, theme: theme, isSecure: true)
         }
+    }
+
+    /// Under the username while signing up: the rules, then whether the name is free (checked once typing pauses).
+    @ViewBuilder
+    private func usernameFeedback(theme: AppTheme) -> some View {
+        let (text, color, icon): (String, Color, String) = {
+            switch usernameStatus {
+            case .available: return ("\(UsernameRules.normalised(username)) is available", theme.accent, "checkmark.circle.fill")
+            case .taken: return ("That username is taken. Try another.", theme.needleRed, "xmark.circle.fill")
+            case .reserved: return ("That name is reserved. Try another.", theme.needleRed, "xmark.circle.fill")
+            case .checking: return ("Checking…", theme.textSecondary, "ellipsis.circle")
+            case .unknown: return ("Couldn't check right now. You can still continue.", theme.textSecondary, "wifi.exclamationmark")
+            case .invalid: return (UsernameRules.hint, username.isEmpty ? theme.textSecondary : theme.needleRed, "info.circle")
+            case .unchecked: return (UsernameRules.hint, theme.textSecondary, "info.circle")
+            }
+        }()
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: icon).font(.system(size: 12, weight: .bold)).foregroundStyle(color)
+            Text(text).font(.nunito(12, .semibold)).foregroundStyle(color).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 4)
+        .task(id: username) { await checkUsername() }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Runs on every change (and is cancelled by the next), so the server is only asked once typing pauses.
+    private func checkUsername() async {
+        guard mode == .signUp else { return }
+        guard !username.isEmpty else { usernameStatus = .unchecked; return }
+        guard UsernameRules.isValid(username) else { usernameStatus = .invalid; return }
+        usernameStatus = .checking
+        try? await Task.sleep(for: .milliseconds(500))
+        guard !Task.isCancelled else { return }
+        let result = await auth.usernameAvailability(username)
+        guard !Task.isCancelled else { return }
+        usernameStatus = result
     }
 
     @ViewBuilder
@@ -171,7 +210,8 @@ struct AuthScreen: View {
         let trimmedUsername = username.trimmingCharacters(in: .whitespaces)
         guard !trimmedUsername.isEmpty, !password.isEmpty else { return false }
         if mode == .signUp {
-            return email.contains("@") && password.count >= 8
+            let nameOK = UsernameRules.isValid(trimmedUsername) && usernameStatus != .taken && usernameStatus != .reserved
+            return nameOK && email.contains("@") && password.count >= 8
         }
         return true
     }

@@ -174,7 +174,7 @@ final class FriendsManager: ObservableObject {
         guard 200..<300 ~= http.statusCode else {
             let decoded = try? JSONDecoder().decode(ErrorBody.self, from: data)
             let message = decoded?.error ?? decoded?.message
-            throw FriendsError.server(message ?? "The friends service couldn't be reached.")
+            throw FriendsError.status(http.statusCode, message ?? "The friends service couldn't be reached.", retryAfter: decoded?.retryAfter)
         }
         // A 204 has no body at all, which JSONDecoder rejects: treat it as the empty success it is.
         if data.isEmpty, let empty = EmptyResponse() as? T { return empty }
@@ -183,19 +183,28 @@ final class FriendsManager: ObservableObject {
 }
 
 struct EmptyResponse: Decodable {}
-private struct ErrorBody: Decodable { let error: String?; let message: String? }
+private struct ErrorBody: Decodable { let error: String?; let message: String?; let retryAfter: Double? }
 
 enum FriendsError: LocalizedError {
     case badURL
     case notConfigured
     case unreachable
     case server(String)
+    /// The service answered with an error status: 402 (a plan is needed), 403 (not allowed), 429 (too soon, `retryAfter` seconds)...
+    case status(Int, String, retryAfter: Double?)
 
     var errorDescription: String? {
         switch self {
         case .notConfigured: return "Friends aren't switched on yet: the app doesn't have its friends service address."
         case .badURL, .unreachable: return "The friends service couldn't be reached."
         case .server(let message): return message
+        case .status(_, let message, _): return message
         }
+    }
+
+    /// The HTTP status, when the service answered with one.
+    var httpStatus: Int? {
+        if case .status(let code, _, _) = self { return code }
+        return nil
     }
 }

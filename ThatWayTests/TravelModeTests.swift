@@ -49,7 +49,7 @@ struct TravelModeTests {
         let provider = MockRoutingProvider(alwaysSucceedingWith: TestRoutes.trivial)
         let app = AppModel(routingManager: RoutingManager(provider: provider))
         app.modeChangeDebounce = .milliseconds(80)
-        app.destinationCoordinate = .init(latitude: 0, longitude: 0.001)
+        app.destinationCoordinate = CLLocationCoordinate2D(latitude: AppModel.mockUserLocation.latitude + 0.005, longitude: AppModel.mockUserLocation.longitude)   // near the test user: far targets are (rightly) never routed
         app.mode = .guidance
 
         for mode in [TravelMode.run, .cycle, .drive, .cycle, .walk, .drive] {
@@ -66,7 +66,7 @@ struct TravelModeTests {
         let provider = MockRoutingProvider(alwaysSucceedingWith: TestRoutes.trivial)
         let app = AppModel(routingManager: RoutingManager(provider: provider))
         app.modeChangeDebounce = .milliseconds(30)
-        app.destinationCoordinate = .init(latitude: 0, longitude: 0.001)
+        app.destinationCoordinate = CLLocationCoordinate2D(latitude: AppModel.mockUserLocation.latitude + 0.005, longitude: AppModel.mockUserLocation.longitude)   // near the test user: far targets are (rightly) never routed
         app.mode = .point
         app.travelMode = .drive
         try await Task.sleep(for: .milliseconds(200))

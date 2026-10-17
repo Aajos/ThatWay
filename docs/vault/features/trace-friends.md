@@ -2,7 +2,7 @@
 id: trace-friends
 title: Trace a friend (consent, any range)
 area: accounts-backend
-status: spike
+status: dormant
 risk: high
 last_verified: 2026-10-12
 introduced: 2026-10-12
@@ -36,10 +36,12 @@ manual_checks:
   - Accept a trace, lock the phone and drive: the other side keeps seeing you for the whole trip
   - Tap Guide me while the friend is moving: the route keeps up with them without flicker
 depends_on: [friends, auth, nearby-proximity, core-package, location-manager, heading]
-tags: [feature, area/accounts-backend, status/spike, risk/high]
+tags: [feature, area/accounts-backend, status/dormant, risk/high]
 ---
 
 # Trace a friend (consent, any range)
+
+> **Superseded on 2026-10-17 by [[trace-grants]].** The two-way live session described below is no longer used by the app, and its five routes were removed from the API (the `trace` function and `TraceSessions` table remain, unused). Kept for the history of how the pill, the any-range maths and the UWB handoff came about: those parts live on in the new model.
 
 > Tap a friend, they accept, and a temporary pill points at them with the distance: GPS at any range, anywhere in the world, with Ultra Wideband taking over for the last stretch. Direction and distance only: never a map, never a coordinate on screen.
 
@@ -52,6 +54,7 @@ tags: [feature, area/accounts-backend, status/spike, risk/high]
 - **UWB handoff:** inside 40 m of GPS distance the phone starts a UWB session ([[nearby-proximity]]); a UWB reading younger than 3 s wins, otherwise GPS; released beyond 60 m
 - **Notification:** a *local* notification when a request arrives while the app is not in front. There is no remote push (no push entitlement on a free Apple team): requests are seen when the app is running
 - **Point and Guide at a friend, however far, however they move:** the active pill's *Point me* aims the needle at them at any range (a great-circle bearing, no road route needed); *Guide me* starts turn-by-turn to their live position. The destination follows them: the road route is re-fetched only when they have moved more than max(40 m, 10% of the remaining distance) and at most once every 20 s. Over distances with no road route (another continent) the compass stays on straight-line pointing
+- **Free and paid:** anyone can *accept* a trace request. A person who has not paid shares their position with the person who asked, and sees that "Sam is tracing you" with a **Trace back** button, but no arrow or distance, and cannot ask, point or guide. Paying reveals the arrow at once. (Enforced in the app today; the server will check the purchase once StoreKit exists)
 - **Always on once accepted:** an accepted trace keeps background location running (`UIBackgroundModes: location`), so it does not stop when the screen locks mid-trip; before acceptance, and after it ends, nothing is shared or running
 - **Safety:** positions held in memory only; never logged, persisted or sent to the watch; the server serves a position only to the partner of an ACTIVE session, only under 90 s old, only while the friendship stands (checked in both directions)
 
@@ -81,6 +84,8 @@ tags: [feature, area/accounts-backend, status/spike, risk/high]
 | TR-9 | UWB runs far away or never hands back to GPS | test: TraceManagerTests::theRadioStartsOnlyWhenClose; test: TraceTests::uwbEngagementHasHysteresis |
 | TR-10 | The arrow points the wrong way when the compass is wrong | manual: depends on [[compass-health]]; the arrow is dimmed when the heading is not reliable |
 | TR-11 | An incoming request is never seen because the app is suspended (no push) | manual: known gap until the Apple Developer Program is enrolled |
+| TR-17 | A free user is shown the direction or distance, or can start a trace | test: TraceManagerTests::aFreePersonCanAcceptAndIsSharedButSeesNoDirection; ::aFreePersonCannotFollowOrAsk |
+| TR-18 | The friend's position goes stale (no upload for 90 s) while following, so the destination is an old spot and "arrived" can fire there | none: known; the destination should be marked stale and arrival paused |
 | TR-13 | The trace stops partway through a long trip | test: backend/lambda/trace/test.mjs (a long trip does not drop the trace; a 40 minute dead zone does not end it) |
 | TR-14 | Chasing a moving friend hammers the routing service | test: FollowFriendTests::guidingFetchesOnceAndThenChasesOnlyWhenTheyMoveEnough |
 | TR-15 | A route to a friend is saved and resurrected on relaunch as a stale place | test: FollowFriendTests::aRouteToAMovingFriendIsNeverSavedForRelaunch |

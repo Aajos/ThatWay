@@ -2,9 +2,10 @@
 //  TraceNotifier.swift
 //  ThatWay
 //
-//  A local notification for an incoming trace request. This is *not* remote push: without the paid Apple Developer
-//  Program there is no push entitlement, so a request is only noticed while the app is running (in front, or kept
-//  alive by an active trip). Real push (APNs) is the v1.1 work and replaces this seam without touching the manager.
+//  Local notifications for trace requests and plan endings. This is *not* remote push: remote push needs the app's APNs key
+//  and a sender on the server, which are not set up yet. So a request or a "still tracing you" is only noticed while the app
+//  is running (in front, or kept alive by a trip). Real push (APNs) replaces this seam without touching the managers.
+//  The plan-ending reminder does not need push: it is scheduled on this phone when the plan starts.
 //
 
 import Foundation
@@ -25,7 +26,7 @@ final class LocalTraceNotifier: TraceNotifying {
     func incomingRequest(from name: String) {
         let content = UNMutableNotificationContent()
         content.title = "\(name) wants to trace you"
-        content.body = "Open ThatWay to accept or decline. Nothing is shared until you accept."
+        content.body = "Open ThatWay to review it. Nothing is shared unless you say yes."
         content.sound = .default
         content.interruptionLevel = .timeSensitive
         center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
@@ -34,5 +35,47 @@ final class LocalTraceNotifier: TraceNotifying {
     func clearIncoming() {
         center.removeDeliveredNotifications(withIdentifiers: [identifier])
         center.removePendingNotificationRequests(withIdentifiers: [identifier])
+    }
+
+    func stillTracing(name: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "\(name) is still tracing you"
+        content.body = "Open ThatWay to stop it."
+        content.sound = .default
+        center.add(UNNotificationRequest(identifier: "trace.still.\(name)", content: content, trigger: nil))
+    }
+}
+
+/// "Your trace plan ends in 30 minutes": scheduled on this phone, no server involved.
+@MainActor
+protocol PlanReminding: AnyObject {
+    func schedule(endsAt: Date)
+    func cancel()
+}
+
+@MainActor
+final class LocalPlanReminder: PlanReminding {
+    static let lead: TimeInterval = 30 * 60
+    private let center = UNUserNotificationCenter.current()
+    private let identifier = "plan.ending"
+    private let now: () -> Date
+
+    init(now: @escaping () -> Date = Date.init) { self.now = now }
+
+    func schedule(endsAt: Date) {
+        cancel()
+        let fireAt = endsAt.addingTimeInterval(-Self.lead)
+        guard fireAt > now() else { return }                     // already inside the last half hour: nothing to wait for
+        let content = UNMutableNotificationContent()
+        content.title = "Your trace plan ends in 30 minutes"
+        content.body = "Any traces you have going end with it. Open ThatWay to renew."
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fireAt.timeIntervalSince(now()), repeats: false)
+        center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
+    }
+
+    func cancel() {
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        center.removeDeliveredNotifications(withIdentifiers: [identifier])
     }
 }

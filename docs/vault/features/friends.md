@@ -39,7 +39,7 @@ tags: [feature, area/accounts-backend, status/dormant, risk/low]
 ## What it covers
 - Search, request, respond, list, remove
 - Token refresh on 401
-- Tracing, pointing at and guiding to a friend are **paid** behind one switch (`Entitlements.canTraceFriends`, with `Entitlements.friendTracingRequiresPayment` to turn the paywall off for everyone); adding friends is always free. Today the purchase is a dummy (no money moves)
+- Tracing, pointing at and guiding to a friend are **paid** (accepting a trace request is free: see [[trace-friends]]) behind one switch (`Entitlements.canTraceFriends`, with `Entitlements.friendTracingRequiresPayment` to turn the paywall off for everyone); adding friends is always free. Today the purchase is a dummy (no money moves)
 - **Friends setting** (was "Visible to"): *Auto accept* or *Requests only* (default; remembered). Requests only holds incoming requests in an openable dropdown on the You page (scrolls inside a fixed height, so 100 requests never take over the page); a dot marks it, and the YOU tab. The home friends bar shows only the newest request (with accept and decline) plus a "+N more" chip. Auto accept is done by the app while it is open (the server has no setting yet)
 - The friends bar: a labelled **Find** button comes first, then the friends; swipe left to reveal a round search icon; it opens a search over your friends and, after 0.75 s of no typing with no friend matching, looks up the exact username and offers **+ Add** (a lower-case retry covers a stray capital)
 - Backend rewrite: one tested core behind the five Lambdas; a friendship is written and removed in one transaction; a duplicate request loses cleanly; open requests are capped; search returns `{id, username}` only (it used to return every user's email)
@@ -51,7 +51,9 @@ tags: [feature, area/accounts-backend, status/dormant, risk/low]
 ## Used by
 - [[avatars-social-decor]] — Avatars, visibility and friends row
 - [[nearby-proximity]] — Ultra Wideband last stretch (nearby)
+- [[safety-and-account]] — Block, report, emergency control, close or deactivate an account
 - [[trace-friends]] — Trace a friend (consent, any range)
+- [[trace-grants]] — Standing trace permissions, passes, blocking
 
 ## Failure points
 

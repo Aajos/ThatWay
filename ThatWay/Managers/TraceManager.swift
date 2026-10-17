@@ -2,17 +2,22 @@
 //  TraceManager.swift
 //  ThatWay
 //
-//  "Trace a friend": point at a friend at any range, once they have agreed. The flow:
-//    you tap a friend -> request (they see "wants to trace you") -> they accept -> both phones share a position with each
-//    other for up to 30 minutes -> the pill points at them with distance; inside about 40 m Ultra Wideband takes over.
+//  "Trace a friend", the permission model (see docs/vault/features/trace-grants.md):
 //
-//  Safety is built into the shape of it:
-//    - nothing is shared until the other person accepts, and either side can stop at any moment;
-//    - the server only relays a position to the partner of an active session; the app shows direction and distance,
-//      never a coordinate and never a map;
-//    - coordinates live in memory only: not persisted, not logged, not sent to the watch.
+//    - The person being TRACED grants a permission to ONE tracer, one-way, for a length of time they choose (15 minutes to
+//      24 hours, never more than was asked for). It ends by itself, whether or not anyone is watching.
+//    - The TRACER asks, then looks at one friend at a time and may hold up to ten permissions. They see only "Accepted" and,
+//      if anything goes wrong for any reason, "User cannot be traced, error has occurred". Never how long they have.
+//    - The tracer's own position is never uploaded. Only a rounded distance band travels with their look.
+//    - The traced phone uploads its position only while someone may see it and ThatWay is on screen (plus once on leaving).
+//      A look is not continuous: "request a new location" is limited to once every 2 minutes, and what comes back says how old
+//      it is. Inside about 40 m Ultra Wideband takes over on both phones.
 //
-//  The network and the UWB layer sit behind small protocols so the whole flow is unit-tested without hardware.
+//  Every other safety decision is the server's, every time (backend/lambda/grants). This class only asks, shows and obeys.
+//  Stopping a trace needs no authentication; allowing one needs the phone's owner (OwnerAuthenticating).
+//
+//  The network, the radio, the notifications and the owner check sit behind small protocols so all of it is tested without
+//  hardware, a server or a screen. Coordinates live in memory only: not persisted, not logged, not sent to the watch.
 //
 
 import Foundation
@@ -22,43 +27,96 @@ import ThatWayCore
 
 @MainActor
 protocol TraceAPI: AnyObject {
-    func traceRequest(friendId: String) async throws
-    func traceList() async throws -> [TraceSession]
-    func traceRespond(friendId: String, accept: Bool) async throws
-    func tracePosition(friendId: String, coordinate: CLLocationCoordinate2D, accuracy: Double) async throws
-    func traceEnd(friendId: String) async
+    func grantsSnapshot() async throws -> GrantsSnapshot
+    func requestTrace(friendId: String, hours: Double) async throws
+    func answerTrace(tracerId: String, grant: Bool, hours: Double?, kind: GrantKind?, consentVersion: String?) async throws
+    func revokeTrace(tracerId: String) async throws
+    func releaseTrace(traceeId: String) async
+    func uploadPosition(_ coordinate: CLLocationCoordinate2D, accuracy: Double) async throws
+    func locate(traceeId: String, distanceMeters: Double?) async throws -> LocateResult
 }
 
 @MainActor
 protocol TraceNotifying: AnyObject {
     func requestAuthorizationIfNeeded()
-    /// Tell the person someone wants to trace them (shown only when the app is not in front).
+    /// Someone asked to trace you (shown only when the app is not in front).
     func incomingRequest(from name: String)
     func clearIncoming()
+    /// "X is still tracing you" (shown only when the app is not in front).
+    func stillTracing(name: String)
 }
 
+/// What the tracer's pill is showing.
 enum TraceState: Equatable {
     /// I asked; waiting for their answer.
-    case asking(Friend)
-    /// They asked me.
-    case incoming(Friend)
-    /// Both agreed. The distance and direction are in `TraceManager.reading`.
+    case waiting(Friend)
+    /// They said yes. The direction and distance are in `TraceManager.reading` once a location has come back.
     case active(Friend)
-    /// A short message in place of the pill ("Sam declined", "Sam ended the trace").
+    /// A short message in place of the pill.
     case notice(String)
+}
+
+/// Someone asking to trace me.
+struct IncomingTrace: Identifiable, Equatable {
+    let friend: Friend
+    let requestedHours: Double
+    let requestedAt: Double?
+    let expiresAt: Date?
+    var id: String { friend.id }
+}
+
+/// Someone who may trace me right now.
+struct Watcher: Identifiable, Equatable {
+    let friend: Friend
+    let kind: GrantKind
+    let until: Date
+    let lastLookedAt: Date?
+    /// How far they were when they last looked ("under 200 m"), a band and never a number.
+    let band: String?
+    var id: String { friend.id }
+}
+
+enum GrantOutcome: Equatable {
+    case granted
+    /// The person backed out of the confirmation: nothing happened, and nothing needs saying.
+    case cancelled
+    case notVerified
+    case failed(String)
 }
 
 @MainActor
 final class TraceManager: ObservableObject {
+    // MARK: As the tracer
     @Published private(set) var state: TraceState?
     @Published private(set) var reading: TraceReading?
-    @Published private(set) var errorMessage: String?
-    /// The friend the compass is currently pointing or guiding to (the pill shows "Stop following" for them).
+    /// Friends I may trace right now (their permission is live). I look at one at a time.
+    @Published private(set) var heldTraces: Set<String> = []
+    /// What each permission is, as the traced person chose it: a one-off ends when I switch away.
+    @Published private(set) var heldKinds: [String: GrantKind] = [:]
+    /// The soonest I may ask for a new location; nil means now.
+    @Published private(set) var locateReadyAt: Date?
+    /// My own plan's end, as the server knows it (nil: no end or not checked).
+    @Published private(set) var planEnds: Date?
+    /// True until the first location comes back after being accepted: "Accepted" is shown in the meantime.
+    @Published private(set) var justAccepted = false
+    /// They said yes but their phone has not shared a location yet.
+    @Published private(set) var noLocationYet = false
+    /// The friend the compass is currently pointing or guiding to.
     @Published private(set) var following: String?
     /// Set when a paid action was attempted without the entitlement: the screen shows the paywall.
     @Published var needsUpgrade = false
 
-    /// Wired by AppModel: point or guide to the friend's live position.
+    // MARK: As the traced person
+    @Published private(set) var incoming: [IncomingTrace] = []
+    @Published private(set) var watchers: [Watcher] = []
+    /// "X is still tracing you. Stop?" (the server raises it at most every 30 minutes).
+    @Published var stillTracing: Friend?
+
+    @Published private(set) var errorMessage: String?
+    /// Why a request could not be sent (shown once, on the screen where it was asked).
+    @Published var requestError: String?
+
+    /// Wired by AppModel: point or guide to the friend's last position.
     var onFollow: ((Friend, CLLocationCoordinate2D, _ guide: Bool) -> Void)?
     var onStopFollowing: (() -> Void)?
     /// A fresh position for the friend being followed (the destination moves with them).
@@ -68,6 +126,7 @@ final class TraceManager: ObservableObject {
     private let api: TraceAPI
     private let ranging: ProximityRanging
     private let notifier: TraceNotifying
+    private let owner: OwnerAuthenticating
     private let friends: () -> [Friend]
     private let refreshFriends: () async -> Void
     private let myPosition: () -> CLLocationCoordinate2D?
@@ -78,78 +137,108 @@ final class TraceManager: ObservableObject {
     private let isEntitled: () -> Bool
 
     // MARK: Timing (seconds)
-    private let activeInterval: TimeInterval
-    private let pendingInterval: TimeInterval
+    private let busyInterval: TimeInterval
+    private let watchingInterval: TimeInterval
     private let idleInterval: TimeInterval
-    private let noticeLife: TimeInterval = 5
-    private let uploadEvery: TimeInterval = 3
-    private let uploadAtLeastEvery: TimeInterval = 15
-    private let uploadMoveMetres: Double = 3
+    private let noticeLife: TimeInterval = 6
+    private let uploadMoveMetres: Double = 25
+    private let uploadMovedAfter: TimeInterval = 30
+    private let uploadAtLeastEvery: TimeInterval = 120
 
     // MARK: Working state (memory only)
     private var loop: Task<Void, Never>?
     private var fusion = TraceFusion()
     private var peerPosition: TracePeerPosition?
     private var peerPositionAt = Date.distantPast
-    private var uwbRunning = false
+    private var uwbFriendId: String?
+    private var wantsPrecise = false
     private var lastUpload: (at: Date, coordinate: CLLocationCoordinate2D)?
     private var noticeUntil = Date.distantPast
-    private var dismissed = Set<String>()          // declined sessions already shown, so they don't come back
-    private var announced = Set<String>()          // incoming sessions already notified
+    private var acceptedUntil = Date.distantPast
+    private var announced = Set<String>()
+    private var lastLooked: [String: Double] = [:]
+    private var lookedSinceUpload = false
     private var sceneActive = true
     private var lastFriendsRefresh = Date.distantPast
-    private var consecutiveFailures = 0
     private var askedForNotifications = false
-    /// Bumped by every local action (ask, answer, end). A poll that was already in flight when one happened carries an
-    /// older epoch and is discarded, so it cannot bring back a trace the person has just ended.
+    /// Bumped by every local action. A poll that was already in flight when one happened carries an older epoch and is
+    /// discarded, so it cannot bring back a trace the person has just ended.
     private var epoch = 0
     private var notificationShown = false
 
     init(api: TraceAPI,
          ranging: ProximityRanging,
          notifier: TraceNotifying,
+         owner: OwnerAuthenticating,
          friends: @escaping () -> [Friend],
          refreshFriends: @escaping () async -> Void = {},
          myPosition: @escaping () -> CLLocationCoordinate2D?,
          myAccuracy: @escaping () -> Double = { 10 },
-         activeInterval: TimeInterval = 3,
-         pendingInterval: TimeInterval = 4,
-         idleInterval: TimeInterval = 10,
+         busyInterval: TimeInterval = 5,
+         watchingInterval: TimeInterval = 15,
+         idleInterval: TimeInterval = 30,
          now: @escaping () -> Date = Date.init,
          sleep: @escaping (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) },
          loopEnabled: Bool = true,
          isEntitled: @escaping () -> Bool = { true }) {
-        self.api = api; self.ranging = ranging; self.notifier = notifier; self.friends = friends
+        self.api = api; self.ranging = ranging; self.notifier = notifier; self.owner = owner; self.friends = friends
         self.refreshFriends = refreshFriends; self.myPosition = myPosition; self.myAccuracy = myAccuracy
-        self.activeInterval = activeInterval; self.pendingInterval = pendingInterval; self.idleInterval = idleInterval
+        self.busyInterval = busyInterval; self.watchingInterval = watchingInterval; self.idleInterval = idleInterval
         self.now = now; self.sleep = sleep; self.loopEnabled = loopEnabled; self.isEntitled = isEntitled
         ranging.onReading = { [weak self] in self?.recomputeReading() }
     }
 
-    var isBusy: Bool {
+    // MARK: What the screens ask
+
+    /// The friend I am currently tracing or waiting on.
+    var targetFriend: Friend? {
         switch state {
-        case .asking, .incoming, .active: return true
-        case .notice, .none: return false
+        case .waiting(let f), .active(let f): return f
+        default: return nil
         }
     }
 
+    var isBusy: Bool { targetFriend != nil }
+
+    /// Whether this phone is sharing its position with anyone right now (someone may trace me).
+    var isSharing: Bool { !watchers.isEmpty }
+
+    /// Seconds until a new location may be asked for (0 when it may be asked now).
+    func locateCountdown() -> TimeInterval { max(0, (locateReadyAt ?? .distantPast).timeIntervalSince(now())) }
+
+    /// How old the friend's location is right now, in seconds; nil until one has arrived.
+    var locationAge: TimeInterval? {
+        guard let peerPosition else { return nil }
+        return peerPosition.ageSeconds + now().timeIntervalSince(peerPositionAt)
+    }
+
     #if DEBUG
-    /// Simulator aid (the simulator has no friends or radio): `-tw-preview-trace asking|incoming|active|uwb|notice`.
+    /// Simulator aid (the simulator has no friends or radio): `-tw-preview-trace waiting|active|uwb|notice|incoming|watchers`.
     func previewState(_ name: String) {
         let sam = Friend(id: "preview", username: "sam", status: "ACCEPTED", requestedAt: nil, acceptedAt: nil)
+        let ellie = Friend(id: "preview2", username: "ellie", status: "ACCEPTED", requestedAt: nil, acceptedAt: nil)
         switch name {
-        case "asking": state = .asking(sam)
-        case "incoming": state = .incoming(sam)
-        case "active": state = .active(sam); reading = TraceReading(meters: 8_240_000, band: .far, source: .gps, trueBearing: 40, peerAgeSeconds: 3)
+        case "waiting": state = .waiting(sam)
+        case "active":
+            state = .active(sam); peerPositionAt = now(); peerPosition = TracePeerPosition(latitude: 0, longitude: 0, ageSeconds: 200)
+            reading = TraceReading(meters: 8_240_000, band: .far, source: .gps, trueBearing: 40, peerAgeSeconds: 200)
+            heldTraces = ["preview", "preview2"]
         case "uwb": state = .active(sam); reading = TraceReading(meters: 4.2, band: .veryClose, source: .uwb, relativeBearing: 25)
-        default: state = .notice("sam declined")
+        case "incoming":
+            incoming = [IncomingTrace(friend: sam, requestedHours: 8, requestedAt: 1, expiresAt: now().addingTimeInterval(1500))]
+        case "watchers":
+            watchers = [
+                Watcher(friend: sam, kind: .window, until: now().addingTimeInterval(7_200), lastLookedAt: now().addingTimeInterval(-300), band: "under 200 m"),
+                Watcher(friend: ellie, kind: .oneoff, until: now().addingTimeInterval(1_500), lastLookedAt: nil, band: nil),
+            ]
+        default: state = .notice(TraceCopy.cannotTrace)
         }
     }
     #endif
 
     // MARK: Lifecycle
 
-    /// Begin watching for requests and sessions (call once signed in).
+    /// Begin watching for requests and permissions (call once signed in).
     func start() {
         if !askedForNotifications { askedForNotifications = true; notifier.requestAuthorizationIfNeeded() }
         guard loopEnabled, loop == nil else { return }
@@ -169,38 +258,39 @@ final class TraceManager: ObservableObject {
     /// Sign-out or a switch of account: drop everything, tell the server nothing more.
     func reset() {
         stop()
-        ranging.stop(); uwbRunning = false
+        ranging.stop(); uwbFriendId = nil; wantsPrecise = false
         state = nil; reading = nil; errorMessage = nil
+        incoming = []; watchers = []; stillTracing = nil; heldTraces = []; heldKinds = [:]
+        locateReadyAt = nil; planEnds = nil; justAccepted = false; noLocationYet = false
         if following != nil { following = nil; onStopFollowing?() }
         peerPosition = nil; lastUpload = nil; fusion.reset()
-        dismissed.removeAll(); announced.removeAll()
+        announced.removeAll(); lastLooked.removeAll(); lookedSinceUpload = false
         epoch += 1
         clearNotification()
     }
 
-    /// Background: with no trace going there is nothing worth polling for. An active trace keeps running while the app
-    /// is alive (a trip in progress keeps it alive); with a suspended app nothing runs, which is the safe default.
+    /// The app leaves or returns to the front. Coming back is "opening the compass": if I am tracing someone, look again
+    /// (the server re-checks every safety rule on every look). Leaving shares my own position one last time.
     func setSceneActive(_ active: Bool) {
         sceneActive = active
-        if active { start() } else if !isBusy { stop() }
-    }
-
-    private var interval: TimeInterval {
-        switch state {
-        case .active: return activeInterval
-        case .asking, .incoming: return pendingInterval
-        case .notice: return 2
-        default: return idleInterval
+        if active {
+            start()
+            if case .active = state { Task { await locate(manual: false) } }
+        } else {
+            if !isBusy { stop() }
+            if !watchers.isEmpty { Task { await shareMyPosition(force: true) } }
         }
     }
 
-    /// Whether this phone is sharing its position right now (an accepted trace). Drives background location, so the
-    /// trace does not stop partway through a trip when the screen locks.
-    var isSharing: Bool { if case .active = state { return true } else { return false } }
+    private var interval: TimeInterval {
+        if isBusy || !incoming.isEmpty { return busyInterval }
+        if !watchers.isEmpty { return watchingInterval }
+        return idleInterval
+    }
 
     // MARK: Following
 
-    /// Point (or guide) the compass at the friend's live position. A moving target: the destination follows them.
+    /// Point (or guide) the compass at the friend's last known position. Pointing and guiding are the paid part.
     func follow(guide: Bool) {
         guard isEntitled() else { needsUpgrade = true; return }
         guard case .active(let friend) = state, let peer = peerPosition else { return }
@@ -217,126 +307,292 @@ final class TraceManager: ObservableObject {
     /// AppModel tells us when the destination was cleared some other way (the cross on the destination card).
     func followingEnded() { following = nil }
 
-    // MARK: Actions
+    /// Called when the purchase state changes, so the arrow appears (or goes) straight away.
+    func entitlementChanged() { recomputeReading() }
 
-    /// Ask a friend to be traced. Nothing is shared until they accept.
-    func request(_ friend: Friend) async {
+    // MARK: Actions as the tracer
+
+    /// Ask a friend for permission to trace them. Nothing is shared unless they say yes.
+    func request(_ friend: Friend, hours: Double) async {
         guard isEntitled() else { needsUpgrade = true; return }
-        guard !isBusy else { return }
         epoch += 1
-        errorMessage = nil
-        state = .asking(friend)
+        requestError = nil
+        await leaveTarget()
+        state = .waiting(friend)
         do {
-            try await api.traceRequest(friendId: friend.id)
+            try await api.requestTrace(friendId: friend.id, hours: TraceWindow.clamp(hours))
             start()
         } catch {
             state = nil
-            errorMessage = error.localizedDescription
+            switch (error as? FriendsError)?.httpStatus {
+            case 402: needsUpgrade = true
+            default: requestError = error.localizedDescription
+            }
         }
     }
 
-    func accept() async { await answer(accept: true) }
-    func decline() async { await answer(accept: false) }
+    /// A hint to show before the tracer looks at, or asks, someone else: leaving the current friend ends a permission that was
+    /// only allowed once (or withdraws a request still waiting). nil when nothing would be lost.
+    func switchWarning(to friend: Friend) -> String? {
+        guard let current = targetFriend, current.id != friend.id else { return nil }
+        switch state {
+        case .waiting: return "Your request to \(current.username) will be withdrawn."
+        case .active where heldKinds[current.id] == .oneoff:
+            return "\(current.username) only allowed tracing once. If you switch, you’ll need to ask them again."
+        default: return nil
+        }
+    }
 
-    private func answer(accept: Bool) async {
-        guard case .incoming(let friend) = state else { return }
-        if accept, !isEntitled() { needsUpgrade = true; return }       // declining is always allowed
+    /// Look at a friend whose permission is already live (switching from whoever I was looking at).
+    func trace(_ friend: Friend) async {
+        guard isEntitled() else { needsUpgrade = true; return }
+        if case .active(let current) = state, current.id == friend.id { return }
+        guard heldTraces.contains(friend.id) else { return }
         epoch += 1
-        errorMessage = nil
-        clearNotification()
+        await leaveTarget()
+        state = .active(friend)
+        locateReadyAt = nil
+        await locate(manual: false)
+    }
+
+    /// "Request new location": at most once every 2 minutes (the server enforces it too).
+    func locate(manual: Bool) async {
+        guard case .active(let friend) = state else { return }
+        guard isEntitled() else { needsUpgrade = true; return }
+        if locateCountdown() > 0 { return }
+        let distance: Double? = {
+            guard let me = myPosition(), let peer = peerPosition else { return nil }
+            return CompassManager.distance(from: me, to: peer.coordinate)
+        }()
         do {
-            try await api.traceRespond(friendId: friend.id, accept: accept)
-            if accept { state = .active(friend); await poll() } else { state = nil }
+            let result = try await api.locate(traceeId: friend.id, distanceMeters: distance)
+            guard case .active(let current) = state, current.id == friend.id else { return }     // moved on while waiting
+            locateReadyAt = now().addingTimeInterval(result.retryAfter ?? TraceWindow.locateInterval)
+            if let position = result.position {
+                peerPosition = position; peerPositionAt = now(); noLocationYet = false
+                if following == friend.id { onFriendPosition?(friend, position.coordinate) }
+            } else if peerPosition == nil {
+                noLocationYet = true
+            }
+            justAccepted = false
+            recomputeReading()
+            updateRanging()
+        } catch {
+            guard case .active(let current) = state, current.id == friend.id else { return }
+            switch (error as? FriendsError)?.httpStatus {
+            case 429:
+                if case .status(_, _, let retry)? = error as? FriendsError { locateReadyAt = now().addingTimeInterval(retry ?? TraceWindow.locateInterval) }
+            case 402:
+                planOver()
+            case 403:
+                cannotBeTraced()
+            default:
+                break                                // offline or a hiccup: keep what is on screen and try again later
+            }
+        }
+    }
+
+    /// Stop looking at this friend (or withdraw the request). A one-off ends; a "keep tracing" permission stays until its
+    /// time is up, and the friend stays in the row to pick up again.
+    func end() async {
+        let friend = targetFriend
+        epoch += 1
+        clearTarget()
+        if let friend { await api.releaseTrace(traceeId: friend.id) }
+    }
+
+    /// Start Ultra Wideband now rather than waiting to be within about 40 m of the last location.
+    func findPrecisely() {
+        guard case .active(let friend) = state, ranging.capability.canRange else { return }
+        wantsPrecise = true
+        startRanging(friend)
+    }
+
+    // MARK: Actions as the traced person
+
+    /// Allow a tracer. Needs the phone's owner to confirm first (Face ID, the phone passcode, or the app passcode).
+    func grant(_ request: IncomingTrace, hours: Double, kind: GrantKind) async -> GrantOutcome {
+        errorMessage = nil
+        switch await owner.authenticate(reason: "Allow \(request.friend.username) to see where you are") {
+        case .success: break
+        case .cancelled: return .cancelled
+        case .failed, .lockedOut:
+            errorMessage = "We couldn't confirm it's you, so nothing was allowed."
+            return .notVerified
+        }
+        let length = min(TraceWindow.clamp(hours), request.requestedHours)
+        do {
+            try await api.answerTrace(tracerId: request.friend.id, grant: true, hours: length, kind: kind, consentVersion: ConsentCopy.version)
+            epoch += 1
+            await poll()
+            return .granted
         } catch {
             errorMessage = error.localizedDescription
-            await poll()                       // the request may be gone: the next poll says so
+            await poll()                                  // the request may have expired: the next sync says so
+            return .failed(error.localizedDescription)
         }
     }
 
-    /// Stop now (cancel a request, or end a session). Either side can do this at any time.
-    func end() async {
-        let friend: Friend?
-        switch state {
-        case .asking(let f), .incoming(let f), .active(let f): friend = f
-        default: friend = nil
-        }
+    /// Say no. (Needs no confirmation: refusing is always the safe direction.)
+    func decline(_ request: IncomingTrace) async {
+        errorMessage = nil
+        incoming.removeAll { $0.id == request.id }
         epoch += 1
-        stopRanging()
-        state = nil; reading = nil; peerPosition = nil; lastUpload = nil; fusion.reset()
-        stopFollowing()
-        clearNotification()
-        if let friend { await api.traceEnd(friendId: friend.id) }
+        do { try await api.answerTrace(tracerId: request.friend.id, grant: false, hours: nil, kind: nil, consentVersion: nil) }
+        catch { errorMessage = error.localizedDescription }
+        clearNotificationIfNoRequests()
     }
+
+    /// Stop someone from tracing me, now. Never needs a check, never throttled. If the server cannot be reached the person
+    /// is told plainly that it is not stopped yet.
+    @discardableResult
+    func revoke(_ watcher: Watcher) async -> Bool {
+        let before = watchers
+        watchers.removeAll { $0.id == watcher.id }
+        if stillTracing?.id == watcher.id { stillTracing = nil }
+        epoch += 1
+        do {
+            try await api.revokeTrace(tracerId: watcher.friend.id)
+            stopRangingIfFor(watcher.friend.id)
+            return true
+        } catch {
+            watchers = before
+            errorMessage = "We couldn't stop \(watcher.friend.username) just now. Check your connection and try again: it is still on."
+            return false
+        }
+    }
+
+    func revokeAll() async {
+        for watcher in watchers { await revoke(watcher) }
+    }
+
+    func dismissStillTracing() { stillTracing = nil }
+
+    func clearError() { errorMessage = nil }
 
     // MARK: Polling
 
-    /// One poll: fetch, reconcile, and (when active) share my position and manage the radio. The background loop calls
-    /// this; tests call it directly.
+    /// One sync: fetch both roles in a single request, reconcile, and (when someone may see me) share my position and manage
+    /// the radio. The background loop calls this; tests call it directly.
     func poll() async {
-        // A notice is only a few seconds long.
-        if case .notice = state, now() >= noticeUntil { state = nil }
+        if case .notice = state, now() >= noticeUntil { state = nil; reading = nil }
+        if justAccepted, now() >= acceptedUntil { justAccepted = false }
 
         let startedAt = epoch
-        let sessions: [TraceSession]
+        let snapshot: GrantsSnapshot
         do {
-            sessions = try await api.traceList()
-            consecutiveFailures = 0
+            snapshot = try await api.grantsSnapshot()
         } catch {
-            consecutiveFailures += 1       // a dropped connection must not end a trace: keep what we have
-            return
+            return                         // a dropped connection must not end a trace: keep what we have
         }
         guard startedAt == epoch else { return }      // something local happened while this was in flight
-        await reconcile(sessions)
-        if case .active(let friend) = state { await keepActive(friend) }
+        await reconcileTraced(snapshot.asTraced)
+        await reconcileTracer(snapshot)
+        await shareMyPosition(force: false)
+        updateRanging()
+        recomputeReading()
     }
 
-    private func reconcile(_ sessions: [TraceSession]) async {
-        let rank: [TraceStatus: Int] = [.active: 0, .incoming: 1, .outgoing: 2, .declined: 3]
-        let fresh = sessions.filter { !($0.status == .declined && dismissed.contains($0.sessionId)) }
-        let current = fresh.min { (rank[$0.status] ?? 9) < (rank[$1.status] ?? 9) }
-
-        guard let current else {
-            // Nothing on the server. If we thought something was going on, it ended on the other side (or timed out).
-            switch state {
-            case .asking(let f): showNotice("\(f.username) didn't answer")
-            case .active(let f): stopFollowing(); showNotice("\(f.username) ended the trace")
-            case .incoming: state = nil
-            default: break
+    // The traced side: requests and permissions.
+    private func reconcileTraced(_ entries: [TracedEntry]) async {
+        let known = friends()
+        var unknownTracer = false
+        var requests: [IncomingTrace] = []
+        var active: [Watcher] = []
+        for entry in entries {
+            guard let friend = known.first(where: { $0.id == entry.tracerId }) else { unknownTracer = true; continue }
+            if entry.isRequest {
+                requests.append(IncomingTrace(friend: friend, requestedHours: entry.requestedHours ?? 1,
+                                              requestedAt: entry.requestedAt,
+                                              expiresAt: entry.requestExpiresAt.map { Date(timeIntervalSince1970: $0) }))
+            } else if entry.isActive, let until = entry.until {
+                active.append(Watcher(friend: friend, kind: entry.kind, until: Date(timeIntervalSince1970: until),
+                                      lastLookedAt: entry.lastLookedAt.map { Date(timeIntervalSince1970: $0) }, band: entry.band))
+                if let looked = entry.lastLookedAt {
+                    if let before = lastLooked[friend.id], looked > before { lookedSinceUpload = true }     // they looked: share a fresh position now
+                    lastLooked[friend.id] = looked
+                }
+                if entry.stillTracing == true { raiseStillTracing(friend) }
             }
-            stopRanging(); peerPosition = nil
-            clearNotification()
-            return
         }
+        if unknownTracer, now().timeIntervalSince(lastFriendsRefresh) > 60 { lastFriendsRefresh = now(); await refreshFriends() }
 
-        guard let friend = friends().first(where: { $0.id == current.friendId }) else {
-            // A request from someone not in our list yet (just accepted elsewhere): refresh the list, at most once a minute.
-            if now().timeIntervalSince(lastFriendsRefresh) > 60 { lastFriendsRefresh = now(); await refreshFriends() }
-            return
-        }
-
-        switch current.status {
-        case .outgoing:
-            if case .asking = state {} else if !isNoticeShowing { state = .asking(friend) }
-        case .incoming:
-            if case .incoming = state {} else { state = .incoming(friend) }
-            if !announced.contains(current.sessionId) {
-                announced.insert(current.sessionId)
-                if !sceneActive { notifier.incomingRequest(from: friend.username); notificationShown = true }
+        for request in requests {
+            let key = "\(request.friend.id)#\(request.requestedAt ?? 0)"
+            if announced.insert(key).inserted, !sceneActive {
+                notifier.incomingRequest(from: request.friend.username); notificationShown = true
             }
+        }
+        if requests.isEmpty { clearNotification() }
+        incoming = requests
+        watchers = active
+        if let current = stillTracing, !active.contains(where: { $0.id == current.id }) { stillTracing = nil }
+        lastLooked = lastLooked.filter { key, _ in active.contains { $0.id == key } }
+    }
+
+    private func raiseStillTracing(_ friend: Friend) {
+        if !sceneActive { notifier.stillTracing(name: friend.username) }
+        if stillTracing == nil { stillTracing = friend }
+    }
+
+    // The tracer side: what became of my request, and the plan.
+    private func reconcileTracer(_ snapshot: GrantsSnapshot) async {
+        heldTraces = Set(snapshot.asTracer.filter(\.isActive).map(\.traceeId))
+        heldKinds = Dictionary(uniqueKeysWithValues: snapshot.asTracer.filter(\.isActive).map { ($0.traceeId, $0.kind) })
+        if let plan = snapshot.plan {
+            planEnds = plan.until.map { Date(timeIntervalSince1970: $0) }
+            if !plan.active, isBusy { planOver(); return }
+        }
+        guard let friend = targetFriend else { return }
+        let entry = snapshot.asTracer.first { $0.traceeId == friend.id }
+        switch state {
+        case .waiting:
+            guard let entry else { cannotBeTraced(); return }       // declined, expired, unfriended or blocked: all look alike
+            if entry.isActive { await becomeActive(friend) }
         case .active:
-            if case .active = state {} else { state = .active(friend); fusion.reset(); lastUpload = nil }
-            clearNotification()
-            if let peer = current.peer {
-                peerPosition = peer; peerPositionAt = now()
-                if following == friend.id { onFriendPosition?(friend, peer.coordinate) }
-            } else if now().timeIntervalSince(peerPositionAt) > 90 {
-                peerPosition = nil
-            }
-        case .declined:
-            dismissed.insert(current.sessionId)
-            showNotice("\(friend.username) declined")
-            stopRanging()
+            if entry?.isActive != true { cannotBeTraced() }
+        default:
+            break
         }
+    }
+
+    private func becomeActive(_ friend: Friend) async {
+        state = .active(friend)
+        justAccepted = true
+        acceptedUntil = now().addingTimeInterval(8)
+        peerPosition = nil; noLocationYet = false; locateReadyAt = nil; fusion.reset()
+        await locate(manual: false)
+    }
+
+    /// The one answer a tracer ever gets when tracing is not possible, whatever the reason.
+    private func cannotBeTraced() {
+        clearTarget()
+        showNotice(TraceCopy.cannotTrace)
+    }
+
+    private func planOver() {
+        clearTarget()
+        showNotice(TraceCopy.planEnded)
+        needsUpgrade = true
+    }
+
+    private func leaveTarget() async {
+        let friend = targetFriend
+        clearTarget()
+        if let friend { await api.releaseTrace(traceeId: friend.id) }
+    }
+
+    private func clearTarget() {
+        stopRanging(); wantsPrecise = false
+        state = nil; reading = nil; peerPosition = nil; fusion.reset()
+        justAccepted = false; noLocationYet = false; locateReadyAt = nil
+        stopFollowing()
+    }
+
+    private func showNotice(_ text: String) {
+        state = .notice(text)
+        noticeUntil = now().addingTimeInterval(noticeLife)
+        reading = nil
     }
 
     private func clearNotification() {
@@ -345,57 +601,72 @@ final class TraceManager: ObservableObject {
         notifier.clearIncoming()
     }
 
-    private var isNoticeShowing: Bool { if case .notice = state { return true } else { return false } }
+    private func clearNotificationIfNoRequests() { if incoming.isEmpty { clearNotification() } }
 
-    private func showNotice(_ text: String) {
-        state = .notice(text)
-        noticeUntil = now().addingTimeInterval(noticeLife)
-        reading = nil
+    // MARK: Sharing my own position (only while someone may see it)
+
+    private func shareMyPosition(force: Bool) async {
+        guard !watchers.isEmpty, sceneActive || force, let me = myPosition() else { return }
+        let due: Bool
+        if let last = lastUpload {
+            let elapsed = now().timeIntervalSince(last.at)
+            let moved = CompassManager.distance(from: last.coordinate, to: me)
+            due = force || lookedSinceUpload || elapsed >= uploadAtLeastEvery || (elapsed >= uploadMovedAfter && moved >= uploadMoveMetres)
+        } else {
+            due = true
+        }
+        guard due else { return }
+        do {
+            try await api.uploadPosition(me, accuracy: myAccuracy())
+            lastUpload = (now(), me)
+            lookedSinceUpload = false
+        } catch {
+            /* the next sync tries again; a failed upload must never end anything */
+        }
     }
 
-    // MARK: While active
+    // MARK: Ultra Wideband
 
-    private func keepActive(_ friend: Friend) async {
-        // 1. Share my position, when it is worth sending.
-        if let me = myPosition() {
-            let due: Bool
-            if let last = lastUpload {
-                let elapsed = now().timeIntervalSince(last.at)
-                let moved = CompassManager.distance(from: last.coordinate, to: me)
-                due = elapsed >= uploadAtLeastEvery || (elapsed >= uploadEvery && moved >= uploadMoveMetres)
-            } else { due = true }
-            if due {
-                do {
-                    try await api.tracePosition(friendId: friend.id, coordinate: me, accuracy: myAccuracy())
-                    lastUpload = (now(), me)
-                } catch { /* the next tick tries again; a failed upload must never end a trace */ }
-            }
+    private static func isClose(_ band: String?) -> Bool { band == "under 50 m" || band == "under 200 m" }
+
+    private func updateRanging() {
+        guard ranging.capability.canRange else { return }
+        // As the tracer: GPS gets me within about 40 m of where they were last seen, then the radio takes over.
+        if case .active(let friend) = state {
+            let gps: Double? = {
+                guard let me = myPosition(), let peer = peerPosition else { return nil }
+                return CompassManager.distance(from: me, to: peer.coordinate)
+            }()
+            if wantsPrecise || TraceFusion.wantsUWB(gpsMeters: gps, running: uwbFriendId == friend.id) { startRanging(friend) }
+            else if uwbFriendId == friend.id { stopRanging() }
+            return
         }
+        // As the traced person: someone who looked from close by a moment ago is probably walking up to me. The radio is
+        // only ever a measurement between our two phones; nothing about it is shown to me.
+        let nearby = watchers.first { Self.isClose($0.band) && ($0.lastLookedAt.map { now().timeIntervalSince($0) < 600 } ?? false) }
+        if let nearby { startRanging(nearby.friend) } else if uwbFriendId != nil { stopRanging() }
+    }
 
-        // 2. The distance by GPS decides whether Ultra Wideband should be trying.
-        let gpsMeters: Double? = {
-            guard let me = myPosition(), let peer = peerPosition else { return nil }
-            return CompassManager.distance(from: me, to: peer.coordinate)
-        }()
-        let want = ranging.capability.canRange && TraceFusion.wantsUWB(gpsMeters: gpsMeters, running: uwbRunning)
-        if want, !uwbRunning {
-            ranging.start(with: friend); uwbRunning = true
-        } else if !want, uwbRunning {
-            stopRanging()
-        }
-
-        recomputeReading()
+    private func startRanging(_ friend: Friend) {
+        guard uwbFriendId != friend.id else { return }
+        ranging.start(with: friend)
+        uwbFriendId = friend.id
     }
 
     private func stopRanging() {
-        if uwbRunning { ranging.stop(); uwbRunning = false }
+        guard uwbFriendId != nil else { return }
+        ranging.stop(); uwbFriendId = nil
     }
 
-    /// Called every poll and on every UWB reading.
+    private func stopRangingIfFor(_ id: String) { if uwbFriendId == id { stopRanging() } }
+
+    /// Called every sync and on every Ultra Wideband reading.
     private func recomputeReading() {
-        guard case .active = state else { return }
-        let uwb = ranging.latestReading.map { (reading: $0.reading, ageSeconds: now().timeIntervalSince($0.at)) }
-        // The age shown is how old the friend's position is *now*, not when it was fetched.
+        guard case .active(let friend) = state else { return }
+        guard isEntitled() else { reading = nil; return }
+        let uwb: (reading: ProximityReading, ageSeconds: Double)? = uwbFriendId == friend.id
+            ? ranging.latestReading.map { (reading: $0.reading, ageSeconds: now().timeIntervalSince($0.at)) } : nil
+        // The age shown is how old their location is *now*, not when it was fetched.
         let aged = peerPosition.map {
             TracePeerPosition(latitude: $0.latitude, longitude: $0.longitude, accuracy: $0.accuracy,
                               ageSeconds: $0.ageSeconds + now().timeIntervalSince(peerPositionAt))
@@ -407,26 +678,43 @@ final class TraceManager: ObservableObject {
 // MARK: - Network (the same authenticated client as friends)
 
 extension FriendsManager: TraceAPI {
-    func traceRequest(friendId: String) async throws {
-        let _: EmptyResponse = try await request(method: "POST", path: "/trace/request", body: ["friendId": friendId])
+    func grantsSnapshot() async throws -> GrantsSnapshot {
+        try await request(method: "GET", path: "/grants")
     }
 
-    func traceList() async throws -> [TraceSession] {
-        try await request(method: "GET", path: "/trace")
+    func requestTrace(friendId: String, hours: Double) async throws {
+        let _: EmptyResponse = try await request(method: "POST", path: "/grants/request",
+                                                 body: ["friendId": friendId, "hours": hours])
     }
 
-    func traceRespond(friendId: String, accept: Bool) async throws {
-        let _: EmptyResponse = try await request(method: "POST", path: "/trace/respond",
-                                                 body: ["friendId": friendId, "action": accept ? "accept" : "decline"])
+    func answerTrace(tracerId: String, grant: Bool, hours: Double?, kind: GrantKind?, consentVersion: String?) async throws {
+        var body: [String: Any] = ["tracerId": tracerId, "action": grant ? "grant" : "decline"]
+        if grant {
+            body["confirmed"] = true                      // the app has shown the second confirmation and checked the owner
+            if let hours { body["hours"] = hours }
+            if let kind { body["kind"] = kind.rawValue }
+            if let consentVersion { body["consentVersion"] = consentVersion }
+        }
+        let _: EmptyResponse = try await request(method: "POST", path: "/grants/respond", body: body)
     }
 
-    func tracePosition(friendId: String, coordinate: CLLocationCoordinate2D, accuracy: Double) async throws {
-        let _: EmptyResponse = try await request(method: "PUT", path: "/trace/position", body: [
-            "friendId": friendId, "lat": coordinate.latitude, "lon": coordinate.longitude, "acc": max(0, accuracy),
+    func revokeTrace(tracerId: String) async throws {
+        let _: EmptyResponse = try await request(method: "POST", path: "/grants/revoke", body: ["tracerId": tracerId])
+    }
+
+    func releaseTrace(traceeId: String) async {
+        let _: EmptyResponse? = try? await request(method: "POST", path: "/grants/release", body: ["traceeId": traceeId])
+    }
+
+    func uploadPosition(_ coordinate: CLLocationCoordinate2D, accuracy: Double) async throws {
+        let _: EmptyResponse = try await request(method: "PUT", path: "/grants/position", body: [
+            "lat": coordinate.latitude, "lon": coordinate.longitude, "acc": max(0, accuracy),
         ])
     }
 
-    func traceEnd(friendId: String) async {
-        let _: EmptyResponse? = try? await request(method: "DELETE", path: "/trace/\(friendId)")
+    func locate(traceeId: String, distanceMeters: Double?) async throws -> LocateResult {
+        var body: [String: Any] = ["traceeId": traceeId]
+        if let distanceMeters { body["distanceM"] = distanceMeters }     // the server keeps only a band
+        return try await request(method: "POST", path: "/grants/locate", body: body)
     }
 }

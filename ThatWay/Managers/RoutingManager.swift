@@ -100,6 +100,10 @@ final class RoutingManager: ObservableObject {
     /// the route/cards/polyline already on screen; this is purely informational.
     @Published private(set) var currentFailure: RouteFailure?
     @Published private(set) var nextRetryAt: Date?
+    /// A failure decided before asking the router at all (too far to route), kept apart from the governor's.
+    private var governorFailure: RouteFailure?
+    private var localFailure: RouteFailure?
+    private func publishFailure() { currentFailure = governorFailure ?? localFailure }
 
     /// How far (metres) the traveller can be from the route's snapped start point and still
     /// count as "at the start". The engine snaps the route onto the nearest road it knows about,
@@ -125,7 +129,7 @@ final class RoutingManager: ObservableObject {
     init(provider: RoutingProvider? = nil) {
         let resolvedProvider = provider ?? FallbackRoutingProvider(providers: [OSRMRoutingProvider.app()])
         governor = RoutingGovernor(provider: resolvedProvider)
-        governor.$currentFailure.receive(on: DispatchQueue.main).sink { [weak self] in self?.currentFailure = $0 }.store(in: &cancellables)
+        governor.$currentFailure.receive(on: DispatchQueue.main).sink { [weak self] in self?.governorFailure = $0; self?.publishFailure() }.store(in: &cancellables)
         governor.$nextRetryAt.receive(on: DispatchQueue.main).sink { [weak self] in self?.nextRetryAt = $0 }.store(in: &cancellables)
     }
 
@@ -169,6 +173,7 @@ final class RoutingManager: ObservableObject {
     /// polyline already exist completely untouched.
     func getRoute(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D, profile: TravelProfile, isReroute: Bool = false) async {
         fetchTask?.cancel()
+        localFailure = nil; publishFailure()
         isLoading = true
         activeProfile = profile
         let task = Task { [weak self] in
@@ -196,6 +201,13 @@ final class RoutingManager: ObservableObject {
     }
 
     func retryNow() { governor.retryNow() }
+
+    /// The destination was ruled out before any request was made (see `RoutePlausibility`). Shown as the diagnosis; no
+    /// retry loop exists for it.
+    func declareUnroutable(_ failure: RouteFailure) {
+        cancelFetch()
+        localFailure = failure; publishFailure()
+    }
 
     /// Rebuilds state from an already-fetched `Route` — no network involved. Used to restore a
     /// trip in progress after a relaunch (`RoutePersistence`).
@@ -225,6 +237,7 @@ final class RoutingManager: ObservableObject {
         fixedProgress = 0
         projectionExtra = 0
         lastSegmentIndex = 0
+        governorFailure = nil; localFailure = nil
         currentFailure = nil
         nextRetryAt = nil
     }

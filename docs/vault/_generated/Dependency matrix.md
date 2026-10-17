@@ -7,12 +7,16 @@ tags: [generated]
 
 | Feature | Area | Depends on | Used by | Fan-in | Fan-out |
 |---|---|---|---|---|---|
-| [[auth]] | accounts-backend | [[backend-config]] [[backend-lambda]] | [[friends]] [[nearby-proximity]] [[trace-friends]] | 3 | 2 |
+| [[auth]] | accounts-backend | [[backend-config]] [[backend-lambda]] | [[friends]] [[nearby-proximity]] [[owner-authentication]] [[plans-and-billing]] [[safety-and-account]] [[trace-friends]] [[trace-grants]] | 7 | 2 |
 | [[backend-config]] | accounts-backend | - | [[auth]] [[friends]] [[routing-provider-seam]] | 3 | 0 |
 | [[backend-lambda]] | accounts-backend | - | [[auth]] | 1 | 0 |
-| [[friends]] | accounts-backend | [[auth]] [[backend-config]] | [[avatars-social-decor]] [[nearby-proximity]] [[trace-friends]] | 3 | 2 |
-| [[nearby-proximity]] | accounts-backend | [[friends]] [[auth]] [[core-package]] | [[trace-friends]] | 1 | 3 |
+| [[friends]] | accounts-backend | [[auth]] [[backend-config]] | [[avatars-social-decor]] [[nearby-proximity]] [[safety-and-account]] [[trace-friends]] [[trace-grants]] | 5 | 2 |
+| [[nearby-proximity]] | accounts-backend | [[friends]] [[auth]] [[core-package]] | [[trace-friends]] [[trace-grants]] | 2 | 3 |
+| [[owner-authentication]] | accounts-backend | [[auth]] | [[trace-grants]] | 1 | 1 |
+| [[plans-and-billing]] | accounts-backend | [[auth]] | [[trace-grants]] | 1 | 1 |
+| [[safety-and-account]] | accounts-backend | [[friends]] [[auth]] | [[trace-grants]] | 1 | 2 |
 | [[trace-friends]] | accounts-backend | [[friends]] [[auth]] [[nearby-proximity]] [[core-package]] [[location-manager]] [[heading]] | [[walkie-talkie]] | 1 | 6 |
+| [[trace-grants]] | accounts-backend | [[friends]] [[auth]] [[nearby-proximity]] [[owner-authentication]] [[safety-and-account]] [[plans-and-billing]] | - | 0 | 6 |
 | [[avatars-social-decor]] | app-shell | [[friends]] [[settings-profile]] | - | 0 | 2 |
 | [[persistence-defaults]] | app-shell | - | [[audio-manager]] [[destination-search]] [[settings-profile]] [[travel-modes]] [[trip-log]] [[watch-travel-modes]] | 6 | 0 |
 | [[settings-profile]] | app-shell | [[compass-tilt]] [[audio-manager]] [[theme-system]] [[trip-log]] [[persistence-defaults]] | [[avatars-social-decor]] [[haptics-ios]] | 2 | 5 |
@@ -81,13 +85,13 @@ tags: [generated]
 | [[theme-system]] | 9 | low |
 | [[core-package]] | 9 | high |
 | [[location-manager]] | 8 | high |
+| [[auth]] | 7 | high |
 | [[persistence-defaults]] | 6 | low |
 | [[route-models]] | 6 | high |
+| [[friends]] | 5 | low |
 | [[audio-manager]] | 5 | high |
 | [[heading]] | 4 | medium |
 | [[trip-log]] | 4 | low |
-| [[dial-view]] | 4 | medium |
-| [[bearing-math]] | 4 | medium |
 
 ## Cycles
 

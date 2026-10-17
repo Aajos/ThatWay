@@ -77,16 +77,4 @@ struct TraceTests {
         #expect(!TraceReading(meters: 1, band: .here, source: .gps, peerAgeSeconds: 5).isStale)
         #expect(!TraceReading(meters: 1, band: .here, source: .uwb).isStale)
     }
-
-    @Test func sessionsDecodeFromTheBackendShape() throws {
-        let json = #"""
-        [{"friendId":"abc","status":"ACTIVE","sessionId":"s1","expiresAt":1800000000,"requestedAt":null,
-          "peer":{"lat":-37.8,"lon":145.2,"acc":8,"age":3}},
-         {"friendId":"def","status":"INCOMING","sessionId":"s2","expiresAt":1800000600,"requestedAt":"2026-10-12T00:00:00Z"}]
-        """#.data(using: .utf8)!
-        let s = try JSONDecoder().decode([TraceSession].self, from: json)
-        #expect(s.count == 2)
-        #expect(s[0].status == .active && s[0].peer?.ageSeconds == 3 && s[0].peer?.latitude == -37.8)
-        #expect(s[1].status == .incoming && s[1].peer == nil)
-    }
 }

@@ -5,7 +5,9 @@
 //  The friends bar on the compass screen: a labelled Find button first (so it is never buried behind a long list), then the
 //  friends. Tap Find and the bar opens into a search field that searches *your friends* as you type. If nothing among them matches and
 //  you stop typing for three quarters of a second, the app looks up that exact username and offers "+ Add", so a request can
-//  be sent from here too. Tapping a friend asks to trace them (the caller confirms; nothing is shared until they accept).
+//  be sent from here too. Tapping a friend asks to trace them (the caller opens the request sheet; nothing is shared until they
+//  say yes) or, if they have already allowed it, looks at them. A friend you may trace right now wears a small dot. Pressing and
+//  holding a friend opens block, report and the emergency control.
 //
 
 import SwiftUI
@@ -14,12 +16,15 @@ import ThatWayUI
 
 struct FriendsStrip: View {
     @ObservedObject var friendsManager: FriendsManager
+    @ObservedObject var trace: TraceManager
     let theme: AppTheme
     let k: CGFloat
     let myId: String?
     let onTrace: (Friend) -> Void
     /// Opens the You page, where every request can be read and answered.
     let onOpenRequests: () -> Void
+    /// Block, report and the emergency control for a friend.
+    let onSafety: (Friend) -> Void
 
     @State private var searching = false
     @State private var query = ""
@@ -61,8 +66,16 @@ struct FriendsStrip: View {
                         .padding(.top, 8)
                 }
                 ForEach(friendsManager.friends) { f in
+                    let allowed = trace.heldTraces.contains(f.id)
                     VStack(spacing: 6) {
-                        avatar(f, size: 52)
+                        ZStack(alignment: .topTrailing) {
+                            avatar(f, size: 52)
+                            if allowed {
+                                Circle().fill(theme.accent).frame(width: 13, height: 13)
+                                    .overlay(Circle().stroke(theme.screen, lineWidth: 2)).offset(x: 2, y: -2)
+                                    .accessibilityHidden(true)
+                            }
+                        }
                         Text(f.username)
                             .font(.nunito(11, .semibold))
                             .foregroundStyle(theme.textSecondary)
@@ -71,9 +84,11 @@ struct FriendsStrip: View {
                     .frame(width: 56)
                     .contentShape(Rectangle())
                     .onTapGesture { onTrace(f) }
+                    .contextMenu { Button("Block, report or get help…", systemImage: "hand.raised") { onSafety(f) } }
                     .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Trace \(f.username)")
+                    .accessibilityLabel(allowed ? "Trace \(f.username), allowed" : "Ask to trace \(f.username)")
                     .accessibilityAddTraits(.isButton)
+                    .accessibilityAction(named: "Block, report or get help") { onSafety(f) }
                 }
             }
             .padding(.horizontal, 16 * k)

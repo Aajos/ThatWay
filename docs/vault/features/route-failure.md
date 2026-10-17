@@ -14,9 +14,12 @@ cpu: "not measured"
 memory: "not measured"
 battery: "not measured"
 files:
+  - ThatWayCore/Sources/ThatWayCore/RoutePlausibility.swift
   - ThatWay/Managers/RouteFailure.swift
   - ThatWay/Compass/CompassScreen.swift
 tests:
+  - ThatWayCore/Tests/ThatWayCoreTests/RoutePlausibilityTests.swift
+  - ThatWayTests/FollowFriendTests.swift::guidingToAnotherContinentNeverCallsTheRouter
   - ThatWayTests/RoutingErrorMappingTests.swift
 manual_checks:
 depends_on: [routing-provider-seam]
@@ -30,6 +33,7 @@ tags: [feature, area/routing, status/shipped, risk/medium]
 **Area:** [[area-routing]] · **Status:** shipped · **Risk:** medium
 
 ## What it covers
+- **Too far to route** (checked before any request): a straight-line limit by mode (walking 200 km, cycling 800 km, driving 4,500 km). Beyond it nothing is sent to the router; guidance shows "Too far to route by walking. Pointing straight there instead." and the needle keeps pointing at the target (Point mode shows nothing and asks nothing). When the gap closes (a moving friend), the first route is fetched automatically. A distance rule only: water or missing roads inside the limit come back from the router as no route / no road nearby, which stop at once
 - Offline / timeout / server / rate-limited / no route / no road / waiting for GPS
 - Retryable vs non-retryable
 - Countdown and Retry now
@@ -46,6 +50,9 @@ tags: [feature, area/routing, status/shipped, risk/medium]
 
 | ID | What breaks | Caught by |
 |---|---|---|
+| RF-9 | A destination on another continent is sent to the router (slow, hammers a shared server, can retry for ever) | test: RoutePlausibilityTests::anotherContinentIsNeverRouted; FollowFriendTests::guidingToAnotherContinentNeverCallsTheRouter |
+| RF-10 | A long real drive (Melbourne to Perth) is wrongly refused | test: RoutePlausibilityTests::aLongRealDriveIsStillAllowed |
+| RF-11 | A far but in-range route times out and the app retries for ever | none: known; a retry ceiling is the fix |
 | RF-1 | Offline vs a struggling server look the same as `network` unless connectivity is consulted | test: RoutingErrorMappingTests |
 
 ## Tests

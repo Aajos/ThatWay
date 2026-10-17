@@ -14,8 +14,10 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | RP-3 | [[route-progress]] | high | Two copies of the progress maths (`RoutingManager`, `RouteTracker`) drift apart | none: known duplicate | none |
 | RS-1 | [[routing-provider-seam]] | high | The public OSRM demo hosts are not production-grade (rate limits, no uptime promise) | none: replace before release | none |
 | TR-12 | [[trace-friends]] | high | Remote battery cost of 3 s polling and uploads | none: not measured; see [[P7 Optimisation checks]] | none |
+| TR-18 | [[trace-friends]] | high | The friend's position goes stale (no upload for 90 s) while following, so the destination is an old spot and "arrived" can fire there | none: known; the destination should be marked stale and arrival paused | none |
 | WDG-3 | [[watch-drive-guard]] | high | Self-termination via exit() may be rejected in App Review | none: revisit before shipping | none |
 | DS-2 | [[destination-search]] | medium | Network failure shows 'No matches' rather than an error | none | none |
+| RF-11 | [[route-failure]] | medium | A far but in-range route times out and the app retries for ever | none: known; a retry ceiling is the fix | none |
 | RP-B | [[route-persistence]] | medium | Schema change breaks old saved trips | none | none |
 | RT-1 | [[route-tracker]] | medium | Diverges from `RoutingManager`'s copy | none: known duplicate | none |
 | WVS-2 | [[watch-voice-search]] | medium | Query or place name ends up in a log | none: no test on the watch side | none |
@@ -66,6 +68,7 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | AU-1 | [[auth]] | high | Confirmation email never arrives, so no one can get past the gate | manual: still open on the AWS side (SETUP.md section 13); the app now offers Send a new code, and sign-in with an unconfirmed account goes back to the code step | manual |
 | AU-2 | [[auth]] | high | Gate on while the API URL is a placeholder | manual: see backend-config | manual |
 | AU-3 | [[auth]] | high | Launching with no network signed the user out or showed a blank screen (was a real bug) | manual: gate-on build in airplane mode; fixed | manual |
+| AU-7 | [[auth]] | high | The public availability route is abused to harvest names | manual: route throttled to 5 a second; it returns no id or email (test: usernameCheck) | manual |
 | BG-1 | [[background-guidance]] | high | App suspended on lock and guidance silently stops | manual: long locked walk (trip log samples show it) | manual |
 | BG-2 | [[background-guidance]] | high | Screen-awake drains battery over a long walk (default chosen, not agreed) | manual: weekly battery test | manual |
 | BG-3 | [[background-guidance]] | high | iOS shows the blue location indicator after the trip ends | manual | manual |
@@ -127,6 +130,7 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | WTM-2 | [[watch-travel-modes]] | low | Swipe ambiguity: a vertical swipe read as horizontal | manual on a real wrist | manual |
 | AU-4 | [[auth]] | high | A sign-up left unconfirmed becomes a dead end (sign-in error, username taken) | test: AuthManagerTests::signingInBeforeConfirmingSendsANewCodeInsteadOfDeadEnding | test |
 | AU-5 | [[auth]] | high | A forgotten password is a dead end (no way back in without an admin) | test: AuthManagerTests::resetWithTheRightCodeReturnsToSignIn; AuthManagerTests::aWrongResetCodeKeepsTheStepOpen | test |
+| AU-6 | [[auth]] | high | Two accounts with the same name in different capitals, or a name taken a second ago | test: backend/lambda/usernameCheck/test.mjs (case does not matter); AuthManagerTests::signUpUsesTheLowercaseName; Cognito refuses the rest (UsernameExistsException) | test |
 | GM-4 | [[guidance-mode]] | high | Clearing the destination while a trip is running left guidance running with no place, or left the compass pointing at the old place | test: ClearDestinationTests | test |
 | GM-5 | [[guidance-mode]] | high | DONE on the arrival screen left the compass pointing at the place just reached instead of idle | test: ClearDestinationTests.doneOnTheArrivalScreenReturnsToIdleNotToPointingAtTheOldPlace | test |
 | NB-1 | [[nearby-proximity]] | high | A phone without UWB tries to start a session | test: NearbyManagerTests::aPhoneWithoutUWBNeverTouchesTheBackend | test |
@@ -144,6 +148,7 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | TR-14 | [[trace-friends]] | high | Chasing a moving friend hammers the routing service | test: FollowFriendTests::guidingFetchesOnceAndThenChasesOnlyWhenTheyMoveEnough | test |
 | TR-15 | [[trace-friends]] | high | A route to a friend is saved and resurrected on relaunch as a stale place | test: FollowFriendTests::aRouteToAMovingFriendIsNeverSavedForRelaunch | test |
 | TR-16 | [[trace-friends]] | high | A hard cap is missing, so a forgotten trace shares for days | test: backend/lambda/trace/test.mjs (the 24 hour cap) | test |
+| TR-17 | [[trace-friends]] | high | A free user is shown the direction or distance, or can start a trace | test: TraceManagerTests::aFreePersonCanAcceptAndIsSharedButSeesNoDirection; ::aFreePersonCannotFollowOrAsk | test |
 | TR-2 | [[trace-friends]] | high | A position reaches someone who is not the partner of an active session | test: backend/lambda/trace/test.mjs (a third friend sees nothing; an outsider cannot post) | test |
 | TR-3 | [[trace-friends]] | high | A stale position is shown as live | test: backend/lambda/trace/test.mjs (stale position withheld); test: TraceTests::staleFriendIsFlagged | test |
 | TR-4 | [[trace-friends]] | high | A poll in flight brings back a trace the person just ended | test: TraceManagerTests::aPollThatWasInFlightCannotBringBackAnEndedTrace | test |
@@ -160,6 +165,8 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | LP-2 | [[location-profile]] | medium | Stationary drop never recovers promptly | test: LocationProfileTests | test |
 | MC-1 | [[mode-change-reroute]] | medium | Cancelled request surfaced as 'Routing service isn't responding' | test: CancelledRequestTests | test |
 | RF-1 | [[route-failure]] | medium | Offline vs a struggling server look the same as `network` unless connectivity is consulted | test: RoutingErrorMappingTests | test |
+| RF-10 | [[route-failure]] | medium | A long real drive (Melbourne to Perth) is wrongly refused | test: RoutePlausibilityTests::aLongRealDriveIsStillAllowed | test |
+| RF-9 | [[route-failure]] | medium | A destination on another continent is sent to the router (slow, hammers a shared server, can retry for ever) | test: RoutePlausibilityTests::anotherContinentIsNeverRouted; FollowFriendTests::guidingToAnotherContinentNeverCallsTheRouter | test |
 | TM-1 | [[travel-modes]] | medium | A tuning value changed for one mode silently changes another feature (everything reads the table) | test: driving values pinned in TravelModeTests | test |
 | CT-2 | [[compass-tilt]] | low | Stage resets mid-leg and the dial jumps back | test: CompassTiltTests | test |
 | FR-1 | [[friends]] | low | Every call fails while `apiBaseURL` is the placeholder | test: AuthManagerTests::friendsAndNearbyNeedTheServiceAddress (now fails with a plain message instead of a network error); the real address is still to be set | test |

@@ -1,5 +1,5 @@
 // Run:  /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc -m test.mjs     (or: node test.mjs)
-import { makeHandler, MAX_OPEN_REQUESTS } from "./core.mjs";
+import { makeHandler, MAX_OPEN_REQUESTS, REQUEST_TTL_SECONDS } from "./core.mjs";
 
 const out = typeof print === "function" ? print : console.log;
 if (typeof console === "undefined") globalThis.console = { log: out, error() {} };
@@ -7,9 +7,9 @@ let failures = 0, passed = 0;
 const check = (name, ok) => { if (ok) passed++; else { failures++; out("FAIL: " + name); } };
 
 function fakeDb() {
-  const t = { Users: new Map(), Friends: new Map() };
+  const t = { Users: new Map(), Friends: new Map(), Blocks: new Map() };
   const fk = (k) => `${k.userId}|${k.otherUserId}`;
-  const key = (table, k) => table === "Users" ? k.id : fk(k);
+  const key = (table, k) => table === "Users" ? k.id : table === "Blocks" ? `${k.blockerId}|${k.blockedId}` : fk(k);
   const db = {
     t, failNextTransact: null, transactCalls: 0,
     get: async (table, k) => t[table].get(key(table, k)),
@@ -33,7 +33,8 @@ const ev = (routeKey, sub, body, extra = {}) => ({ routeKey, body: body === unde
 const J = (r) => JSON.parse(r.body);
 
 const db = fakeDb();
-const h = makeHandler({ db, now: () => 1_800_000_000_000 });
+let clock = 1_800_000_000_000;
+const h = makeHandler({ db, now: () => clock });
 db.t.Users.set("alice", { id: "alice", username: "Alice", email: "alice@secret.example" });
 db.t.Users.set("bob", { id: "bob", username: "bob", email: "bob@secret.example" });
 db.t.Users.set("carol", { id: "carol", username: "carol", email: "carol@secret.example" });
@@ -118,6 +119,63 @@ for (let i = 0; i < MAX_OPEN_REQUESTS; i++) db.t.Friends.set(`alice|u${i}`, { us
 r = await h(ev("POST /friends/request", "alice", { friendId: "bob" }));
 check("too many open requests", r.statusCode === 429);
 for (let i = 0; i < MAX_OPEN_REQUESTS; i++) db.t.Friends.delete(`alice|u${i}`);
+
+// ---- a request nobody answers disappears after 2 hours
+db.t.Friends.clear();
+r = await h(ev("POST /friends/request", "alice", { friendId: "bob" }));
+check("a new request carries a time-to-live for DynamoDB", db.t.Friends.get("alice|bob").expiresAt === clock / 1000 + REQUEST_TTL_SECONDS && db.t.Friends.get("bob|alice").expiresAt === clock / 1000 + REQUEST_TTL_SECONDS);
+clock += (REQUEST_TTL_SECONDS - 60) * 1000;
+r = await h(ev("GET /friends", "bob", undefined, { queryStringParameters: { status: "INCOMING" } }));
+check("still visible a minute before it expires", J(r).length === 1);
+clock += 61 * 1000;
+r = await h(ev("GET /friends", "bob", undefined, { queryStringParameters: { status: "INCOMING" } }));
+check("gone from the receiver after 2 hours", J(r).length === 0);
+r = await h(ev("GET /friends", "alice", undefined, { queryStringParameters: { status: "PENDING" } }));
+check("and from the sender", J(r).length === 0);
+r = await h(ev("POST /friends/respond", "bob", { requesterId: "alice", action: "accept" }));
+check("an expired request cannot be accepted", r.statusCode === 404 && db.t.Friends.get("alice|bob")?.status !== "ACCEPTED");
+r = await h(ev("POST /friends/request", "alice", { friendId: "bob" }));
+check("it can be sent again, replacing the old one", r.statusCode === 201 && db.t.Friends.get("bob|alice").requestedAt === new Date(clock).toISOString());
+await h(ev("POST /friends/respond", "bob", { requesterId: "alice", action: "accept" }));
+clock += 10 * REQUEST_TTL_SECONDS * 1000;
+r = await h(ev("GET /friends", "bob", undefined, { queryStringParameters: { status: "ACCEPTED" } }));
+check("a friendship itself never expires", J(r).length === 1 && db.t.Friends.get("bob|alice").expiresAt === undefined);
+await h(ev("DELETE /friends/{friendID}", "alice", undefined, { pathParameters: { friendID: "bob" } }));
+for (let i = 0; i < MAX_OPEN_REQUESTS; i++) db.t.Friends.set(`alice|u${i}`, { userId: "alice", otherUserId: `u${i}`, status: "PENDING", requestedAt: new Date(clock - (REQUEST_TTL_SECONDS + 5) * 1000).toISOString() });
+r = await h(ev("POST /friends/request", "alice", { friendId: "bob" }));
+check("expired requests do not count toward the cap", r.statusCode === 201);
+db.t.Friends.clear();
+
+// ---- blocking
+db.t.Blocks.set("bob|alice", { blockerId: "bob", blockedId: "alice" });                       // bob blocked alice
+r = await h(ev("GET /friends/search", "alice", undefined, { queryStringParameters: { username: "bob" } }));
+check("search hides someone who blocked you", J(r).length === 0);
+r = await h(ev("GET /friends/search", "bob", undefined, { queryStringParameters: { username: "Alice" } }));
+check("and someone you blocked", J(r).length === 0);
+r = await h(ev("GET /friends/search", "carol", undefined, { queryStringParameters: { username: "bob" } }));
+check("but not from anyone else", J(r).length === 1);
+r = await h(ev("POST /friends/request", "alice", { friendId: "bob" }));
+check("a request to someone who blocked you looks like any other", r.statusCode === 201 && J(r).status === "PENDING");
+check("but only the sender's side is stored", db.t.Friends.get("alice|bob")?.status === "PENDING" && !db.t.Friends.has("bob|alice"));
+r = await h(ev("GET /friends", "alice", undefined, { queryStringParameters: { status: "PENDING" } }));
+check("the sender sees it pending, like any request nobody has answered", J(r).length === 1 && J(r)[0].id === "bob");
+db.t.Friends.set("bob|carol", { userId: "bob", otherUserId: "carol", status: "ACCEPTED" });
+db.t.Friends.set("carol|bob", { userId: "carol", otherUserId: "bob", status: "ACCEPTED" });
+db.t.Blocks.set("carol|bob", { blockerId: "carol", blockedId: "bob" });
+r = await h(ev("GET /friends", "bob", undefined, { queryStringParameters: { status: "ACCEPTED" } }));
+check("a blocked person is never listed, even if a stale row remains", J(r).length === 0);
+db.t.Friends.set("bob|alice", { userId: "bob", otherUserId: "alice", status: "INCOMING", requestedAt: new Date(clock).toISOString() });
+r = await h(ev("POST /friends/respond", "bob", { requesterId: "alice", action: "accept" }));
+check("a request from someone you blocked cannot be accepted", r.statusCode === 404);
+db.t.Blocks.clear(); db.t.Friends.clear();
+
+// ---- deactivated accounts
+db.t.Users.set("dora", { id: "dora", username: "dora", deactivated: true });
+r = await h(ev("GET /friends/search", "alice", undefined, { queryStringParameters: { username: "dora" } }));
+check("a deactivated account is not found", J(r).length === 0);
+r = await h(ev("POST /friends/request", "alice", { friendId: "dora" }));
+check("and cannot be asked", r.statusCode === 404);
+db.t.Users.delete("dora");
 
 // ---- errors never echo AWS text, logs hold the name only
 const broken = makeHandler({ db: { ...db, get: async () => { throw Object.assign(new Error("arn:aws:dynamodb:...:table/Users secret"), { name: "AccessDeniedException" }); } } });

@@ -12,6 +12,8 @@ import ThatWayUI
 struct RootView: View {
     @StateObject private var app = AppModel()
     @Environment(\.scenePhase) private var scenePhase
+    @State private var showLockHelp = false
+    @State private var closingAccount = false
 
     var body: some View {
         ZStack {
@@ -28,7 +30,14 @@ struct RootView: View {
                 case .signedOut, .needsConfirmation, .needsAppleUsername, .resettingPassword:
                     AuthScreen()
                 case .signedIn:
-                    signedInContent
+                    if app.safetyManager.needsReactivation {
+                        // A deactivated account that signs in must choose before anything else.
+                        ReactivationScreen(safety: app.safetyManager, theme: app.currentTheme,
+                                           deleteInstead: { closingAccount = true }, signOut: { app.authManager.signOut() })
+                            .sheet(isPresented: $closingAccount) { closeAccountSheet }
+                    } else {
+                        signedInContent
+                    }
                 }
             }
         }
@@ -46,13 +55,20 @@ struct RootView: View {
     @ViewBuilder
     private var signedInContent: some View {
         ZStack {
-            Group {
-                switch app.screen {
-                case .compass: CompassScreen()
-                case .map: MapScreen()
-                case .store: StoreScreen()
-                case .profile: ProfileScreen()
+            VStack(spacing: 6) {
+                // Banners that stay for as long as they are true, on every tab: who can trace you, and a phone with no lock.
+                StatusBanners(trace: app.traceManager, lock: app.screenLock, theme: app.currentTheme,
+                              openTraced: { app.selectTab(.profile) }, openLockHelp: { showLockHelp = true })
+                    .zIndex(1)         // above the compass backdrop, which paints past its own edges
+                Group {
+                    switch app.screen {
+                    case .compass: CompassScreen()
+                    case .map: MapScreen()
+                    case .store: StoreScreen()
+                    case .profile: ProfileScreen()
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .foregroundStyle(app.currentTheme.ink)
 
@@ -60,8 +76,8 @@ struct RootView: View {
                 Spacer()
                 // The selection is passed in (not read from the environment inside the bar): RootView is what re-renders
                 // when the screen changes, and the bar used to keep showing WAY as selected while another tab was open.
-                TabBar(selected: app.screen, navigating: !app.isIdle, friends: app.friendsManager)
-                    .id(app.screen)      // rebuilt on every change: without this the bar kept showing WAY as selected
+                TabBar(selected: app.screen, navigating: !app.isIdle, friends: app.friendsManager, trace: app.traceManager, themeID: app.theme)
+                    .id("\(app.screen)-\(app.theme.rawValue)")      // rebuilt on every tab or theme change: without this the bar kept showing WAY as selected
             }
 
             if app.avatarSheet {
@@ -71,6 +87,28 @@ struct RootView: View {
         // On a wide screen (iPad, an unfolded foldable) the app stays a phone-width column in the
         // middle rather than stretching every control to fit.
         .frame(maxWidth: 480)
+        .sheet(isPresented: $showLockHelp) {
+            ScreenLockHelpSheet(theme: app.currentTheme, hasAppPasscode: app.authManager.currentUser.map { app.ownerAuth.appPasscode.isSet(for: $0.id) } ?? false) { showLockHelp = false }
+        }
+        // "X is still tracing you. Want to stop?" (at most every 30 minutes while they keep looking.)
+        .alert(
+            app.traceManager.stillTracing.map { TraceCopy.stillTracing(name: $0.username) } ?? "",
+            isPresented: Binding(get: { app.traceManager.stillTracing != nil }, set: { if !$0 { app.traceManager.dismissStillTracing() } })
+        ) {
+            Button("Stop tracing", role: .destructive) {
+                if let friend = app.traceManager.stillTracing, let watcher = app.traceManager.watchers.first(where: { $0.id == friend.id }) {
+                    Task { await app.traceManager.revoke(watcher) }
+                }
+                app.traceManager.dismissStillTracing()
+            }
+            Button("Keep allowing", role: .cancel) { app.traceManager.dismissStillTracing() }
+        } message: {
+            Text("Do you want to stop them?")
+        }
+    }
+
+    private var closeAccountSheet: some View {
+        CloseAccountSheet(safety: app.safetyManager, owner: app.ownerAuth, email: app.authManager, theme: app.currentTheme) { closingAccount = false }
     }
 }
 
@@ -89,7 +127,15 @@ private struct TabBar: View {
     let selected: AppScreen
     let navigating: Bool
     @ObservedObject var friends: FriendsManager
+    @ObservedObject var trace: TraceManager
+    /// Changes with the theme so the bar is rebuilt in the new colours.
+    let themeID: ThemeID
     @Namespace private var bubble
+
+    /// Something on the You tab needs an answer: a friend request held for a decision, or a request to trace you.
+    private var waiting: Bool {
+        (friends.requestPolicy == .requestsOnly && !friends.incomingRequests.isEmpty) || !trace.incoming.isEmpty
+    }
 
     var body: some View {
         let theme = app.currentTheme
@@ -108,8 +154,8 @@ private struct TabBar: View {
                                     .offset(x: 6, y: -3)
                                     .accessibilityHidden(true)
                             }
-                            // A friend request is waiting (only when they are held for a decision): a dot on YOU.
-                            if s == .profile, friends.requestPolicy == .requestsOnly, !friends.incomingRequests.isEmpty {
+                            // A friend request is waiting (only when they are held for a decision), or someone has asked to trace you: a dot on YOU.
+                            if s == .profile, waiting {
                                 Circle().fill(theme.needleRed).frame(width: 9, height: 9)
                                     .overlay(Circle().stroke(theme.screen, lineWidth: 1.5))
                                     .offset(x: 7, y: -3)
@@ -132,7 +178,7 @@ private struct TabBar: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(s.label.capitalized + (s == .compass && navigating ? ", navigating" : "") + (s == .profile && friends.requestPolicy == .requestsOnly && !friends.incomingRequests.isEmpty ? ", friend request waiting" : ""))
+                .accessibilityLabel(s.label.capitalized + (s == .compass && navigating ? ", navigating" : "") + (s == .profile && waiting ? ", something is waiting for your answer" : ""))
                 .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
             }
         }

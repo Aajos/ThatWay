@@ -2,24 +2,14 @@
 //  Trace.swift
 //  ThatWayCore
 //
-//  "Trace a friend": the wire types for a consented tracing session and the fusion that turns a friend's GPS position
+//  "Trace a friend": the position as the server relays it, and the fusion that turns a friend's GPS position
 //  (any range, anywhere in the world) and, when close, an Ultra Wideband reading into one direction and distance.
+//  (The permission model itself, who may trace whom and for how long, is in Grants.swift.)
 //  Only direction and distance ever leave this file: nothing here draws, stores or prints a coordinate.
 //
 
 import Foundation
 import CoreLocation
-
-public enum TraceStatus: String, Codable, Sendable {
-    /// I asked; they have not answered.
-    case outgoing = "OUTGOING"
-    /// They asked; I must accept or decline.
-    case incoming = "INCOMING"
-    /// Both said yes: positions flow.
-    case active = "ACTIVE"
-    /// They said no (the server keeps this for a minute so the asker is told).
-    case declined = "DECLINED"
-}
 
 /// The friend's last position as the server relays it, with its age in seconds. Held in memory only.
 public struct TracePeerPosition: Codable, Equatable, Sendable {
@@ -35,21 +25,6 @@ public struct TracePeerPosition: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey { case latitude = "lat", longitude = "lon", accuracy = "acc", ageSeconds = "age" }
 
     public var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
-}
-
-/// One row of `GET /trace`.
-public struct TraceSession: Codable, Equatable, Sendable, Identifiable {
-    public var friendId: String
-    public var status: TraceStatus
-    public var sessionId: String
-    public var expiresAt: Double
-    public var peer: TracePeerPosition?
-
-    public var id: String { friendId }
-
-    public init(friendId: String, status: TraceStatus, sessionId: String, expiresAt: Double, peer: TracePeerPosition? = nil) {
-        self.friendId = friendId; self.status = status; self.sessionId = sessionId; self.expiresAt = expiresAt; self.peer = peer
-    }
 }
 
 public enum TraceSource: String, Sendable { case gps, uwb }

@@ -17,9 +17,11 @@ files:
   - ThatWay/Managers/AuthManager.swift
   - ThatWay/Compass/AuthScreen.swift
   - ThatWay/Managers/KeychainStore.swift
+  - backend/lambda/usernameCheck/core.mjs
   - ThatWay/Compass/RootView.swift
 tests:
   - ThatWayTests/AuthManagerTests.swift
+  - backend/lambda/usernameCheck/test.mjs
 manual_checks:
   - Sign up and receive the confirmation email (it did not arrive during Phase 0)
 depends_on: [backend-config, backend-lambda]
@@ -34,6 +36,7 @@ tags: [feature, area/accounts-backend, status/shipped, risk/high]
 
 ## What it covers
 - Sign up / confirm code / sign in / sign out
+- Usernames: lowercase letters, numbers and _, starting with a letter, 3 to 20 characters, stored lowercase so "Sam" and "sam" cannot both exist. The sign-up screen checks availability once typing pauses (500 ms) against a **public, rate-limited** route (`GET /username/available`, 5 a second) that answers only available or not (and why: taken, reserved, invalid); a failed check never blocks sign-up, Cognito has the final say
 - Forgot password: Cognito emails a reset code, the person enters it with a new password; an unconfirmed account is sent the sign-up code instead; a wrong or expired code keeps the step open
 - Send a new code, start over, and recovery from an unconfirmed account (sign-in or a repeated sign-up goes back to the code step)
 - Session restore at launch: the cached id token restores the signed-in state immediately (works offline); the refresh runs in the background and only a server rejection signs the user out; other failures keep the tokens. Requests time out at 10 s
@@ -47,13 +50,19 @@ tags: [feature, area/accounts-backend, status/shipped, risk/high]
 ## Used by
 - [[friends]] — Friends
 - [[nearby-proximity]] — Ultra Wideband last stretch (nearby)
+- [[owner-authentication]] — Owner check, app passcode and the no-lock reminder
+- [[plans-and-billing]] — Trace plans: StoreKit purchase, server verification, expiry
+- [[safety-and-account]] — Block, report, emergency control, close or deactivate an account
 - [[trace-friends]] — Trace a friend (consent, any range)
+- [[trace-grants]] — Standing trace permissions, passes, blocking
 
 ## Failure points
 
 | ID | What breaks | Caught by |
 |---|---|---|
 | AU-1 | Confirmation email never arrives, so no one can get past the gate | manual: still open on the AWS side (SETUP.md section 13); the app now offers Send a new code, and sign-in with an unconfirmed account goes back to the code step |
+| AU-6 | Two accounts with the same name in different capitals, or a name taken a second ago | test: backend/lambda/usernameCheck/test.mjs (case does not matter); AuthManagerTests::signUpUsesTheLowercaseName; Cognito refuses the rest (UsernameExistsException) |
+| AU-7 | The public availability route is abused to harvest names | manual: route throttled to 5 a second; it returns no id or email (test: usernameCheck) |
 | AU-5 | A forgotten password is a dead end (no way back in without an admin) | test: AuthManagerTests::resetWithTheRightCodeReturnsToSignIn; AuthManagerTests::aWrongResetCodeKeepsTheStepOpen |
 | AU-4 | A sign-up left unconfirmed becomes a dead end (sign-in error, username taken) | test: AuthManagerTests::signingInBeforeConfirmingSendsANewCodeInsteadOfDeadEnding |
 | AU-3 | Launching with no network signed the user out or showed a blank screen (was a real bug) | manual: gate-on build in airplane mode; fixed |

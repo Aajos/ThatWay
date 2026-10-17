@@ -406,3 +406,25 @@ app needs no change. IAM: transactions use the existing `PutItem` / `DeleteItem`
 
 Not built yet: remote push for "Sam wants to trace you" (needs the Apple Developer Program: free teams have no push
 entitlement), so a request is seen while the app is running.
+
+## 18. Trace permissions, blocking, reports, accounts and plans (created 2026-10-17)
+
+Everything here is created and checked by script, not by hand:
+
+```bash
+backend/scripts/aws.sh grants --apply     # tables Grants, Positions, Blocks, Reports, Entitlements (on-demand), TTL on Friends.expiresAt,
+                                          # the policy thatway-grants-access, the grants function and 11 routes
+backend/scripts/aws.sh account --apply    # the account function (delete / deactivate / reactivate), its policy (delete a sign-in), 4 routes,
+                                          # and the daily sweep rule thatway-account-sweep
+backend/scripts/aws.sh plan --apply       # the plan function (verifies Apple purchases) and GET /plan, POST /plan/sync
+backend/scripts/aws.sh friends --apply    # then nearby: both now read Blocks, and nearby reads Grants
+backend/scripts/grants_integration.sh     # end to end with throwaway accounts (44 checks); cleans up after itself
+```
+
+- **Order matters**: create the tables (`grants`) before deploying the friends and nearby code, which read `Blocks` and `Grants`.
+- The new tables are **on-demand**: a block or a stop must never be throttled, and at this size they cost cents. (The older `NearbyOffers` and `TraceSessions` stay provisioned inside the always-free tier.)
+- **Plan check**: `grants` and `nearby` ignore plans until `PLAN_CHECK=on` is set in their environment. Do that only once `plan` is receiving real purchases, and flip `Entitlements.serverIsAuthoritative` in the app at the same time. Set `ALLOW_SANDBOX=off` on `plan` when the app is live.
+- **The old two-way trace routes were removed** from the API on 2026-10-17 (`/trace/*`); the `trace` function and `TraceSessions` table remain, unused. `aws.sh trace --apply` would recreate the routes: do not.
+- **Account deletion** needs `cognito-idp:AdminDeleteUser` on the pool (granted by `account`). The daily sweep finishes a delete that stopped half-way and removes accounts deactivated for 12 months.
+- **Reports** are in the `Reports` table for a year. Nobody is notified when one arrives: read them with `aws dynamodb scan --table-name Reports`, and decide who does that and how often before launch.
+- Run the unit tests for every function with `jsc -m test.mjs` in its folder (grants 104, friends 50, nearby 23, account 34, plan 27, trace 43, usernameCheck 18).

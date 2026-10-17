@@ -18,6 +18,8 @@ enum RouteFailure: Equatable {
     case noRoute(mode: String)
     case noRoadNearby
     case locationUnavailable
+    /// Further than a road route is worth asking for (another continent): the compass keeps pointing straight there.
+    case tooFar(mode: String, limitKm: Int)
 
     /// Short stable name for the test log (no details).
     var logName: String {
@@ -28,6 +30,7 @@ enum RouteFailure: Equatable {
         case .rateLimited: return "rateLimited"
         case .noRoute: return "noRoute"
         case .noRoadNearby: return "noRoadNearby"
+        case .tooFar: return "tooFar"
         case .locationUnavailable: return "locationUnavailable"
         }
     }
@@ -41,6 +44,7 @@ enum RouteFailure: Equatable {
         case .noRoute(let mode): return "No \(mode) route found to this destination."
         case .noRoadNearby: return "Couldn't find a road or path near your location or the destination."
         case .locationUnavailable: return "Waiting for a GPS fix."
+        case .tooFar(let mode, let limit): return "Too far to route by \(mode) (over \(limit) km). Pointing straight there instead."
         }
     }
 
@@ -48,7 +52,7 @@ enum RouteFailure: Equatable {
     /// nothing about retrying the same request again would change the answer.
     var isRetryable: Bool {
         switch self {
-        case .noRoute, .noRoadNearby: return false
+        case .noRoute, .noRoadNearby, .tooFar: return false
         case .offline, .timeout, .serverUnavailable, .rateLimited, .locationUnavailable: return true
         }
     }

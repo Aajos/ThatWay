@@ -57,6 +57,9 @@ struct DialHost: View {
     let app: AppModel
     @ObservedObject var location: LocationManager
     let k: CGFloat
+    /// Not read in the body: it is here so that a theme change is a change of this view's inputs, which is what makes SwiftUI
+    /// rebuild the dial's state (it only holds a reference to `app`, which never changes). Without it the dial kept its old colours.
+    let themeID: ThemeID
 
     /// Holds the running continuous angles. A reference type on purpose: updating it while building the
     /// body is safe (nothing observes it) and idempotent for an unchanged reading.
@@ -206,7 +209,13 @@ struct DialView: View, Equatable {
                 }
                 .frame(width: 286 * k, height: 286 * k)
                 .rotationEffect(.degrees(state.needle))
-                .task(id: NeedleImageKey(themeID: state.themeID, skin: state.skin, k: k)) { renderNeedle(theme: theme) }
+                // A pre-rendered needle is only valid for the theme it was drawn in: drop it the instant the theme, skin or size
+                // changes (the live needle then draws in the new colours) and draw a fresh one.
+                .onChange(of: NeedleImageKey(themeID: state.themeID, skin: state.skin, k: k)) { _, _ in needleImage = nil }
+                .task(id: NeedleImageKey(themeID: state.themeID, skin: state.skin, k: k)) {
+                    guard !Task.isCancelled else { return }
+                    renderNeedle(theme: AppTheme.byId(state.themeID))
+                }
             }
             .frame(width: 286 * k, height: 286 * k)
             .clipShape(Circle())

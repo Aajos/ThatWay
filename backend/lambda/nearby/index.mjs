@@ -5,8 +5,9 @@ import { makeHandler } from "./core.mjs";
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: "ap-southeast-2" }));
 
 const db = {
-  // Eventually consistent reads: half the read cost, and a poll that is a second stale is fine for token exchange.
-  get: async (TableName, Key) => (await dynamodb.send(new GetCommand({ TableName, Key, ConsistentRead: false }))).Item,
+  // Token rows can be read eventually consistently (a poll that is a second stale is fine), but who is allowed to range with whom
+  // (friends, blocks, trace permissions) is a safety decision: those are always read consistently.
+  get: async (TableName, Key) => (await dynamodb.send(new GetCommand({ TableName, Key, ConsistentRead: TableName !== "NearbyOffers" }))).Item,
   put: (TableName, Item) => dynamodb.send(new PutCommand({ TableName, Item })),
   query: async (TableName, userId) =>
     (await dynamodb.send(new QueryCommand({
@@ -15,4 +16,10 @@ const db = {
   remove: (TableName, Key) => dynamodb.send(new DeleteCommand({ TableName, Key })),
 };
 
-export const handler = makeHandler({ db });
+// The tracer's plan, from the server's own record. Off (never expires) until purchases are verified: set PLAN_CHECK=on then.
+const planUntil = async (userId) => {
+  if (process.env.PLAN_CHECK !== "on") return Infinity;
+  return (await db.get("Entitlements", { userId }))?.planUntil ?? null;
+};
+
+export const handler = makeHandler({ db, planUntil });

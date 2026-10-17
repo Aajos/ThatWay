@@ -14,6 +14,10 @@ struct ProfileScreen: View {
     @State private var showLogShare = false
     @State private var logExport: URL?
     @State private var logRefresh = 0
+    /// A request to trace me that the person is reading (the consent sheet).
+    @State private var reviewing: IncomingTrace?
+    @State private var safetyFriend: Friend?
+    @State private var closingAccount = false
     @Environment(\.dynamicTypeSize) private var typeSize
     /// At large text sizes side-by-side controls stack vertically instead of squeezing words apart.
     private var stacked: Bool { typeSize >= .xxxLarge }
@@ -29,11 +33,18 @@ struct ProfileScreen: View {
                 } else {
                     backendDisabledNotice(theme: theme)
                 }
+                if Config.backendEnabled {
+                    TracedByYouSection(trace: app.traceManager, theme: theme, review: { reviewing = $0 }, safety: { safetyFriend = $0 })
+                }
                 friendsSettingSection(theme: theme)
+                if Config.backendEnabled {
+                    BlockedPeopleSection(safety: app.safetyManager, theme: theme)
+                }
                 defaultNavModeSection(theme: theme)
                 settingsSection(theme: theme)
                 testLogsSection(theme: theme)
                 if Config.backendEnabled {
+                    safetySection(theme: theme)
                     signOutSection(theme: theme)
                 }
                 donateBanner(theme: theme)
@@ -45,6 +56,45 @@ struct ProfileScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.top, 8)
         .background(theme.screen)
+        .sheet(item: $reviewing) { request in
+            GrantConsentSheet(trace: app.traceManager, owner: app.ownerAuth, email: app.authManager, request: request, theme: theme) { reviewing = nil }
+        }
+        .sheet(item: $safetyFriend) { friend in
+            FriendSafetySheet(safety: app.safetyManager, friend: friend, theme: theme) { safetyFriend = nil }
+        }
+        .sheet(isPresented: $closingAccount) {
+            CloseAccountSheet(safety: app.safetyManager, owner: app.ownerAuth, email: app.authManager, theme: theme) { closingAccount = false }
+        }
+    }
+
+    /// Help and the account: the emergency control, and closing the account (delete everything, or deactivate and keep the plan).
+    @ViewBuilder
+    private func safetySection(theme: AppTheme) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "hand.raised.fill").font(.system(size: 11, weight: .heavy))
+                Text("SAFETY & ACCOUNT").font(.nunito(10, .extraBold)).tracking(1.8)
+            }
+            .foregroundStyle(theme.ink.opacity(0.68))
+            VStack(alignment: .leading, spacing: 14) {
+                Text("You decide who can see where you are, every time. You can stop anyone at once, and block or report anyone from a friend’s picture (press and hold).")
+                    .font(.nunito(12, .semibold)).foregroundStyle(theme.ink.opacity(0.8))
+                EmergencyButton(theme: theme)
+                Divider().background(theme.ink.opacity(0.1))
+                Button { closingAccount = true } label: {
+                    HStack {
+                        Text("Close my account…").font(.nunito(14, .extraBold)).foregroundStyle(theme.ink)
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(theme.ink.opacity(0.5))
+                    }
+                }
+                .buttonStyle(.plain)
+                Text("Delete everything, or deactivate and keep your plan.").font(.nunito(11, .semibold)).foregroundStyle(theme.textSecondary)
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 20).fill(theme.ink.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.ink.opacity(0.09)))
+        }
     }
 
     /// Which mode a newly-picked destination drops straight into.

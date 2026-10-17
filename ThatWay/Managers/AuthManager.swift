@@ -66,6 +66,27 @@ enum AuthError: LocalizedError {
     }
 }
 
+/// The sign-up username rules. The server applies the same ones (backend/lambda/usernameCheck).
+enum UsernameRules {
+    static let hint = "3 to 20 characters: lowercase letters, numbers and _, starting with a letter."
+
+    /// Usernames are lowercase, so "Sam" and "sam" can never both exist.
+    static func normalised(_ raw: String) -> String { raw.trimmingCharacters(in: .whitespaces).lowercased() }
+
+    static func isValid(_ raw: String) -> Bool {
+        let name = normalised(raw)
+        guard (3...20).contains(name.count), let first = name.first, first.isLetter, first.isASCII else { return false }
+        return name.allSatisfy { ($0.isASCII && ($0.isLetter || $0.isNumber)) || $0 == "_" }
+    }
+}
+
+/// What the sign-up screen shows under the username field.
+enum UsernameStatus: Equatable {
+    case unchecked, checking, available, taken, reserved, invalid
+    /// The check could not be made (offline, service down): sign-up is still allowed, Cognito has the final say.
+    case unknown
+}
+
 @MainActor
 final class AuthManager: ObservableObject {
     @Published var authState: AuthState = .restoring
@@ -88,6 +109,8 @@ final class AuthManager: ObservableObject {
     /// Stashed only while waiting on `.needsAppleUsername` — retried once the person picks a
     /// handle. Apple identity tokens are short-lived but comfortably outlast that round trip.
     private var pendingAppleIdentityToken: String?
+    /// DEBUG only (`-tw-preview-signedin`): a pretend sign-in that must not be undone by the first rejected call.
+    private var isPreview = false
 
     /// Every network call goes through here so tests can answer with canned Cognito responses.
     typealias Transport = (URLRequest) async throws -> (Data, URLResponse)
@@ -103,6 +126,15 @@ final class AuthManager: ObservableObject {
     init(transport: @escaping Transport = { try await URLSession.shared.data(for: $0) }, restoreSession: Bool = true) {
         self.transport = transport
         guard restoreSession else { authState = .signedOut; return }
+        #if DEBUG
+        // Simulator aid: look at the signed-in screens without an account. No token exists, so every server call fails quietly.
+        if ProcessInfo.processInfo.arguments.contains("-tw-preview-signedin") {
+            currentUser = AuthUser(id: "preview-me", username: "you")
+            authState = .signedIn
+            isPreview = true
+            return
+        }
+        #endif
         if let refresh = KeychainStore.get(refreshTokenKey) {
             refreshToken = refresh
             // A saved login opens the app straight away from the cached identity, so a slow or missing connection
@@ -121,7 +153,8 @@ final class AuthManager: ObservableObject {
         }
     }
 
-    func signUp(username: String, email: String, password: String) async {
+    func signUp(username rawUsername: String, email: String, password: String) async {
+        let username = UsernameRules.normalised(rawUsername)      // usernames are lowercase everywhere
         isLoading = true; errorMessage = nil; noticeMessage = nil
         defer { isLoading = false }
         do {
@@ -169,6 +202,34 @@ final class AuthManager: ObservableObject {
         } catch {
             if (error as? AuthError)?.cognitoName != "InvalidParameterException" { errorMessage = error.localizedDescription }
             return false
+        }
+    }
+
+    // MARK: Username availability
+
+    /// Asks the backend whether a new username is free. No sign-in is needed (nobody has one yet), so the call goes to a
+    /// public, rate-limited route that answers only available or not.
+    func usernameAvailability(_ raw: String) async -> UsernameStatus {
+        guard UsernameRules.isValid(raw) else { return .invalid }
+        guard Config.apiConfigured else { return .unknown }
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "username", value: UsernameRules.normalised(raw))]
+        guard let query = components.percentEncodedQuery, let url = URL(string: Config.apiBaseURL + "/username/available?" + query) else { return .unknown }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 6
+        do {
+            let (data, response) = try await transport(request)
+            guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let available = json["available"] as? Bool else { return .unknown }
+            if available { return .available }
+            switch json["reason"] as? String {
+            case "reserved": return .reserved
+            case "invalid": return .invalid
+            default: return .taken
+            }
+        } catch {
+            return .unknown
         }
     }
 
@@ -339,6 +400,7 @@ final class AuthManager: ObservableObject {
     /// are only valid for 60 minutes. Returns whether a usable access token came out of it.
     @discardableResult
     func refreshAccessToken() async -> Bool {
+        if isPreview { return false }
         guard let refreshToken else { authState = .signedOut; return false }
         do {
             let json = try await cognitoRequest(target: "InitiateAuth", body: [
@@ -408,5 +470,32 @@ final class AuthManager: ObservableObject {
         while base64.count % 4 != 0 { base64 += "=" }
         guard let data = Data(base64Encoded: base64) else { return nil }
         return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+}
+
+// MARK: - Proving the account's email (used before an app passcode can be set up)
+
+extension AuthManager: EmailVerifying {
+    /// Cognito sends a code to the account's email, even though the address is already verified: possession of that mailbox is
+    /// what is being proved.
+    func sendVerificationCode() async throws -> String? {
+        Self.destination(in: try await authorisedRequest(target: "GetUserAttributeVerificationCode", body: ["AttributeName": "email"]))
+    }
+
+    func verifyEmailCode(_ code: String) async throws {
+        _ = try await authorisedRequest(target: "VerifyUserAttribute", body: ["AttributeName": "email", "Code": code])
+    }
+
+    /// A call that needs the signed-in person's access token. One refresh and retry if it had just expired.
+    private func authorisedRequest(target: String, body: [String: Any]) async throws -> [String: Any] {
+        for attempt in 0..<2 {
+            guard let token = accessToken else { throw AuthError.cognito(type: "NotAuthorizedException", message: "Please sign in again.") }
+            do {
+                return try await cognitoRequest(target: target, body: body.merging(["AccessToken": token]) { mine, _ in mine })
+            } catch let error as AuthError where error.cognitoName == "NotAuthorizedException" && attempt == 0 {
+                guard await refreshAccessToken() else { throw error }
+            }
+        }
+        throw AuthError.unexpectedResponse
     }
 }

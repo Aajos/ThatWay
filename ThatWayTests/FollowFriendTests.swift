@@ -123,3 +123,59 @@ struct FollowFriendTests {
         #expect(app.destinationCoordinate == nil)
     }
 }
+
+// MARK: - Too far to route: nothing is asked of the router
+
+@MainActor
+@Suite(.serialized)
+struct TooFarTests {
+    private let london = CLLocationCoordinate2D(latitude: 51.5, longitude: -0.12)
+    private let sam = Friend(id: "sam-id", username: "sam", status: "ACCEPTED", requestedAt: nil, acceptedAt: nil)
+
+    private func make() -> (AppModel, MockRoutingProvider) {
+        let here = AppModel.mockUserLocation
+        let route = Route(geometry: (0...10).map { CLLocationCoordinate2D(latitude: here.latitude, longitude: here.longitude + Double($0) * 0.00002) },
+                          distance: 150, duration: 100, steps: [], segmentDurations: [], segmentSpeeds: [])
+        let provider = MockRoutingProvider(alwaysSucceedingWith: route)
+        let app = AppModel(routingManager: RoutingManager(provider: provider))
+        app.clearDestination()
+        return (app, provider)
+    }
+
+    private func settle() async { try? await Task.sleep(for: .milliseconds(200)) }
+
+    @Test func guidingToAnotherContinentNeverCallsTheRouter() async {
+        let (app, provider) = make()
+        app.followFriend(sam, at: london, guide: true)
+        await settle()
+        #expect(app.guiding)
+        #expect(provider.callCount == 0, "no request is sent for a destination on another continent")
+        #expect(app.routingManager.currentFailure == .tooFar(mode: "walking", limitKm: 200))
+        #expect(app.destinationCoordinate?.latitude == london.latitude, "the needle still has a target to point at")
+    }
+
+    @Test func pointingAtAnotherContinentShowsNoErrorAndAsksNothing() async {
+        let (app, provider) = make()
+        app.followFriend(sam, at: london, guide: false)
+        await settle()
+        #expect(provider.callCount == 0)
+        #expect(app.routingManager.currentFailure == nil)
+    }
+
+    @Test func theRouteIsAskedForOnceTheyAreWithinReach() async {
+        let (app, provider) = make()
+        let clock = FollowClockBox()
+        app.followClock = { clock.now }
+        app.followFriend(sam, at: london, guide: true)
+        await settle()
+        #expect(provider.callCount == 0)
+        clock.now = clock.now.addingTimeInterval(30)
+        let near = CLLocationCoordinate2D(latitude: AppModel.mockUserLocation.latitude + 0.01, longitude: AppModel.mockUserLocation.longitude)
+        app.friendMoved(to: near)
+        for _ in 0..<300 where provider.callCount == 0 { try? await Task.sleep(for: .milliseconds(10)) }
+        #expect(provider.callCount >= 1, "the first route is fetched as soon as the target is within reach")
+        #expect(app.routingManager.currentFailure != .tooFar(mode: "walking", limitKm: 200))
+    }
+}
+
+final class FollowClockBox { var now = Date(timeIntervalSince1970: 1_800_000_000) }

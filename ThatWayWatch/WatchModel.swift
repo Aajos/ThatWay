@@ -20,7 +20,7 @@ final class WatchModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     enum Skin: String, CaseIterable { case needle, wheel, clock }
 
     /// The same palettes as the iPhone app. Tap the compass to cycle theme, long-press to cycle needle skin.
-    @Published var themeID: ThemeID = ThemeID(rawValue: UserDefaults.standard.string(forKey: "watchTheme") ?? "") ?? .ember {
+    @Published var themeID: ThemeID = ThemeID(rawValue: UserDefaults.standard.string(forKey: "watchTheme") ?? "") ?? .tide {
         didSet { UserDefaults.standard.set(themeID.rawValue, forKey: "watchTheme") }
     }
     @Published var skin: Skin = Skin(rawValue: UserDefaults.standard.string(forKey: "watchSkin") ?? "") ?? .needle {

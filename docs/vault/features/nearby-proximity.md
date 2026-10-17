@@ -61,6 +61,7 @@ tags: [feature, area/accounts-backend, status/spike, risk/high]
 
 ## Used by
 - [[trace-friends]] — Trace a friend (consent, any range)
+- [[trace-grants]] — Standing trace permissions, passes, blocking
 
 ## Failure points
 

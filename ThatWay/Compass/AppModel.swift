@@ -54,14 +54,27 @@ final class AppModel: ObservableObject {
     let locationCheckScheduler = LocationCheckScheduler()
     let authManager = AuthManager()
     lazy var friendsManager = FriendsManager(auth: authManager)
-    /// Consent-based friend tracing: a request, an acceptance, then direction and distance at any range.
-    /// The single switch for anything paid (today a dummy purchase).
-    let entitlements = Entitlements()
+    /// The single switch for anything paid (today a dummy purchase). A plan that ends reminds the person 30 minutes before.
+    let entitlements = Entitlements(reminder: LocalPlanReminder())
+    /// "Is this really the phone's owner?" before anyone is allowed to see where they are (Face ID, phone passcode, or an app passcode).
+    lazy var ownerAuth = OwnerAuthCoordinator(userId: { [weak self] in self?.authManager.currentUser?.id })
+    /// The persistent "your phone has no screen lock" reminder.
+    let screenLock = ScreenLockStatus()
+    /// Buying a plan: StoreKit, then the server verifies Apple's signature and says what the plan is.
+    lazy var planStore: PlanStore = {
+        let store = PlanStore(billing: StoreKitBilling(), api: friendsManager)
+        store.onStatus = { [weak self] status in self?.entitlements.applyServerPlan(until: status.until, forever: status.forever) }
+        return store
+    }()
+    /// Block, report, and closing the account.
+    lazy var safetyManager = SafetyManager(api: friendsManager)
 
+    /// Permission-based friend tracing: the traced person grants, for a time they choose; the tracer looks, one friend at a time.
     lazy var traceManager = TraceManager(
         api: friendsManager,
         ranging: nearbyManager,
         notifier: LocalTraceNotifier(),
+        owner: ownerAuth,
         friends: { [weak self] in self?.friendsManager.friends ?? [] },
         refreshFriends: { [weak self] in await self?.friendsManager.refresh() },
         myPosition: { [weak self] in
@@ -109,7 +122,11 @@ final class AppModel: ObservableObject {
         let moved = last.map { CompassManager.distance(from: $0.target, to: position) } ?? .infinity
         let elapsed = last.map { followClock().timeIntervalSince($0.at) } ?? .infinity
         let threshold = max(40, min(500, routingManager.remainingDistance * 0.1))
-        guard moved > threshold, elapsed >= 20 else { return }
+        // Too far to route when guiding began, but now within reach (they or you closed the gap): ask for the first
+        // route as soon as the throttle allows, whatever the size of the last move.
+        let firstRouteDue = !routingManager.hasRoute
+            && RoutePlausibility.check(from: currentPosition, to: position, profile: travelProfile) == .routable
+        guard (moved > threshold || firstRouteDue), elapsed >= 20 else { return }
         lastFollowFetch = (followClock(), position)
         tripLog.count("followReroute")
         fetchRoute(to: position, isReroute: false)
@@ -124,11 +141,22 @@ final class AppModel: ObservableObject {
         traceManager.onFollow = { [weak self] friend, coordinate, guide in self?.followFriend(friend, at: coordinate, guide: guide) }
         traceManager.onStopFollowing = { [weak self] in self?.stopFollowing() }
         traceManager.onFriendPosition = { [weak self] _, coordinate in self?.friendMoved(to: coordinate) }
-        // Sharing a position is what keeps the app alive in the background, so a trace does not stop mid-trip.
-        traceManager.$state
+        entitlements.$isPaid.combineLatest(entitlements.$planEnds)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.updateBackgroundTracking() }
+            .sink { [weak self] _ in self?.traceManager.entitlementChanged() }
             .store(in: &cancellables)
+        // After a block the server has already removed the friendship and every permission: bring this phone up to date.
+        safetyManager.afterBlock = { [weak self] _ in
+            await self?.friendsManager.refresh()
+            await self?.traceManager.poll()
+        }
+        // The server confirmed a deletion or deactivation: sign out and clear what this phone keeps.
+        safetyManager.afterAccountClosed = { [weak self] deleted in
+            guard let self else { return }
+            if deleted, let id = authManager.currentUser?.id { ownerAuth.appPasscode.clear(for: id) }
+            safetyManager.reset()
+            authManager.signOut()
+        }
     }
 
     /// Ultra Wideband ranging for the last stretch of a trace. Nothing about a trace goes to the watch for now
@@ -200,11 +228,14 @@ final class AppModel: ObservableObject {
                 self?.friendsManager.incomingRequests = (1...100).map { Friend(id: "r\($0)", username: "user\($0)", status: "INCOMING", requestedAt: String(format: "2026-10-%02d", min(28, $0 % 28 + 1)), acceptedAt: nil) }.sorted { ($0.requestedAt ?? "") > ($1.requestedAt ?? "") }
             }
         }
+        if ProcessInfo.processInfo.arguments.contains("-tw-preview-theme-flip") {      // switches to the light theme after 3 s
+            Task { @MainActor [weak self] in try? await Task.sleep(for: .seconds(3)); self?.setTheme(.paper) }
+        }
         if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-tw-preview-trace"), i + 1 < ProcessInfo.processInfo.arguments.count {
-            let name = ProcessInfo.processInfo.arguments[i + 1]
+            let names = ProcessInfo.processInfo.arguments[i + 1].split(separator: ",").map(String.init)      // e.g. "incoming,watchers"
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(2))      // after the sign-in sink has run its reset
-                self?.traceManager.previewState(name)
+                for name in names { self?.traceManager.previewState(name) }
             }
         }
         #endif
@@ -215,7 +246,13 @@ final class AppModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 guard let self else { return }
-                if state == .signedIn { self.traceManager.setSceneActive(self.sceneActive) } else { self.traceManager.reset() }
+                if state == .signedIn {
+                    self.traceManager.setSceneActive(self.sceneActive)
+                    Task { await self.safetyManager.checkAccount(); await self.safetyManager.loadBlocked() }
+                    self.planStore.start()
+                } else {
+                    self.traceManager.reset(); self.safetyManager.reset(); self.planStore.stop()
+                }
             }
             .store(in: &cancellables)
         #if PERF
@@ -274,7 +311,7 @@ final class AppModel: ObservableObject {
         let profile = LocationProfile.make(
             mode: travelMode,
             guiding: guiding && !arrived,
-            hasDestination: destinationCoordinate != nil || traceManager.isSharing,
+            hasDestination: destinationCoordinate != nil,
             distanceToNextTurn: guiding && hasRealRoute && !arrived ? distanceToManeuver : nil,
             stationary: stationary,
             lowPower: lowPower
@@ -294,6 +331,7 @@ final class AppModel: ObservableObject {
         guard active != sceneActive else { return }
         sceneActive = active
         traceManager.setSceneActive(active && authManager.authState == .signedIn)
+        if active { screenLock.refresh(); if authManager.authState == .signedIn { Task { await planStore.refresh() } } }
         tripLog.count(active ? "screenOn" : "screenOff")
         updateScreenAwake()
         if active {
@@ -328,9 +366,9 @@ final class AppModel: ObservableObject {
 
     /// Background location only runs while a trip is being guided and hasn't ended in arrival.
     private func updateBackgroundTracking() {
-        // A trip being guided, or an accepted trace (this phone is sharing its position): either needs the app alive
-        // with the screen locked. Nothing else ever gets background location.
-        locationManager.setBackgroundGuidance((guiding && !arrived) || traceManager.isSharing, activityType: travelMode.locationActivityType)
+        // Only a trip being guided needs the app alive with the screen locked. Letting a friend trace you does NOT keep your
+        // location running in the background: it is shared while ThatWay is open (and once on leaving), as the consent says.
+        locationManager.setBackgroundGuidance(guiding && !arrived, activityType: travelMode.locationActivityType)
         refreshLocationProfile()
         updateScreenAwake()
         if sceneActive, timer != nil, abs(tickInterval - lastTickInterval) > 0.01 { startTick() }
@@ -963,6 +1001,14 @@ final class AppModel: ObservableObject {
         }
         let origin = currentPosition
         let profile = travelProfile
+        // Before any request: another continent (or far beyond what a road route is for) is never sent to the router. An
+        // old route to somewhere else must not linger; while guiding the card explains, and the needle keeps pointing
+        // straight there. In Point mode nothing is shown (pointing needs no route).
+        if case .tooFar(let limit) = RoutePlausibility.check(from: origin, to: destination, profile: profile) {
+            routingManager.clear()
+            if guiding { routingManager.declareUnroutable(.tooFar(mode: profile.displayName, limitKm: Int(limit))) }
+            return
+        }
         await routingManager.getRoute(from: origin, to: destination, profile: profile, isReroute: isReroute)
         guard guiding, routingManager.hasRoute, !arrived else { return }
         tripLog.routeInfo(metres: routingManager.routeLength, seconds: routingManager.totalDuration, steps: routingManager.cards.count)

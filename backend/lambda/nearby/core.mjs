@@ -2,9 +2,12 @@
 // other's NearbyInteraction discovery token; this relays them. Pure logic, no AWS imports, so it runs under
 // `jsc -m test.mjs` (macOS) or `node test.mjs` without credentials. index.mjs wires it to DynamoDB.
 //
-// Privacy: an offer is an opaque token plus who it is for. It holds no location, is only accepted between ACCEPTED
-// friends, expires after two minutes (DynamoDB TTL on `expiresAt`, and every read re-checks it), and the code never
-// logs a token or a request body.
+// Privacy: an offer is an opaque token plus who it is for. It holds no location, expires after two minutes (DynamoDB TTL on
+// `expiresAt`, and every read re-checks it), and the code never logs a token or a request body.
+//
+// Who may exchange tokens (checked on write AND on every read): mutual ACCEPTED friends, neither has blocked the other, and a
+// live trace permission between them in either direction (the Grants table: someone is allowed to trace the other right now,
+// and that tracer's plan is still running). Ranging up close is part of a trace, never a way around one.
 
 export const OFFER_TTL_SECONDS = 120;
 export const MAX_TOKEN_LENGTH = 4096;
@@ -29,12 +32,26 @@ export function validateOffer(body) {
 }
 
 /** `db` needs get(table, key), put(table, item), query(table, userId), remove(table, key). */
-export function makeHandler({ db, now = () => Date.now() }) {
+export function makeHandler({ db, now = () => Date.now(), planUntil = async () => Infinity }) {
   const nowSeconds = () => Math.floor(now() / 1000);
 
-  async function areFriends(a, b) {
+  async function oneWayFriend(a, b) {
     const row = await db.get("Friends", { userId: a, otherUserId: b });
     return row?.status === "ACCEPTED";
+  }
+  const blockedEitherWay = async (a, b) =>
+    Boolean(await db.get("Blocks", { blockerId: a, blockedId: b }) || await db.get("Blocks", { blockerId: b, blockedId: a }));
+  const liveGrant = (row) => Boolean(row) && row.status === "ACTIVE" && row.grantedUntil > nowSeconds();
+  async function planLive(userId) { const until = await planUntil(userId); return Boolean(until) && until > nowSeconds(); }
+
+  /** May these two phones exchange tokens right now? */
+  async function areFriends(a, b) {
+    if (!(await oneWayFriend(a, b)) || !(await oneWayFriend(b, a))) return false;
+    if (await blockedEitherWay(a, b)) return false;
+    const aTraces = await db.get("Grants", { traceeId: b, tracerId: a });
+    if (liveGrant(aTraces) && (await planLive(a))) return true;
+    const bTraces = await db.get("Grants", { traceeId: a, tracerId: b });
+    return liveGrant(bTraces) && (await planLive(b));
   }
 
   return async function handler(event) {
@@ -49,7 +66,7 @@ export function makeHandler({ db, now = () => Date.now() }) {
         const problem = validateOffer(body);
         if (problem) return reply(400, { error: problem });
         if (body.friendId === me) return reply(400, { error: "You can't find yourself" });
-        if (!(await areFriends(me, body.friendId))) return reply(403, { error: "You can only find accepted friends" });
+        if (!(await areFriends(me, body.friendId))) return reply(403, { error: "You can only find a friend during a trace they allowed" });
 
         const expiresAt = nowSeconds() + OFFER_TTL_SECONDS;
         await db.put("NearbyOffers", {

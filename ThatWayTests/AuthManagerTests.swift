@@ -162,6 +162,120 @@ struct AuthManagerTests {
         #expect(auth.authState == .needsConfirmation(username: "sam"))
     }
 
+    // MARK: Username availability
+
+    @Test func theRulesAreLowercaseLettersNumbersAndUnderscore() {
+        #expect(UsernameRules.isValid("sam"))
+        #expect(UsernameRules.isValid("  Sam_99  "), "trimmed and lowercased first")
+        #expect(UsernameRules.normalised("  Sam_99 ") == "sam_99")
+        #expect(!UsernameRules.isValid("ab"))
+        #expect(!UsernameRules.isValid(String(repeating: "a", count: 21)))
+        #expect(!UsernameRules.isValid("1sam"))
+        #expect(!UsernameRules.isValid("sam smith"))
+        #expect(!UsernameRules.isValid("sam-smith"))
+        #expect(!UsernameRules.isValid("sämüel"), "ASCII only")
+        #expect(!UsernameRules.isValid(""))
+    }
+
+    @Test func anInvalidNameIsNeverSentToTheServer() async {
+        let stub = CognitoStub()
+        let auth = makeManager(stub)
+        #expect(await auth.usernameAvailability("a b") == .invalid)
+        #expect(stub.targets.isEmpty)
+    }
+
+    @Test func theServersAnswersMapToStatuses() async {
+        let stub = CognitoStub()
+        let auth = makeManager(stub)
+        stub.ok("", ["available": true])
+        #expect(await auth.usernameAvailability("freshname") == .available)
+        stub.ok("", ["available": false, "reason": "taken"])
+        #expect(await auth.usernameAvailability("aadit") == .taken)
+        stub.ok("", ["available": false, "reason": "reserved"])
+        #expect(await auth.usernameAvailability("admin") == .reserved)
+    }
+
+    @Test func aFailedCheckNeverBlocksSigningUp() async {
+        let stub = CognitoStub()           // no reply configured: the stub answers 500
+        let auth = makeManager(stub)
+        #expect(await auth.usernameAvailability("somebody") == .unknown)
+    }
+
+    @Test func signUpUsesTheLowercaseName() async {
+        let stub = CognitoStub(); stub.ok("SignUp", delivery)
+        let auth = makeManager(stub)
+        await auth.signUp(username: "  Sam_99 ", email: "sam@example.com", password: "Passw0rd!23")
+        #expect(auth.authState == .needsConfirmation(username: "sam_99"))
+    }
+
+    // MARK: Proving the email (before an app passcode can be set up)
+
+    private func signedIn(_ stub: CognitoStub) async -> AuthManager {
+        let id = Self.jwt(["sub": "user-1", "cognito:username": "sam"])
+        stub.ok("InitiateAuth", ["AuthenticationResult": ["IdToken": id, "AccessToken": "access-1", "RefreshToken": "refresh-1"]])
+        let auth = makeManager(stub)
+        await auth.signIn(username: "sam", password: "Passw0rd!23")
+        return auth
+    }
+
+    private static func jwt(_ claims: [String: Any]) -> String {
+        func b64(_ data: Data) -> String { data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "") }
+        let payload = try! JSONSerialization.data(withJSONObject: claims)
+        return "\(b64(Data("{}".utf8))).\(b64(payload)).sig"
+    }
+
+    @Test func aCodeIsSentToTheVerifiedEmailAndTheMaskedAddressIsReturned() async throws {
+        let stub = CognitoStub()
+        let auth = await signedIn(stub)
+        stub.ok("GetUserAttributeVerificationCode", delivery)
+        let destination = try await auth.sendVerificationCode()
+        #expect(destination == "j***@g***")
+        #expect(stub.targets.last == "GetUserAttributeVerificationCode")
+    }
+
+    @Test func verifyingTheCodeSucceedsOrSaysWhyNot() async throws {
+        let stub = CognitoStub()
+        let auth = await signedIn(stub)
+        stub.ok("VerifyUserAttribute")
+        try await auth.verifyEmailCode("123456")
+        #expect(stub.targets.last == "VerifyUserAttribute")
+        stub.fail("VerifyUserAttribute", type: "CodeMismatchException")
+        do { try await auth.verifyEmailCode("000000"); Issue.record("should have thrown") }
+        catch { #expect(error.localizedDescription.contains("isn't right")) }
+    }
+
+    @Test func withoutBeingSignedInNoCodeIsSent() async {
+        let stub = CognitoStub()
+        let auth = makeManager(stub)
+        await #expect(throws: AuthError.self) { _ = try await auth.sendVerificationCode() }
+        #expect(stub.targets.isEmpty)
+    }
+
+    @Test func anExpiredSessionIsRefreshedOnceThenTheCodeIsSent() async throws {
+        let stub = CognitoStub()
+        // First call: the access token has expired. The refresh works. The second try succeeds.
+        var calls = 0
+        let inner = stub.transport
+        let flaky: AuthManager.Transport = { request in
+            let target = (request.value(forHTTPHeaderField: "X-Amz-Target") ?? "").replacingOccurrences(of: "AWSCognitoIdentityProviderService.", with: "")
+            if target == "GetUserAttributeVerificationCode" {
+                calls += 1
+                if calls == 1 {
+                    let data = try JSONSerialization.data(withJSONObject: ["__type": "NotAuthorizedException", "message": "expired"])
+                    return (data, HTTPURLResponse(url: request.url!, statusCode: 400, httpVersion: nil, headerFields: nil)!)
+                }
+            }
+            return try await inner(request)
+        }
+        let again = AuthManager(transport: flaky, restoreSession: false)
+        let id = Self.jwt(["sub": "user-1", "cognito:username": "sam"])
+        stub.ok("InitiateAuth", ["AuthenticationResult": ["IdToken": id, "AccessToken": "access-2", "RefreshToken": "refresh-1"]])
+        await again.signIn(username: "sam", password: "Passw0rd!23")
+        stub.ok("GetUserAttributeVerificationCode", delivery)
+        let destination = try await again.sendVerificationCode()
+        #expect(destination == "j***@g***" && calls == 2)
+    }
+
     @Test func namespacedExceptionTypesAreRecognised() {
         let error = AuthError.cognito(type: "com.amazonaws.cognito.identity.idp.model#UserNotConfirmedException", message: "x")
         #expect(error.cognitoName == "UserNotConfirmedException")

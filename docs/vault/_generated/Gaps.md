@@ -43,6 +43,7 @@ tags: [generated]
 
 ## Failure points nothing catches
 - WVS-2 [[watch-voice-search]]: Query or place name ends up in a log
+- TR-18 [[trace-friends]]: The friend's position goes stale (no upload for 90 s) while following, so the destination is an old spot and "arrived" can fire there
 - TR-12 [[trace-friends]]: Remote battery cost of 3 s polling and uploads
 - CA-1 [[continuous-angle]]: Angle value grows without bound over a very long session
 - RP-B [[route-persistence]]: Schema change breaks old saved trips
@@ -59,12 +60,17 @@ tags: [generated]
 - SP-2 [[settings-profile]]: `NavOptions` values are not persisted: tilt/units/voice reset on every launch
 - SL-1 [[watch-spike-log]]: Log lines carry a location by mistake
 - RM-2 [[route-models]]: Saved trips from an older app version fail to decode
+- RF-11 [[route-failure]]: A far but in-range route times out and the app retries for ever
 - RT-1 [[route-tracker]]: Diverges from `RoutingManager`'s copy
 
 ## Not fully real (status is not shipped/external)
 - [[friends]]: dormant
 - [[nearby-proximity]]: spike
-- [[trace-friends]]: spike
+- [[owner-authentication]]: spike
+- [[plans-and-billing]]: spike
+- [[safety-and-account]]: spike
+- [[trace-friends]]: dormant
+- [[trace-grants]]: spike
 - [[avatars-social-decor]]: setting-only
 - [[haptics-ios]]: setting-only
 - [[walkie-talkie]]: planned

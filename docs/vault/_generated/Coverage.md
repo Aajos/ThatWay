@@ -7,12 +7,16 @@ tags: [generated]
 
 | Feature | Status | Risk | Tests | Manual checks | Failure points (test / manual / none / other) |
 |---|---|---|---|---|---|
-| [[auth]] | shipped | high | 1 | 1 | 5 (2 / 3 / 0 / 0) |
+| [[auth]] | shipped | high | 2 | 1 | 7 (3 / 4 / 0 / 0) |
 | [[backend-config]] | shipped | high | 0 | 1 | 2 (0 / 0 / 1 / 1) |
 | [[backend-lambda]] | external | medium | 0 | 0 | 1 (0 / 1 / 0 / 0) |
 | [[friends]] | dormant | low | 4 | 0 | 6 (5 / 1 / 0 / 0) |
 | [[nearby-proximity]] | spike | high | 3 | 4 | 10 (7 / 3 / 0 / 0) |
-| [[trace-friends]] | spike | high | 4 | 8 | 16 (13 / 2 / 1 / 0) |
+| [[owner-authentication]] | spike | high | 2 | 5 | 0 (0 / 0 / 0 / 0) |
+| [[plans-and-billing]] | spike | high | 4 | 5 | 0 (0 / 0 / 0 / 0) |
+| [[safety-and-account]] | spike | high | 6 | 5 | 0 (0 / 0 / 0 / 0) |
+| [[trace-friends]] | dormant | high | 4 | 8 | 18 (14 / 2 / 2 / 0) |
+| [[trace-grants]] | spike | high | 7 | 6 | 0 (0 / 0 / 0 / 0) |
 | [[avatars-social-decor]] | setting-only | low | 0 | 0 | 1 (0 / 0 / 1 / 0) |
 | [[persistence-defaults]] | shipped | low | 1 | 1 | 2 (0 / 0 / 2 / 0) |
 | [[settings-profile]] | shipped | low | 0 | 1 | 3 (0 / 1 / 2 / 0) |
@@ -52,7 +56,7 @@ tags: [generated]
 | [[redraw-model]] | shipped | high | 1 | 1 | 2 (0 / 1 / 0 / 1) |
 | [[trip-log]] | shipped | low | 1 | 1 | 2 (1 / 0 / 0 / 1) |
 | [[route-data-generator]] | shipped | medium | 0 | 1 | 1 (0 / 0 / 0 / 1) |
-| [[route-failure]] | shipped | medium | 1 | 0 | 1 (1 / 0 / 0 / 0) |
+| [[route-failure]] | shipped | medium | 3 | 0 | 4 (3 / 0 / 1 / 0) |
 | [[route-persistence]] | shipped | medium | 0 | 1 | 2 (0 / 0 / 1 / 1) |
 | [[routing-governor]] | shipped | high | 1 | 1 | 2 (0 / 1 / 0 / 1) |
 | [[routing-provider-seam]] | shipped | high | 3 | 1 | 2 (1 / 0 / 1 / 0) |
@@ -72,4 +76,4 @@ tags: [generated]
 | [[watch-travel-modes]] | spike | low | 1 | 1 | 2 (0 / 2 / 0 / 0) |
 | [[watch-voice-search]] | spike | medium | 0 | 2 | 3 (0 / 1 / 1 / 1) |
 
-**Totals:** 64 features, 159 failure points: 43 caught by tests, 63 by manual checks, 35 partly, 18 not caught at all.
+**Totals:** 68 features, 166 failure points: 47 caught by tests, 64 by manual checks, 35 partly, 20 not caught at all.

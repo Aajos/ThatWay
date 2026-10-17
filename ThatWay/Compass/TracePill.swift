@@ -2,14 +2,15 @@
 //  TracePill.swift
 //  ThatWay
 //
-//  The temporary pill that takes the friends row's place while a trace is going on:
+//  The temporary pill that takes the friends row's place while YOU are tracing someone:
 //
-//    asking    you  ->  Request pending  ->  them
-//    incoming  them ->  Accept / Decline ->  you
-//    active    you  ->  arrow + distance ->  them
+//    waiting   you  ->  waiting for them  ->  them
+//    active    you  ->  arrow + distance  ->  them      "Accepted", how old their location is, request a new one
 //
 //  It is direction and distance only: no map, no coordinates, ever. The arrow follows the phone's heading (GPS range)
-//  or the radio (Ultra Wideband, the last stretch). The pill is always visible while sharing, on purpose.
+//  or the radio (Ultra Wideband, the last stretch). A tracer is never told how long they have: only "Accepted" and, when
+//  anything goes wrong for any reason, "User cannot be traced, error has occurred".
+//  (Requests made to YOU appear in the banner and on the You tab, not here.)
 //
 
 import SwiftUI
@@ -29,10 +30,10 @@ struct TraceSlot<Row: View>: View {
 
     var body: some View {
         if let state = trace.state {
-            TracePill(state: state, reading: trace.reading, following: trace.following, app: app, theme: theme, myName: myName,
-                      accept: { Task { await trace.accept() } },
-                      decline: { Task { await trace.decline() } },
+            TracePill(state: state, trace: trace, app: app, theme: theme, myName: myName,
                       end: { Task { await trace.end() } },
+                      locate: { Task { await trace.locate(manual: true) } },
+                      precise: { trace.findPrecisely() },
                       follow: { guide in trace.follow(guide: guide) },
                       stopFollowing: { trace.stopFollowing() })
                 .padding(.horizontal, inset)
@@ -45,14 +46,13 @@ struct TraceSlot<Row: View>: View {
 
 struct TracePill: View {
     let state: TraceState
-    let reading: TraceReading?
-    let following: String?
+    @ObservedObject var trace: TraceManager
     let app: AppModel
     let theme: AppTheme
     let myName: String
-    let accept: () -> Void
-    let decline: () -> Void
     let end: () -> Void
+    let locate: () -> Void
+    let precise: () -> Void
     let follow: (Bool) -> Void
     let stopFollowing: () -> Void
 
@@ -68,49 +68,23 @@ struct TracePill: View {
     @ViewBuilder
     private var content: some View {
         switch state {
-        case .asking(let friend):
+        case .waiting(let friend):
             HStack(spacing: 8) {
                 avatar(initials: initials(myName), color: theme.accent, label: "You")
                 link
                 VStack(spacing: 3) {
                     ProgressView().tint(theme.accent)
-                    Text("Request pending").font(.nunito(12, .extraBold)).foregroundStyle(theme.ink).lineLimit(2).multilineTextAlignment(.center)
+                    Text("Waiting for \(friend.username) to say yes").font(.nunito(12, .extraBold)).foregroundStyle(theme.ink).lineLimit(3).multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
                 link
                 avatar(initials: friend.initials, color: friend.color, label: friend.username)
                 closeButton(label: "Cancel request", action: end)
             }
-            .accessibilityLabel("Waiting for \(friend.username) to accept your request")
-
-        case .incoming(let friend):
-            HStack(spacing: 8) {
-                avatar(initials: friend.initials, color: friend.color, label: friend.username)
-                link
-                VStack(spacing: 6) {
-                    Text("\(friend.username) wants to trace you")
-                        .font(.nunito(12, .extraBold)).foregroundStyle(theme.ink)
-                        .lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.8)
-                    HStack(spacing: 8) {
-                        Button(action: decline) {
-                            Text("Decline").font(.nunito(12, .extraBold)).foregroundStyle(theme.ink)
-                                .padding(.horizontal, 12).padding(.vertical, 7)
-                                .background(Capsule().fill(theme.ink.opacity(0.1)))
-                        }
-                        Button(action: accept) {
-                            Text("Accept").font(.nunito(12, .black)).foregroundStyle(theme.onAccent)
-                                .padding(.horizontal, 14).padding(.vertical, 7)
-                                .background(Capsule().fill(theme.accent))
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-                .frame(maxWidth: .infinity)
-                link
-                avatar(initials: initials(myName), color: theme.accent, label: "You")
-            }
+            .accessibilityLabel("Waiting for \(friend.username) to say yes to your request")
 
         case .active(let friend):
+            let reading = trace.reading
             VStack(spacing: 8) {
                 HStack(spacing: 8) {
                     avatar(initials: initials(myName), color: theme.accent, label: "You")
@@ -119,18 +93,22 @@ struct TracePill: View {
                             TraceArrow(app: app, location: app.locationManager, reading: reading, theme: theme)
                             Text(reading.distanceText).font(.nunito(15, .black)).foregroundStyle(theme.ink).lineLimit(1).minimumScaleFactor(0.7)
                             Text(subtitle(reading)).font(.nunito(10, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(1)
+                        } else if trace.noLocationYet {
+                            Image(systemName: "location.slash").font(.system(size: 20, weight: .bold)).foregroundStyle(theme.textSecondary)
+                            Text("\(TraceCopy.accepted). \(friend.username)’s phone hasn’t shared a location yet.")
+                                .font(.nunito(11, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(3).multilineTextAlignment(.center)
                         } else {
                             ProgressView().tint(theme.accent)
-                            Text("Finding \(friend.username)…").font(.nunito(11, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(2).multilineTextAlignment(.center)
+                            Text("\(TraceCopy.accepted). Finding \(friend.username)…").font(.nunito(11, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(2).multilineTextAlignment(.center)
                         }
                     }
                     .frame(maxWidth: .infinity)
                     avatar(initials: friend.initials, color: friend.color, label: friend.username)
-                    closeButton(label: "Stop tracing \(friend.username)", action: end)
+                    closeButton(label: "Stop looking at \(friend.username)", action: end)
                 }
                 if reading != nil {
                     HStack(spacing: 8) {
-                        if following == friend.id {
+                        if trace.following == friend.id {
                             chip("Following \(friend.username)", icon: "scope", filled: true) {}
                                 .allowsHitTesting(false)
                             chip("Stop", icon: "xmark", filled: false, action: stopFollowing)
@@ -140,15 +118,48 @@ struct TracePill: View {
                         }
                     }
                 }
+                HStack(spacing: 8) {
+                    locateChip
+                    if app.nearbyManager.capability.canRange, reading?.source != .uwb {
+                        chip("Find precisely", icon: "dot.radiowaves.left.and.right", filled: false, action: precise)
+                    }
+                }
+                if let ends = planLine { Text(ends).font(.nunito(10, .semibold)).foregroundStyle(theme.textSecondary) }
             }
-            .accessibilityLabel(activeLabel(friend: friend))
+            .accessibilityLabel(activeLabel(friend: friend, reading: reading))
 
         case .notice(let text):
             HStack(spacing: 8) {
                 Image(systemName: "info.circle.fill").foregroundStyle(theme.accent)
-                Text(text).font(.nunito(13, .extraBold)).foregroundStyle(theme.ink).lineLimit(2)
+                Text(text).font(.nunito(13, .extraBold)).foregroundStyle(theme.ink).lineLimit(3)
             }
         }
+    }
+
+    /// "Request new location", counting down the 2 minutes the server makes the tracer wait.
+    private var locateChip: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            let wait = trace.locateCountdown()
+            Button(action: locate) {
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .bold))
+                    Text(wait > 0 ? "New location in \(TraceWindow.countdown(seconds: wait))" : "Request new location")
+                        .font(.nunito(12, .extraBold)).lineLimit(1).minimumScaleFactor(0.75)
+                }
+                .foregroundStyle(wait > 0 ? theme.textSecondary : theme.ink)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .frame(maxWidth: .infinity)
+                .background(Capsule().fill(theme.ink.opacity(wait > 0 ? 0.05 : 0.1)))
+            }
+            .buttonStyle(.plain)
+            .disabled(wait > 0)
+        }
+    }
+
+    /// The tracer's own plan, when it ends within a day: the only time they are ever shown.
+    private var planLine: String? {
+        guard let ends = trace.planEnds, ends.timeIntervalSinceNow > 0, ends.timeIntervalSinceNow < 24 * 3600 else { return nil }
+        return "Your plan ends in \(TraceWindow.remaining(until: ends, now: Date()))"
     }
 
     // MARK: Pieces
@@ -202,13 +213,16 @@ struct TracePill: View {
     private func subtitle(_ r: TraceReading) -> String {
         switch r.source {
         case .uwb: return "Precise (Ultra Wideband)"
-        case .gps: return r.isStale ? "Last seen \(Int(r.peerAgeSeconds ?? 0)) s ago" : "By GPS"
+        case .gps:
+            let age = Int(r.peerAgeSeconds ?? 0)
+            let seen = age < 60 ? "just now" : age < 3600 ? "\(age / 60) min ago" : "\(age / 3600) h ago"
+            return trace.justAccepted ? "\(TraceCopy.accepted) · seen \(seen)" : "Seen \(seen)"
         }
     }
 
-    private func activeLabel(friend: Friend) -> String {
-        guard let reading else { return "Finding \(friend.username)" }
-        return "Tracing \(friend.username), \(reading.distanceText) away"
+    private func activeLabel(friend: Friend, reading: TraceReading?) -> String {
+        guard let reading else { return "Tracing \(friend.username), finding their location" }
+        return "Tracing \(friend.username), \(reading.distanceText) away, \(subtitle(reading))"
     }
 }
 

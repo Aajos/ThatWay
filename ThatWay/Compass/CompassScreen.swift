@@ -63,8 +63,13 @@ struct CompassScreen: View {
     /// between the two instead of one appearing and the other vanishing.
     @Namespace private var cardNamespace
     @State private var modeFlash: String?
-    /// The friend the person tapped: they are asked to confirm before a trace request is sent.
-    @State private var traceCandidate: Friend?
+    /// The friend the person tapped to trace: the request sheet (how, for how long, what to expect) opens for them.
+    @State private var requestCandidate: Friend?
+    /// Switching to this friend would end the current trace: the hint is shown first.
+    @State private var switchTarget: Friend?
+    @State private var switchWarning: String?
+    /// A friend whose block / report / emergency sheet is open.
+    @State private var safetyFriend: Friend?
     /// Height of the on-screen keyboard (0 when hidden), so the search results end above it.
     @State private var keyboardHeight: CGFloat = 0
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -333,27 +338,27 @@ struct CompassScreen: View {
         // The keyboard must not resize or shift this screen at all (it shrank the layout area by the
         // keyboard's height and pushed everything down); the results panel reserves keyboard room itself.
         .ignoresSafeArea(.keyboard, edges: .bottom)
-        .confirmationDialog(
-            traceCandidate.map { "Ask \($0.username) to share their direction?" } ?? "",
-            isPresented: Binding(get: { traceCandidate != nil }, set: { if !$0 { traceCandidate = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Send request") {
-                if let friend = traceCandidate { Task { await app.traceManager.request(friend) } }
-                traceCandidate = nil
-            }
-            Button("Cancel", role: .cancel) { traceCandidate = nil }
-        } message: {
-            Text("They have to accept first. Only direction and distance are shown, never a map, and either of you can stop at any time.")
+        .sheet(item: $requestCandidate) { friend in
+            TraceRequestSheet(friend: friend, theme: app.currentTheme) { hours in
+                requestCandidate = nil
+                Task { await app.traceManager.request(friend, hours: hours) }
+            } cancel: { requestCandidate = nil }
+        }
+        .alert("Switch to \(switchTarget?.username ?? "them")?", isPresented: Binding(get: { switchTarget != nil }, set: { if !$0 { switchTarget = nil } })) {
+            Button("Switch") { if let f = switchTarget { startOrAsk(f) }; switchTarget = nil }
+            Button("Stay", role: .cancel) { switchTarget = nil }
+        } message: { Text(switchWarning ?? "") }
+        .sheet(item: $safetyFriend) { friend in
+            FriendSafetySheet(safety: app.safetyManager, friend: friend, theme: app.currentTheme) { safetyFriend = nil }
         }
         .sheet(isPresented: paywallBinding) { paywallSheet }
         .alert("Couldn't start the trace", isPresented: Binding(
-            get: { app.traceManager.errorMessage != nil },
-            set: { _ in }
+            get: { app.traceManager.requestError != nil },
+            set: { if !$0 { app.traceManager.requestError = nil } }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(app.traceManager.errorMessage ?? "")
+            Text(app.traceManager.requestError ?? "")
         }
         .alert(
             "Route there?",
@@ -383,7 +388,7 @@ struct CompassScreen: View {
         ZStack {
             tiltGuideLines(theme: theme, dialSize: dialSize)
 
-            DialHost(app: app, location: app.locationManager, k: k)
+            DialHost(app: app, location: app.locationManager, k: k, themeID: app.theme)
                 .frame(width: dialSize, height: dialSize)
 
             if app.compassSuspect, !app.usingGPSHeading {
@@ -738,16 +743,32 @@ struct CompassScreen: View {
     }
 
     private var paywallSheet: some View {
-        PaywallSheet(entitlements: app.entitlements, theme: app.currentTheme) { app.traceManager.needsUpgrade = false }
+        PaywallSheet(entitlements: app.entitlements, store: app.planStore, theme: app.currentTheme) { app.traceManager.needsUpgrade = false }
+    }
+
+    private func startOrAsk(_ friend: Friend) {
+        if app.traceManager.heldTraces.contains(friend.id) {
+            Task { await app.traceManager.trace(friend) }          // already allowed: just look
+        } else {
+            requestCandidate = friend
+        }
     }
 
     @ViewBuilder
     private func friendsRow(k: CGFloat, theme: AppTheme) -> some View {
-        FriendsStrip(friendsManager: app.friendsManager, theme: theme, k: k, myId: app.authManager.currentUser?.id) { friend in
+        FriendsStrip(friendsManager: app.friendsManager, trace: app.traceManager, theme: theme, k: k, myId: app.authManager.currentUser?.id) { friend in
             // Adding friends is free; tracing one is the paid part.
-            if app.entitlements.canTraceFriends { traceCandidate = friend } else { app.traceManager.needsUpgrade = true }
+            guard app.entitlements.canTraceFriends else { app.traceManager.needsUpgrade = true; return }
+            // Leaving a friend who only allowed tracing once ends it: say so before it happens.
+            if let warning = app.traceManager.switchWarning(to: friend) {
+                switchTarget = friend; switchWarning = warning
+            } else {
+                startOrAsk(friend)
+            }
         } onOpenRequests: {
             app.selectTab(.profile)
+        } onSafety: { friend in
+            safetyFriend = friend
         }
     }
 

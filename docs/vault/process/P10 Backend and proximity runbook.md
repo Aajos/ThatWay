@@ -8,6 +8,9 @@ tags: [process, backend]
 
 Everything about AWS, sign-in, the confirmation email, friends, the proximity (UWB) feature and the watch link, in one place, with what is **done**, what is **blocked on you**, and how to verify each step. The long console walkthrough is `backend/SETUP.md` (sections 1 to 11 the original build, **12 proximity, 13 email troubleshooting, 14 smoke test**).
 
+## Update 2026-10-17: trace permissions, safety, accounts, plans
+Created and verified against the real API (44 checks, throwaway accounts): the `grants`, `account` and `plan` functions, tables `Grants`, `Positions`, `Blocks`, `Reports`, `Entitlements`, the daily account sweep, and new friends and nearby code (blocks, 2-hour friend requests, trace-only ultra wideband). The old two-way `/trace/*` routes were removed. See [[trace-grants]], [[safety-and-account]], [[plans-and-billing]], [[owner-authentication]] and `backend/SETUP.md` section 18. The sections below describe 2026-10-12 and the trace sequence diagram is the superseded model.
+
 ## Status on 2026-10-12 (audited with the AWS CLI; `backend/scripts/aws.sh audit` reproduces it)
 | Piece | State | Evidence |
 |---|---|---|

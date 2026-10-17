@@ -7,8 +7,8 @@ let failures = 0, passed = 0;
 const check = (name, ok) => { if (ok) passed++; else { failures++; out("FAIL: " + name); } };
 
 function fakeDb() {
-  const tables = { Friends: new Map(), NearbyOffers: new Map() };
-  const key = (t, k) => t === "Friends" ? `${k.userId}|${k.otherUserId}` : `${k.userId}|${k.fromUserId}`;
+  const tables = { Friends: new Map(), NearbyOffers: new Map(), Grants: new Map(), Blocks: new Map() };
+  const key = (t, k) => t === "Friends" ? `${k.userId}|${k.otherUserId}` : t === "Grants" ? `${k.traceeId}|${k.tracerId}` : t === "Blocks" ? `${k.blockerId}|${k.blockedId}` : `${k.userId}|${k.fromUserId}`;
   return {
     tables,
     get: async (t, k) => tables[t].get(key(t, k)),
@@ -23,12 +23,18 @@ const parse = (r) => (r.body ? JSON.parse(r.body) : undefined);
 
 let clock = 1_000_000_000_000;
 const db = fakeDb();
-const handler = makeHandler({ db, now: () => clock });
+const plans = new Map([["alice", Infinity], ["bob", Infinity]]);
+const handler = makeHandler({ db, now: () => clock, planUntil: async (id) => plans.get(id) ?? null });
 befriend(db, "alice", "bob");
+const trace = (tracer, tracee, until = clock / 1000 + 3600) => db.tables.Grants.set(`${tracee}|${tracer}`, { traceeId: tracee, tracerId: tracer, status: "ACTIVE", grantedAt: clock / 1000, grantedUntil: until });
+trace("alice", "bob");                                   // bob has allowed alice to trace him
 
 // Offers go only to accepted friends
 let r = await handler(ev("PUT /nearby/offers", "alice", { friendId: "carol", token: "QUJD", kind: "uwb" }));
 check("non-friend refused", r.statusCode === 403);
+befriend(db, "alice", "dave");
+r = await handler(ev("PUT /nearby/offers", "alice", { friendId: "dave", token: "QUJD", kind: "uwb" }));
+check("a friend with no trace permission is refused (ranging is part of a trace)", r.statusCode === 403);
 r = await handler(ev("PUT /nearby/offers", "alice", { friendId: "alice", token: "QUJD", kind: "uwb" }));
 check("self refused", r.statusCode === 400);
 r = await handler(ev("PUT /nearby/offers", "alice", { friendId: "bob", token: "not base64!!", kind: "uwb" }));
@@ -63,6 +69,30 @@ db.tables.Friends.delete("bob|alice");
 r = await handler(ev("GET /nearby/offers", "bob"));
 check("unfriended offer hidden", parse(r).length === 0);
 befriend(db, "alice", "bob");
+
+// The permission must be live, in force for the tracer's plan, and not blocked
+clock += 1000;
+await handler(ev("PUT /nearby/offers", "bob", { friendId: "alice", token: "QUJD", kind: "uwb" }));
+r = await handler(ev("GET /nearby/offers", "alice"));
+check("the person being traced can offer too (either direction works)", parse(r).length === 1);
+db.tables.Grants.clear();
+r = await handler(ev("GET /nearby/offers", "alice"));
+check("an offer is withheld the moment the permission ends", parse(r).length === 0);
+r = await handler(ev("PUT /nearby/offers", "bob", { friendId: "alice", token: "QUJD", kind: "uwb" }));
+check("and no new one is taken", r.statusCode === 403);
+trace("alice", "bob", clock / 1000 - 1);
+r = await handler(ev("PUT /nearby/offers", "alice", { friendId: "bob", token: "QUJD", kind: "uwb" }));
+check("an expired permission does not count", r.statusCode === 403);
+trace("alice", "bob");
+plans.set("alice", clock / 1000 - 5);
+r = await handler(ev("PUT /nearby/offers", "alice", { friendId: "bob", token: "QUJD", kind: "uwb" }));
+check("a tracer whose plan has ended cannot range", r.statusCode === 403);
+plans.set("alice", Infinity);
+db.tables.Blocks.set("bob|alice", { blockerId: "bob", blockedId: "alice" });
+r = await handler(ev("PUT /nearby/offers", "alice", { friendId: "bob", token: "QUJD", kind: "uwb" }));
+check("a block ends it even if a stale permission remains", r.statusCode === 403);
+db.tables.Blocks.clear();
+db.tables.NearbyOffers.clear();
 
 // Ending a session clears both directions
 await handler(ev("PUT /nearby/offers", "bob", { friendId: "alice", token: "QUJD", kind: "uwb" }));
