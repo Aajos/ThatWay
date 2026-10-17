@@ -136,6 +136,7 @@ final class AuthManager: ObservableObject {
         }
         #endif
         if let refresh = KeychainStore.get(refreshTokenKey) {
+            NSLog("TW auth: restoring the saved login")
             refreshToken = refresh
             // A saved login opens the app straight away from the cached identity, so a slow or missing connection
             // never holds the user on a blank screen (or, worse, in the city with no way in). The tokens are then
@@ -149,6 +150,7 @@ final class AuthManager: ObservableObject {
             }
             Task { await refreshAccessToken() }
         } else {
+            NSLog("TW auth: no saved login found in the keychain")
             authState = .signedOut
         }
     }
@@ -410,8 +412,9 @@ final class AuthManager: ObservableObject {
             ])
             try applyAuthResult(json, fallbackRefreshToken: refreshToken)
             return true
-        } catch AuthError.cognito {
+        } catch AuthError.cognito(let type, _) {
             // The server itself refused the saved login (expired or revoked): that is the only reason to sign out.
+            NSLog("TW auth: saved login refused by Cognito (%@)", type)       // the reason only, never a token
             signOut()
             return false
         } catch {

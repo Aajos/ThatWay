@@ -82,6 +82,7 @@ final class AppModel: ObservableObject {
             }
         }
         if let token = PushRegistrar.token { PushRegistrar.onToken?(token) }
+        LocalTraceNotifier().requestAuthorizationIfNeeded()          // the permission prompt, as soon as someone is signed in
         NSLog("TW push: asking Apple for a token")
         UIApplication.shared.registerForRemoteNotifications()
     }

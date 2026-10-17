@@ -22,7 +22,11 @@ enum KeychainStore {
         SecItemDelete(query as CFDictionary)
         var attributes = query
         attributes[kSecValueData as String] = data
-        SecItemAdd(attributes as CFDictionary, nil)
+        // Readable after the phone's first unlock since boot (not only while unlocked), so a launch with the screen locked
+        // (for example from a push) can still find the saved login instead of looking signed out.
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        let status = SecItemAdd(attributes as CFDictionary, nil)
+        if status != errSecSuccess { NSLog("TW keychain: could not save %@ (status %d)", key, status) }     // never the value
     }
 
     static func get(_ key: String) -> String? {
@@ -34,8 +38,9 @@ enum KeychainStore {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status != errSecSuccess && status != errSecItemNotFound { NSLog("TW keychain: could not read %@ (status %d)", key, status) }
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
