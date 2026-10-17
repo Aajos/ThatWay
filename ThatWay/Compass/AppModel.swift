@@ -423,6 +423,9 @@ final class AppModel: ObservableObject {
         lastGuidanceRefresh = Date()
         Perf.stamp("refreshGap")
         updateProjection()
+        // The final-stretch line is drawn from the live position (about once a second), not the slow 3-10 s corridor poll, so it
+        // follows the traveller instead of jumping.
+        if showsPolyline { guidanceCheckPosition = currentPosition; guidanceCheckSpeedKmh = speedKmh }
         if sceneActive { updateCompassHealth() }
         if guiding, routingManager.hasRoute, !arrived {
             if Perf.on("advance") { routingManager.advanceProgress(userLocation: currentPosition) }

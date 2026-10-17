@@ -34,11 +34,22 @@ struct GuidanceWaypoint: Codable {
     var corridorCircle: (center: CLLocationCoordinate2D, radius: CLLocationDistance) { (coordinate, corridorRadius) }
 }
 
+/// One real vertex of the route's own polyline, with how far along the route it sits. The ribbon is drawn from these (the true
+/// shape, corners included), while the 15 m waypoints above are only used to track where the traveller is.
+struct GuidanceShapePoint: Codable {
+    let latitude: CLLocationDegrees
+    let longitude: CLLocationDegrees
+    let distanceFromStart: CLLocationDistance
+    var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
+}
+
 /// The baked result for one route: every sampled waypoint, plus the metadata it was baked
 /// under. Codable end to end so it can be persisted or shipped elsewhere if ever needed,
 /// even though the normal lifecycle here just keeps it in memory for one guidance session.
 struct GuidanceData: Codable {
     let waypoints: [GuidanceWaypoint]
+    /// Every vertex of the real polyline, in order. (Sampling every 15 m cut the corners off turns.)
+    let shape: [GuidanceShapePoint]
     let totalDistance: CLLocationDistance
     let mode: TravelMode
     let generatedAt: Date
@@ -99,7 +110,7 @@ final class RouteDataGenerator: ObservableObject {
     /// then samples a waypoint every `sampleInterval` metres, each annotated with distance
     /// so far, direction of travel, distance to the next turn, and the activity's corridor
     /// tolerance. Pure function — no shared state, safe to run off the main actor.
-    nonisolated private static func computeGuidanceData(
+    nonisolated static func computeGuidanceData(
         polyline: [CLLocationCoordinate2D],
         steps: [RouteStep],
         mode: TravelMode,
@@ -158,7 +169,8 @@ final class RouteDataGenerator: ObservableObject {
             ))
         }
 
-        return GuidanceData(waypoints: waypoints, totalDistance: totalDistance, mode: mode, generatedAt: Date())
+        let shape = polyline.indices.map { GuidanceShapePoint(latitude: polyline[$0].latitude, longitude: polyline[$0].longitude, distanceFromStart: cumulative[$0]) }
+        return GuidanceData(waypoints: waypoints, shape: shape, totalDistance: totalDistance, mode: mode, generatedAt: Date())
     }
 
     /// The cumulative distance (from the table built above) at whichever polyline vertex

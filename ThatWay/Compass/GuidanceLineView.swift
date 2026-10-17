@@ -83,6 +83,9 @@ struct GuidanceLineView: View {
     /// whenever a fresh bake replaces `guidanceData` entirely.
     @State private var lastNearestIndex: Int = 0
     @State private var lastBakeDate: Date?
+    /// When the current render model was built: between one-a-second position updates the picture slides down at the traveller's
+    /// speed (a pure translation), so a car doing 50 km/h sees a steady glide rather than a jump every second.
+    @State private var modelBuiltAt = Date()
 
     /// Used only before `dialCenter` has been reported at all (the very first layout
     /// pass) — everything after that extends to the dial's real measured centre instead.
@@ -224,7 +227,11 @@ struct GuidanceLineView: View {
 
         ZStack(alignment: .topLeading) {
             if let model {
+              TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: speedKmh < 3)) { timeline in
+                let slide = CGFloat(min(speedKmh / 3.6 * max(0, timeline.date.timeIntervalSince(modelBuiltAt)), 30)) * model.pxPerMetre
+                ZStack(alignment: .topLeading) {
                 Canvas { context, size in
+                    context.translateBy(x: 0, y: slide)
                     // The corridor circles' geometry (position + real-world 15m/30m radius
                     // projected to screen) is still computed every render — nothing about
                     // off-route detection reads it, that's entirely `RoutingManager`'s own
@@ -269,6 +276,7 @@ struct GuidanceLineView: View {
                     // fixed at 15pt tall at every zoom. It sits on the hidden dummy line *below* where
                     // the real route starts (never on the route itself), so the route — and the
                     // destination flag at its end — always finishes in front of it, never on top of it.
+                    context.translateBy(x: 0, y: -slide)           // the traveller's own arrow does not slide: the road does
                     let markerHeight: CGFloat = 15
                     let markerCenter = CGPoint(x: model.nearPoint.x, y: model.nearPoint.y + 12)
                     var arrow = Path()
@@ -293,7 +301,10 @@ struct GuidanceLineView: View {
                 if let endMarkerPosition = model.endMarkerPosition {
                     endMarker(color: polylineColor)
                         .position(endMarkerPosition)
+                        .offset(y: slide)
                 }
+                }
+              }
             }
         }
         .onAppear { updateRenderModelIfNeeded(key: key, data: data, size: geo.size, dialCenterLocal: dialCenterLocal, dialTopLocal: dialTopLocal) }
@@ -302,7 +313,7 @@ struct GuidanceLineView: View {
 
     /// One sampled point of the rendered route, in view-local screen coordinates, plus the
     /// pixel radius its real-world corridor tolerance projects to at that depth.
-    private struct CorridorSample {
+    struct CorridorSample {
         let point: CGPoint
         let radius: CGFloat
     }
@@ -311,7 +322,7 @@ struct GuidanceLineView: View {
     /// `point` is the manoeuvre's own on-screen position, `end` the tick's far end.
     /// `opacity` differs by kind: a plain turn's one alternative reads at 50%, a
     /// roundabout's confusable exit at a subtler 40% (there can be up to two of them).
-    private struct SideBranch {
+    struct SideBranch {
         let point: CGPoint
         let end: CGPoint
         let opacity: Double
@@ -321,7 +332,7 @@ struct GuidanceLineView: View {
     /// rebuilt only when `cacheKey` actually changes (a new bake, the traveller's nearest
     /// waypoint moving on, the container resizing, or the dial's own centre moving), not
     /// on every render.
-    private struct RouteRenderModel {
+    struct RouteRenderModel {
         let path: Path
         let corridorSamples: [CorridorSample]
         let endMarkerPosition: CGPoint?
@@ -338,6 +349,8 @@ struct GuidanceLineView: View {
         /// Index into `GuidanceData.waypoints` the ribbon anchored to this frame — carried
         /// back to the view so next frame's search starts windowed around it.
         let nearestIndex: Int
+        /// Screen pixels per real metre, the same along and across the road.
+        let pxPerMetre: CGFloat
     }
 
     /// Cheap fingerprint of everything that actually changes the rendered geometry — a new
@@ -384,6 +397,7 @@ struct GuidanceLineView: View {
         }
         let model = Self.buildRenderModel(data: data, steps: steps, currentLocation: currentLocation, speedKmh: speedKmh, activity: activity, size: size, dialCenterLocal: dialCenterLocal, dialTopLocal: dialTopLocal, fallbackExtension: Self.fallbackExtension, lookAheadOverride: smoothedLookAhead, lastNearestIndex: lastNearestIndex, log: log)
         renderModel = model
+        modelBuiltAt = Date()
         if let model { lastNearestIndex = model.nearestIndex }
         if smoothedLookAhead == nil { smoothedLookAhead = model?.targetLookAhead }
     }
@@ -419,6 +433,25 @@ struct GuidanceLineView: View {
         return (waypoints[bestIndex], bestIndex)
     }
 
+    /// A polyline with softened corners: straight between corners, a short curve at each (the vertex is the curve's control point).
+    nonisolated private static func roundedPath(through input: [CGPoint], radius: CGFloat) -> Path {
+        var points: [CGPoint] = []
+        for p in input where points.last.map({ hypot($0.x - p.x, $0.y - p.y) > 0.5 }) ?? true { points.append(p) }
+        var path = Path()
+        guard let first = points.first else { return path }
+        path.move(to: first)
+        guard points.count > 1 else { return path }
+        for i in 1..<(points.count - 1) {
+            let a = points[i - 1], b = points[i], c = points[i + 1]
+            let la = hypot(b.x - a.x, b.y - a.y), lc = hypot(c.x - b.x, c.y - b.y)
+            let r = min(radius, la / 2, lc / 2)
+            path.addLine(to: CGPoint(x: b.x + (a.x - b.x) / la * r, y: b.y + (a.y - b.y) / la * r))
+            path.addQuadCurve(to: CGPoint(x: b.x + (c.x - b.x) / lc * r, y: b.y + (c.y - b.y) / lc * r), control: b)
+        }
+        path.addLine(to: points[points.count - 1])
+        return path
+    }
+
     /// One route waypoint projected into a forward/lateral frame centred on the traveller,
     /// facing the direction they're actually travelling (the nearest waypoint's own
     /// bearing) — this is what turns real lat/lon geometry into an on-screen ribbon that
@@ -438,7 +471,7 @@ struct GuidanceLineView: View {
     /// sits exactly on the screen's horizontal centre (however far off the mapped road they
     /// really are), then maps the survivors into screen space with a simple perspective
     /// taper before smoothing them into one continuous curve down to the dial's real centre.
-    nonisolated private static func buildRenderModel(
+    nonisolated static func buildRenderModel(
         data: GuidanceData,
         steps: [RouteStep],
         currentLocation: CLLocationCoordinate2D,
@@ -455,29 +488,73 @@ struct GuidanceLineView: View {
         guard let (nearest, nearestIndex) = nearestWaypoint(in: data.waypoints, to: currentLocation, lastIndex: lastNearestIndex) else { return nil }
 
         let baselineLookAhead = GuidanceLookAhead.distance(speedKmh: speedKmh, distanceToNextTurn: nearest.distanceToNextTurn)
-        let referenceBearing = nearest.bearing
-        // Sliced by index, not re-filtered by `distanceFromStart >=` — a final-approach road
-        // that curves back near itself can put an *earlier*, already-passed waypoint spatially
-        // close to a later one without their distanceFromStart values actually being out of
-        // order, so slicing by the anchor's own index is what actually guarantees "everything
-        // from here onward in route order", not just "everything with a bigger number".
-        let candidates = Array(data.waypoints[nearestIndex...])
 
-        // Projects any coordinate into (forward, lateral) metres relative to the *snapped*
-        // nearest waypoint — never the raw `currentLocation` GPS fix. Bearing-from-a-point is
-        // numerically unstable for points close to it: a few metres of ordinary GPS noise
-        // (worse under tree cover — exactly where this gets tested) swings the computed
-        // bearing to every nearby waypoint by a lot, which showed up as the rendered ribbon
-        // visibly wobbling/twisting on real devices even though the baked route geometry
-        // itself never moves. Anchoring on the fixed, pre-computed `nearest.coordinate`
-        // instead makes every point's projection a pure function of stable route geometry.
-        func project(_ coordinate: CLLocationCoordinate2D) -> (forward: CLLocationDistance, lateral: CLLocationDistance) {
-            let d = CompassManager.distance(from: nearest.coordinate, to: coordinate)
-            guard d > 0 else { return (0, 0) }
-            let bearingToPoint = CompassManager.bearing(from: nearest.coordinate, to: coordinate)
-            let relative = CompassManager.relativeBearing(heading: referenceBearing, bearing: bearingToPoint).radians
-            return (d * cos(relative), d * sin(relative))
+        // The traveller's exact place ON the route: their position projected onto the real polyline's own segments (not snapped to
+        // the nearest 15 m waypoint, which made the whole ribbon jump a step at a time). Everything is measured from this point,
+        // facing along the road there, so it is a pure function of stable route geometry: GPS noise slides the anchor along the road
+        // but never swings the drawing sideways.
+        let shape = data.shape
+        let metresPerDegLat = 110_540.0
+        let metresPerDegLon = 111_320.0 * cos(nearest.latitude * .pi / 180)
+        func local(_ c: CLLocationCoordinate2D) -> (x: Double, y: Double) {      // metres east, north of the nearest waypoint
+            ((c.longitude - nearest.longitude) * metresPerDegLon, (c.latitude - nearest.latitude) * metresPerDegLat)
         }
+        let me = local(currentLocation)
+        var anchorAlong = nearest.distanceFromStart
+        var anchorCoordinate = nearest.coordinate
+        var anchorBearing = nearest.bearing
+        var shapeStart = 0
+        if shape.count > 1 {
+            var best = Double.greatestFiniteMagnitude
+            for i in 0..<(shape.count - 1) {
+                let d0 = shape[i].distanceFromStart, d1 = shape[i + 1].distanceFromStart
+                if d1 < nearest.distanceFromStart - 40 { continue }
+                if d0 > nearest.distanceFromStart + 40 { break }
+                let a = local(shape[i].coordinate), b = local(shape[i + 1].coordinate)
+                let vx = b.x - a.x, vy = b.y - a.y
+                let len2 = vx * vx + vy * vy
+                guard len2 > 0 else { continue }
+                let t = max(0, min(1, ((me.x - a.x) * vx + (me.y - a.y) * vy) / len2))
+                let px = a.x + t * vx, py = a.y + t * vy
+                let dist = (me.x - px) * (me.x - px) + (me.y - py) * (me.y - py)
+                if dist < best {
+                    best = dist
+                    shapeStart = i
+                    anchorAlong = d0 + t * (d1 - d0)
+                    anchorCoordinate = CLLocationCoordinate2D(latitude: nearest.latitude + py / metresPerDegLat, longitude: nearest.longitude + px / metresPerDegLon)
+                    anchorBearing = (atan2(vx, vy) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+                }
+            }
+        }
+        // Face along the road a few metres AHEAD of the anchor, not along the one tiny segment under it: at a corner the picture
+        // then turns smoothly over the last 12 m instead of snapping 90 degrees (and flickering when GPS noise puts the traveller
+        // either side of the corner).
+        if shape.count > 1 {
+            let target = anchorAlong + 12
+            if let j = shape.firstIndex(where: { $0.distanceFromStart >= target }), j > 0 {
+                let p0 = shape[j - 1], p1 = shape[j]
+                let span = p1.distanceFromStart - p0.distanceFromStart
+                let t = span > 0 ? (target - p0.distanceFromStart) / span : 1
+                let ahead = CLLocationCoordinate2D(latitude: p0.latitude + t * (p1.latitude - p0.latitude), longitude: p0.longitude + t * (p1.longitude - p0.longitude))
+                let l = local(ahead), a = local(anchorCoordinate)
+                if hypot(l.x - a.x, l.y - a.y) > 3 { anchorBearing = (atan2(l.x - a.x, l.y - a.y) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360) }
+            } else if let last = shape.last {                      // within 12 m of the end: face the destination
+                let l = local(last.coordinate), a = local(anchorCoordinate)
+                if hypot(l.x - a.x, l.y - a.y) > 3 { anchorBearing = (atan2(l.x - a.x, l.y - a.y) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360) }
+            }
+        }
+        let referenceBearing = anchorBearing
+        let sinB = sin(referenceBearing * .pi / 180), cosB = cos(referenceBearing * .pi / 180)
+        let anchorLocal = local(anchorCoordinate)
+        /// (forward, lateral) metres from the anchor, along and across the road there (lateral positive = right).
+        func project(_ coordinate: CLLocationCoordinate2D) -> (forward: CLLocationDistance, lateral: CLLocationDistance) {
+            let p = local(coordinate)
+            let dx = p.x - anchorLocal.x, dy = p.y - anchorLocal.y
+            return (dy * cosB + dx * sinB, dx * cosB - dy * sinB)
+        }
+        // The route from the anchor onward: the anchor itself, then every real vertex still ahead of it.
+        let shapeAhead: [GuidanceShapePoint] = [GuidanceShapePoint(latitude: anchorCoordinate.latitude, longitude: anchorCoordinate.longitude, distanceFromStart: anchorAlong)]
+            + shape.dropFirst(shape.isEmpty ? 0 : shapeStart + 1).filter { $0.distanceFromStart > anchorAlong + 0.1 }
 
         // MARK: Adaptive zoom
         // Straight and gently bending roads keep the normal speed-based look-ahead. When a real
@@ -496,20 +573,20 @@ struct GuidanceLineView: View {
             let coordinate = step.intersections.first?.coordinate ?? step.startCoordinate
             guard let along = data.waypoints.min(by: {
                 CompassManager.distance(from: coordinate, to: $0.coordinate) < CompassManager.distance(from: coordinate, to: $1.coordinate)
-            })?.distanceFromStart, along >= nearest.distanceFromStart - 5 else { continue }
+            })?.distanceFromStart, along >= anchorAlong - 5 else { continue }
             // Steps run in route order, so the first one still ahead is the nearest feature.
-            if along - nearest.distanceFromStart <= baselineLookAhead {
-                let nearLateral = project(nearest.coordinate).lateral
+            if along - anchorAlong <= baselineLookAhead {
+                let nearLateral = 0.0
                 var maxForward: CLLocationDistance = 0
                 var maxLateral: CLLocationDistance = 0
-                for waypoint in candidates where waypoint.distanceFromStart <= along + 25 {
+                for waypoint in shapeAhead where waypoint.distanceFromStart <= along + 25 {
                     let p = project(waypoint.coordinate)
                     maxForward = max(maxForward, p.forward)
                     maxLateral = max(maxLateral, abs(p.lateral - nearLateral))
                 }
                 // 0.9 → the feature ends up 10% from the top; 0.22 × 0.9 → its sideways extent fits.
                 zoomTarget = min(baselineLookAhead, max(90, maxForward / 0.9, maxLateral / (0.22 * 0.9)))
-                zoomNote = "\(step.maneuverType) \(modifier) at +\(Int(along - nearest.distanceFromStart))m, farthest point \(Int(maxForward))m ahead → look-ahead \(Int(zoomTarget))m"
+                zoomNote = "\(step.maneuverType) \(modifier) at +\(Int(along - anchorAlong))m, farthest point \(Int(maxForward))m ahead → look-ahead \(Int(zoomTarget))m"
             }
             break
         }
@@ -528,59 +605,55 @@ struct GuidanceLineView: View {
         out("   - Baseline look-ahead: \(baselineLookAhead)m; adaptive zoom: \(zoomNote); drawing with \(Int(lookAhead))m")
 
         var projected: [ProjectedWaypoint] = []
-        projected.reserveCapacity(candidates.count)
-        for waypoint in candidates {
-            let (forward, lateral) = project(waypoint.coordinate)
-            // Anything projecting behind the traveller (already passed, or a road that
-            // loops back on itself) is culled — only what's genuinely ahead gets drawn.
-            guard forward > -5 else { continue }
-            projected.append(ProjectedWaypoint(forward: forward, lateral: lateral, corridorRadius: waypoint.corridorRadius, distanceFromStart: waypoint.distanceFromStart))
-            if forward >= lookAhead { break }
+        projected.reserveCapacity(shapeAhead.count)
+        var clippedAtLookAhead = false
+        for point in shapeAhead {
+            let (forward, lateral) = project(point.coordinate)
+            if forward >= lookAhead, let previous = projected.last, forward > previous.forward {
+                // Stop exactly at the edge of the window: a long straight segment must not shoot off the top of the screen.
+                let t = (lookAhead - previous.forward) / (forward - previous.forward)
+                projected.append(ProjectedWaypoint(forward: lookAhead, lateral: previous.lateral + t * (lateral - previous.lateral),
+                                                   corridorRadius: nearest.corridorRadius, distanceFromStart: previous.distanceFromStart + t * (point.distanceFromStart - previous.distanceFromStart)))
+                clippedAtLookAhead = true
+                break
+            }
+            projected.append(ProjectedWaypoint(forward: forward, lateral: lateral, corridorRadius: nearest.corridorRadius, distanceFromStart: point.distanceFromStart))
         }
         guard !projected.isEmpty else { return nil }
 
         out("2. POLYLINE FILTERING:")
-        out("   - Candidates considered (from nearest waypoint onward): \(candidates.count)")
+        out("   - Real polyline vertices ahead of the traveller: \(shapeAhead.count)")
         out("   - Points within look-ahead (survived culling): \(projected.count)")
-        out("   - Points culled (behind traveller, or past the look-ahead window — this loop stops early so it never even reaches the rest): \(candidates.count - projected.count)")
+        
 
         // Projecting from `nearest.coordinate` (see `project` above) already puts the ribbon's
         // own near point at exactly (forward: 0, lateral: 0) — dead-centre on screen — with
         // no separate recentring step needed; how far the real GPS fix actually sits off that
         // point is tracked independently, below, only for the off-road fade.
-        let maxLateralPixels = min(size.width, 260) * 0.34
-        let lateralClamp = max(30, lookAhead * 0.22)
-
         // The traveller's own position (forward == 0) always sits exactly 20pt above the
         // dial's visible top edge — the route rises from there, and the line continues
         // *below* it as a hidden dummy tail running behind the dial, so reaching the
         // destination puts its marker at most 20pt above the compass.
         let userY = max(60, dialTopLocal.map { $0 - 20 } ?? size.height)
 
-        // Flat 2D for every activity (distance maps linearly to height) — it gives the
-        // clearest read of upcoming turns, driving included.
-        func visualFrac(_ forward: CLLocationDistance) -> CGFloat {
-            min(1, max(0, CGFloat(forward / lookAhead)))
-        }
-        func depthScale(_ forward: CLLocationDistance) -> CGFloat {
-            1 - visualFrac(forward) * 0.55
-        }
-
+        // TRUE SCALE: the same pixels per metre along the road and across it, with no perspective squeeze and no clamp on how
+        // far to the side the road may go. A right-angle junction is drawn as a right angle, and a bend as the bend it is. The
+        // scale fits the look-ahead into the height; if the road swings so far sideways that it would leave the screen, the
+        // whole picture shrinks evenly (never stretches one way) until it fits.
+        var pxPerMetre = userY / CGFloat(lookAhead)
+        let halfWidth = size.width / 2 - 22
+        let widest = projected.map { abs($0.lateral) }.max() ?? 0
+        if widest > 0, CGFloat(widest) * pxPerMetre > halfWidth { pxPerMetre = halfWidth / CGFloat(widest) }
+        let lateralClamp = 1.0, maxLateralPixels: CGFloat = 1     // (kept only so the corridor circles below still compile; they are not drawn)
         func screenPoint(forward: CLLocationDistance, lateral: CLLocationDistance) -> CGPoint {
-            let depth = depthScale(forward)
-            let normalizedLateral = max(-1, min(1, lateral / lateralClamp))
-            let x = size.width / 2 + normalizedLateral * maxLateralPixels * depth
-            let y = userY * (1 - visualFrac(forward))
-            return CGPoint(x: x, y: y)
+            CGPoint(x: size.width / 2 + CGFloat(lateral) * pxPerMetre, y: userY - CGFloat(forward) * pxPerMetre)
         }
 
         let corrected = projected
         let screenPoints = corrected.map { screenPoint(forward: $0.forward, lateral: $0.lateral) }
 
         let corridorSamples: [CorridorSample] = zip(corrected, screenPoints).map { p, pt in
-            let depth = depthScale(p.forward)
-            let radiusPixels = CGFloat(p.corridorRadius) * (maxLateralPixels / lateralClamp) * depth
-            return CorridorSample(point: pt, radius: max(4, radiusPixels))
+            CorridorSample(point: pt, radius: max(4, CGFloat(p.corridorRadius) * pxPerMetre))
         }
 
         // Extends mathematically to the dial's own real centre rather than a fixed pixel
@@ -590,23 +663,11 @@ struct GuidanceLineView: View {
         let tailTarget = dialCenterLocal ?? CGPoint(x: nearPoint.x, y: size.height + fallbackExtension)
         let tailPoint = CGPoint(x: nearPoint.x, y: max(nearPoint.y, tailTarget.y))
 
-        var path = Path()
-        path.move(to: tailPoint)
-        path.addLine(to: nearPoint)
-        if screenPoints.count > 1 {
-            // Smooths the polyline into one continuous curve (each interior vertex becomes
-            // a quad-curve control point rather than a hard corner) instead of drawing
-            // individual straight segments.
-            for i in 0..<(screenPoints.count - 1) {
-                let current = screenPoints[i]
-                let next = screenPoints[i + 1]
-                let mid = CGPoint(x: (current.x + next.x) / 2, y: (current.y + next.y) / 2)
-                path.addQuadCurve(to: mid, control: current)
-            }
-            path.addLine(to: screenPoints[screenPoints.count - 1])
-        }
+        // The real shape, with each corner softened by a small fixed radius (never more than half of either side), so a turn
+        // reads as a turn and a gentle bend as a gentle bend.
+        let path = Self.roundedPath(through: [tailPoint, nearPoint] + screenPoints.dropFirst(), radius: 10)
 
-        let destinationInSight = (corrected.last?.distanceFromStart ?? -1) >= data.totalDistance - 1
+        let destinationInSight = !clippedAtLookAhead && (corrected.last?.distanceFromStart ?? -1) >= data.totalDistance - 1
         let endMarkerPosition = destinationInSight ? screenPoints.last : nil
 
         // Grey branches at real decision points — a step's *own first* intersection is
@@ -855,7 +916,7 @@ struct GuidanceLineView: View {
         // The traveller's real straight-line distance from the nearest point on the route
         // — inside its own corridor tolerance counts as "on the road", further out fades
         // the fabricated property-to-road connector in.
-        let nearestRealDistance = CompassManager.distance(from: currentLocation, to: nearest.coordinate)
+        let nearestRealDistance = CompassManager.distance(from: currentLocation, to: anchorCoordinate)
         let corridorRadius = nearest.corridorRadius
         let offRoadLineOpacity = max(0, min(1, (nearestRealDistance - corridorRadius) / max(corridorRadius, 1)))
 
@@ -869,7 +930,8 @@ struct GuidanceLineView: View {
             nearPoint: nearPoint,
             zoomFactor: CGFloat(max(1, baselineLookAhead / lookAhead)),
             targetLookAhead: zoomTarget,
-            nearestIndex: nearestIndex
+            nearestIndex: nearestIndex,
+            pxPerMetre: pxPerMetre
         )
     }
 
