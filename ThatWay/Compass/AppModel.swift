@@ -82,6 +82,7 @@ final class AppModel: ObservableObject {
             }
         }
         if let token = PushRegistrar.token { PushRegistrar.onToken?(token) }
+        NSLog("TW push: asking Apple for a token")
         UIApplication.shared.registerForRemoteNotifications()
     }
 

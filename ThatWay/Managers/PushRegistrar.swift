@@ -36,6 +36,10 @@ final class PushRegistrar: NSObject, UIApplicationDelegate, UNUserNotificationCe
         Self.onToken?(hex)
     }
 
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NSLog("TW push registration failed: %@", (error as NSError).localizedDescription)       // the reason only, never a token
+    }
+
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         []          // in front: the banner inside the app already says it
     }
