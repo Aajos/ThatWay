@@ -14,11 +14,11 @@ import CryptoKit
 
 enum ConsentCopy {
     /// Bump this whenever any consent sentence changes (the test `consentWordingIsPinnedToItsVersion` fails until you do).
-    static let version = "2026-10-17.1"
+    static let version = "2026-10-18.1"
 
     /// What the person is told before allowing, with `{name}` for the tracer. Each line states something that is true:
     ///  1 server: locate is limited to once per 2 minutes; the tracer sees direction and distance only (TracePill)
-    ///  2 TraceManager uploads while the app is open and once on leaving; PUT /grants/position accepts only while a grant is live
+    ///  2 background location while a grant is live (AppModel.updateBackgroundTracking); TraceManager uploads on 25 m moves, every 2 min, on a look; force-quit stops it
     ///  3 server: grantedUntil, revoke, unfriend/block transactions, plan check in authorise()
     ///  4 TraceBanner (persistent), TracedByYouSection (band, last looked), notice at most every 30 minutes (poll, not push)
     ///  5 server: GET /grants for the tracer never includes a time
@@ -26,9 +26,9 @@ enum ConsentCopy {
     ///  7 Entitlements: accepting is free
     static let points: [String] = [
         "{name} can ask for your location, at most once every 2 minutes. They see it as a direction and a distance on their compass.",
-        "Your phone shares your location, as precisely as it knows it, while ThatWay is open on your screen, and once more when you leave the app. When ThatWay is closed, {name} sees where you were last and how long ago.",
+        "While this is on, your phone keeps sharing your location with {name}, even when ThatWay is in the background, and iOS shows its blue location indicator. It updates when you move, every couple of minutes, and when {name} asks. If you swipe ThatWay away completely, sharing pauses and {name} sees where you were last and how long ago.",
         "It ends by itself at the time you choose, even if you forget. It also ends if you stop it, unfriend {name}, or block them, or if their plan runs out.",
-        "You will see a banner in ThatWay for as long as it is on, and a note when {name} looks (at most every 30 minutes; you will see it the next time you open ThatWay). You can also see roughly how far away they were when they last looked.",
+        "You will see a banner in ThatWay for as long as it is on, and a notification when {name} looks (at most every 30 minutes) or comes close looking for you. You can also see roughly how far away they were when they last looked.",
         "{name} is never told how long you have allowed. They only see that you said yes.",
         "Only allow people you trust. Anyone you allow could use this to find you. If you ever feel unsafe, stop it, block them, and call your local emergency number. ThatWay is not an emergency service and cannot send help.",
         "Saying yes is free. {name} needs a trace plan to use it.",

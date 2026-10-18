@@ -34,6 +34,8 @@ protocol TraceAPI: AnyObject {
     func releaseTrace(traceeId: String) async
     func uploadPosition(_ coordinate: CLLocationCoordinate2D, accuracy: Double) async throws
     func locate(traceeId: String, distanceMeters: Double?) async throws -> LocateResult
+    /// Re-reads the stored position shortly after a real request, to collect the fresh fix that request made the other phone send.
+    func locateFollowUp(traceeId: String) async throws -> LocateResult
 }
 
 @MainActor
@@ -103,6 +105,11 @@ final class TraceManager: ObservableObject {
     @Published private(set) var noLocationYet = false
     /// The friend the compass is currently pointing or guiding to.
     @Published private(set) var following: String?
+    /// Ultra Wideband, up close: getting closer (true), further (false), or no clear trend (nil). For "warmer / colder" when the
+    /// radio gives a distance but no direction.
+    @Published private(set) var closing: Bool?
+    /// Waiting for the fresh position a request asked the other phone for.
+    @Published private(set) var fetchingFresh = false
     /// Set when a paid action was attempted without the entitlement: the screen shows the paywall.
     @Published var needsUpgrade = false
 
@@ -165,6 +172,8 @@ final class TraceManager: ObservableObject {
     /// discarded, so it cannot bring back a trace the person has just ended.
     private var epoch = 0
     private var notificationShown = false
+    private var uwbHistory: [(meters: Double, at: Date)] = []
+    private var followUpTask: Task<Void, Never>?
 
     init(api: TraceAPI,
          ranging: ProximityRanging,
@@ -175,7 +184,7 @@ final class TraceManager: ObservableObject {
          myPosition: @escaping () -> CLLocationCoordinate2D?,
          myAccuracy: @escaping () -> Double = { 10 },
          busyInterval: TimeInterval = 5,
-         watchingInterval: TimeInterval = 15,
+         watchingInterval: TimeInterval = 10,
          idleInterval: TimeInterval = 30,
          now: @escaping () -> Date = Date.init,
          sleep: @escaping (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) },
@@ -277,7 +286,9 @@ final class TraceManager: ObservableObject {
             start()
             if case .active = state { Task { await locate(manual: false) } }
         } else {
-            if !isBusy { stop() }
+            // Someone may trace me: keep syncing in the background (the app stays alive on background location while a grant
+            // is live, as the consent says), so a look is answered with a fresh position within seconds.
+            if !isBusy && watchers.isEmpty { stop() }
             if !watchers.isEmpty { Task { await shareMyPosition(force: true) } }
         }
     }
@@ -377,6 +388,7 @@ final class TraceManager: ObservableObject {
             justAccepted = false
             recomputeReading()
             updateRanging()
+            if (result.position?.ageSeconds ?? .infinity) > 20 { collectFreshFix(for: friend) }
         } catch {
             guard case .active(let current) = state, current.id == friend.id else { return }
             switch (error as? FriendsError)?.httpStatus {
@@ -392,6 +404,29 @@ final class TraceManager: ObservableObject {
         }
     }
 
+    /// The other phone answers a request within seconds (it syncs every 10 s and uploads the moment it sees the look). Re-read a few
+    /// times for up to about 25 s to collect that fresh fix: these re-reads are not new requests.
+    private func collectFreshFix(for friend: Friend) {
+        followUpTask?.cancel()
+        let before = locationAge ?? .infinity
+        fetchingFresh = true
+        followUpTask = Task { [weak self] in
+            defer { Task { @MainActor in self?.fetchingFresh = false } }
+            for _ in 0..<6 {
+                guard let self else { return }
+                await self.sleep(4)
+                guard !Task.isCancelled, case .active(let current) = self.state, current.id == friend.id else { return }
+                guard let result = try? await self.api.locateFollowUp(traceeId: friend.id), let position = result.position else { continue }
+                if position.ageSeconds < before {
+                    self.peerPosition = position; self.peerPositionAt = self.now(); self.noLocationYet = false
+                    if self.following == friend.id { self.onFriendPosition?(friend, position.coordinate) }
+                    self.recomputeReading(); self.updateRanging()
+                    if position.ageSeconds <= 15 { return }
+                }
+            }
+        }
+    }
+
     /// Stop looking at this friend (or withdraw the request). A one-off ends; a "keep tracing" permission stays until its
     /// time is up, and the friend stays in the row to pick up again.
     func end() async {
@@ -399,6 +434,46 @@ final class TraceManager: ObservableObject {
         epoch += 1
         clearTarget()
         if let friend { await api.releaseTrace(traceeId: friend.id) }
+    }
+
+    // MARK: Up close
+
+    var cameraDirectionAvailable: Bool { ranging.cameraAssistanceAvailable }
+    var directionWithoutCamera: Bool { ranging.directionWithoutCamera }
+    var cameraOn: Bool { ranging.cameraAssistance }
+    var coaching: String? { ranging.coaching }
+    /// UWB is measuring right now (a reading under 3 s old) for the friend I am looking at.
+    var uwbLive: Bool {
+        guard case .active(let friend) = state, uwbFriendId == friend.id, let latest = ranging.latestReading else { return false }
+        return now().timeIntervalSince(latest.at) <= TraceFusion.uwbFreshSeconds
+    }
+
+    /// "Show direction": on iPhone 14 and later the arrow needs the camera's help (it tracks how the phone moves).
+    func showDirection() {
+        guard uwbFriendId != nil, ranging.cameraAssistanceAvailable else { return }
+        ranging.setCameraAssistance(true)
+        objectWillChange.send()
+    }
+
+    func hideDirectionCamera() { ranging.setCameraAssistance(false); objectWillChange.send() }
+
+    /// What every input looks like right now, for the debug readout (no coordinates).
+    func diagnostics(myAccuracy: Double?) -> [(String, String)] {
+        var rows: [(String, String)] = []
+        rows.append(("Mode", reading.map { $0.source == .uwb ? "UWB" : ($0.hasUsefulDirection ? "GPS arrow" : "GPS nearby (no arrow)") } ?? "none"))
+        if let r = reading {
+            rows.append(("Distance", r.distanceText))
+            if let u = r.uncertaintyDegrees { rows.append(("GPS direction ±", "\(Int(u))°")) }
+            if let b = r.relativeBearing { rows.append(("UWB angle", "\(Int(b))°")) }
+        }
+        rows.append(("Their fix age", locationAge.map { "\(Int($0)) s" } ?? "none"))
+        rows.append(("Their accuracy", peerPosition?.accuracy.map { "±\(Int($0)) m" } ?? "unknown"))
+        rows.append(("My accuracy", myAccuracy.map { "±\(Int($0)) m" } ?? "unknown"))
+        rows.append(("UWB hardware", ranging.capability.canRange ? (ranging.directionWithoutCamera ? "distance + direction" : (ranging.cameraAssistanceAvailable ? "distance; direction with camera" : "distance only")) : "none"))
+        rows.append(("UWB", uwbFriendId == nil ? "off" : (uwbLive ? "ranging" : "waiting for their phone")))
+        rows.append(("Camera assist", ranging.cameraAssistance ? (ranging.coaching ?? "settled") : "off"))
+        rows.append(("Fresh fix", fetchingFresh ? "waiting" : "-"))
+        return rows
     }
 
     /// Start Ultra Wideband now rather than waiting to be within about 40 m of the last location.
@@ -583,6 +658,8 @@ final class TraceManager: ObservableObject {
     }
 
     private func clearTarget() {
+        followUpTask?.cancel(); followUpTask = nil; fetchingFresh = false
+        uwbHistory.removeAll(); closing = nil
         stopRanging(); wantsPrecise = false
         state = nil; reading = nil; peerPosition = nil; fusion.reset()
         justAccepted = false; noLocationYet = false; locateReadyAt = nil
@@ -606,7 +683,7 @@ final class TraceManager: ObservableObject {
     // MARK: Sharing my own position (only while someone may see it)
 
     private func shareMyPosition(force: Bool) async {
-        guard !watchers.isEmpty, sceneActive || force, let me = myPosition() else { return }
+        guard !watchers.isEmpty, let me = myPosition() else { return }
         let due: Bool
         if let last = lastUpload {
             let elapsed = now().timeIntervalSince(last.at)
@@ -656,6 +733,7 @@ final class TraceManager: ObservableObject {
     private func stopRanging() {
         guard uwbFriendId != nil else { return }
         ranging.stop(); uwbFriendId = nil
+        uwbHistory.removeAll(); closing = nil
     }
 
     private func stopRangingIfFor(_ id: String) { if uwbFriendId == id { stopRanging() } }
@@ -671,7 +749,18 @@ final class TraceManager: ObservableObject {
             TracePeerPosition(latitude: $0.latitude, longitude: $0.longitude, accuracy: $0.accuracy,
                               ageSeconds: $0.ageSeconds + now().timeIntervalSince(peerPositionAt))
         }
-        reading = fusion.reading(me: myPosition(), peer: aged, uwb: uwb)
+        reading = fusion.reading(me: myPosition(), peer: aged, uwb: uwb, myAccuracy: myAccuracy())
+        // Warmer / colder from the last couple of seconds of radio distance.
+        if let uwb, uwb.ageSeconds <= TraceFusion.uwbFreshSeconds {
+            uwbHistory.append((uwb.reading.meters, now()))
+            uwbHistory.removeAll { now().timeIntervalSince($0.at) > 4 }
+            if let oldest = uwbHistory.first, now().timeIntervalSince(oldest.at) >= 1.5 {
+                let change = uwb.reading.meters - oldest.meters
+                closing = change < -0.3 ? true : (change > 0.3 ? false : nil)
+            }
+        } else if !uwbHistory.isEmpty {
+            uwbHistory.removeAll(); closing = nil
+        }
     }
 }
 
@@ -710,6 +799,10 @@ extension FriendsManager: TraceAPI {
         let _: EmptyResponse = try await request(method: "PUT", path: "/grants/position", body: [
             "lat": coordinate.latitude, "lon": coordinate.longitude, "acc": max(0, accuracy),
         ])
+    }
+
+    func locateFollowUp(traceeId: String) async throws -> LocateResult {
+        try await request(method: "POST", path: "/grants/locate", body: ["traceeId": traceeId, "followUp": true])
     }
 
     func locate(traceeId: String, distanceMeters: Double?) async throws -> LocateResult {

@@ -532,8 +532,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ThatWay/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "ThatWay uses your location while the app is open or a trip is being guided, and never tracks you in the background otherwise. If you let a friend trace you, they can see your location only while the app is open, and only for the time you allowed.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "ThatWay uses your location to point the compass, find places near you and guide you turn by turn. During an active trip it keeps working with the screen locked. If you let a friend trace you, your location is also shared with that friend while the app is open, and only for the time you allowed.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "ThatWay uses your location while the app is open, while a trip is being guided, and while you allow a friend to trace you (only for the time you chose). It never tracks you in the background otherwise.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "ThatWay uses your location to point the compass, find places near you and guide you turn by turn. During an active trip it keeps working with the screen locked. If you let a friend trace you, your location is also shared with that friend, including in the background, only for the time you allowed.";
 				INFOPLIST_KEY_NSNearbyInteractionUsageDescription = "ThatWay uses Ultra Wideband to measure how far away a friend is and which way, only during a trace the other person allowed. The measurement is between your two phones: no location is shared by it.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -569,8 +569,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ThatWay/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "ThatWay uses your location while the app is open or a trip is being guided, and never tracks you in the background otherwise. If you let a friend trace you, they can see your location only while the app is open, and only for the time you allowed.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "ThatWay uses your location to point the compass, find places near you and guide you turn by turn. During an active trip it keeps working with the screen locked. If you let a friend trace you, your location is also shared with that friend while the app is open, and only for the time you allowed.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "ThatWay uses your location while the app is open, while a trip is being guided, and while you allow a friend to trace you (only for the time you chose). It never tracks you in the background otherwise.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "ThatWay uses your location to point the compass, find places near you and guide you turn by turn. During an active trip it keeps working with the screen locked. If you let a friend trace you, your location is also shared with that friend, including in the background, only for the time you allowed.";
 				INFOPLIST_KEY_NSNearbyInteractionUsageDescription = "ThatWay uses Ultra Wideband to measure how far away a friend is and which way, only during a trace the other person allowed. The measurement is between your two phones: no location is shared by it.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

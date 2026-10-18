@@ -166,6 +166,13 @@ final class AppModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.traceManager.entitlementChanged() }
             .store(in: &cancellables)
+        // Someone starting or stopping being able to trace me changes whether location must keep running in the background.
+        traceManager.$watchers
+            .map(\.isEmpty)
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updateBackgroundTracking() }
+            .store(in: &cancellables)
         // After a block the server has already removed the friendship and every permission: bring this phone up to date.
         safetyManager.afterBlock = { [weak self] _ in
             await self?.friendsManager.refresh()
@@ -338,7 +345,8 @@ final class AppModel: ObservableObject {
             hasDestination: destinationCoordinate != nil,
             distanceToNextTurn: guiding && hasRealRoute && !arrived ? distanceToManeuver : nil,
             stationary: stationary,
-            lowPower: lowPower
+            lowPower: lowPower,
+            sharing: traceManager.isSharing
         )
         locationManager.apply(profile)
     }
@@ -390,9 +398,10 @@ final class AppModel: ObservableObject {
 
     /// Background location only runs while a trip is being guided and hasn't ended in arrival.
     private func updateBackgroundTracking() {
-        // Only a trip being guided needs the app alive with the screen locked. Letting a friend trace you does NOT keep your
-        // location running in the background: it is shared while ThatWay is open (and once on leaving), as the consent says.
-        locationManager.setBackgroundGuidance(guiding && !arrived, activityType: travelMode.locationActivityType)
+        // A trip being guided, or a live permission for a friend to trace you, keeps location running with the screen locked
+        // (iOS shows its blue location indicator). For tracing that is what the consent says: your phone keeps sharing while
+        // the permission lasts, until you stop it or swipe ThatWay away.
+        locationManager.setBackgroundGuidance((guiding && !arrived) || traceManager.isSharing, activityType: travelMode.locationActivityType)
         refreshLocationProfile()
         updateScreenAwake()
         if sceneActive, timer != nil, abs(tickInterval - lastTickInterval) > 0.01 { startTick() }

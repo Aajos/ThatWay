@@ -21,6 +21,8 @@ export const GRANT_MIN_SECONDS = 900;           // 15 minutes
 export const GRANT_MAX_SECONDS = 86400;         // 24 hours, always
 export const REQUEST_TTL_SECONDS = 1800;        // an unanswered request disappears after 30 minutes
 export const LOCATE_MIN_INTERVAL = 120;         // the tracer can ask for a new location once every 2 minutes
+export const FOLLOW_UP_WINDOW = 30;             // ...and for 30 s after asking, may re-read to collect the fresh fix that ask caused
+export const NEAR_PUSH_INTERVAL = 600;          // "X is nearby looking for you" at most every 10 minutes
 export const NOTICE_MIN_INTERVAL = 1800;        // the tracee is told "still tracing you" at most once every 30 minutes
 export const POSITION_TTL_SECONDS = 7200;       // a last-known position is kept for 2 hours at most
 export const MAX_OPEN_REQUESTS = 5;
@@ -209,6 +211,13 @@ export function makeHandler({ db, now = () => Date.now(), planUntil = async () =
         const row = await authorise(me, traceeId);
         if (!row) return reply(403, CANNOT);
         const last = row.lastLocateAt ?? 0;
+        // A follow-up is not a new request: it only re-reads the stored position shortly after a real one, so the fresh fix the
+        // traced phone uploads in answer reaches the tracer. It changes nothing and tells nobody anything.
+        if (body.followUp === true) {
+          if (sec() - last > FOLLOW_UP_WINDOW) return reply(429, { error: "Try again in a moment", retryAfter: Math.max(1, LOCATE_MIN_INTERVAL - (sec() - last)) });
+          const p = await db.get("Positions", { userId: traceeId });
+          return reply(200, { position: p && p.expiresAt > sec() ? { lat: p.lat, lon: p.lon, acc: p.acc, age: sec() - p.at } : null, retryAfter: Math.max(0, LOCATE_MIN_INTERVAL - (sec() - last)) });
+        }
         if (sec() - last < LOCATE_MIN_INTERVAL) return reply(429, { error: "Try again in a moment", retryAfter: LOCATE_MIN_INTERVAL - (sec() - last) });
         const pos = await db.get("Positions", { userId: traceeId });
         const next = { ...row, lastLocateAt: sec(), lastLookedAt: sec() };
@@ -217,6 +226,11 @@ export function makeHandler({ db, now = () => Date.now(), planUntil = async () =
         if (sec() - (row.lastNoticeAt ?? 0) >= NOTICE_MIN_INTERVAL) { next.lastNoticeAt = sec(); next.noticePending = true; }
         await db.put("Grants", next);
         if (next.noticePending && next.lastNoticeAt === sec()) await tell(traceeId, "still", me);
+        // Close by: ask the traced person to open ThatWay, because the precise last metres need both apps open.
+        if ((band === "under 50 m" || band === "under 200 m") && sec() - (row.lastNearPushAt ?? 0) >= NEAR_PUSH_INTERVAL) {
+          await db.put("Grants", { ...next, lastNearPushAt: sec() });
+          await tell(traceeId, "near", me);
+        }
         const position = pos && pos.expiresAt > sec() ? { lat: pos.lat, lon: pos.lon, acc: pos.acc, age: sec() - pos.at } : null;
         return reply(200, { position, retryAfter: LOCATE_MIN_INTERVAL });
       }

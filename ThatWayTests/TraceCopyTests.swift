@@ -16,8 +16,8 @@ struct TraceCopyTests {
     /// Edit a consent sentence and this fails until BOTH the version and the fingerprint below are updated together.
     /// (The server records which version each person agreed to, so a changed sentence under an old version is a lie.)
     @Test func consentWordingIsPinnedToItsVersion() {
-        #expect(ConsentCopy.version == "2026-10-17.1")
-        #expect(ConsentCopy.fingerprint == "8ed793e5417e", "the wording changed: bump ConsentCopy.version and update this fingerprint")
+        #expect(ConsentCopy.version == "2026-10-18.1")
+        #expect(ConsentCopy.fingerprint == "af95931e926f", "the wording changed: bump ConsentCopy.version and update this fingerprint")
     }
 
     @Test func theConsentNamesTheTracerAndTheEndTime() {
@@ -30,7 +30,8 @@ struct TraceCopyTests {
     @Test func everyRiskIsInPlainWords() {
         let all = ConsentCopy.allText
         #expect(all.contains("at most once every 2 minutes"), "how often they can look")
-        #expect(all.contains("while ThatWay is open"), "when the phone shares")
+        #expect(all.contains("even when ThatWay is in the background") && all.contains("blue location indicator"), "when the phone shares, and that iOS shows it")
+        #expect(all.contains("swipe ThatWay away"), "how sharing pauses")
         #expect(all.contains("even if you forget"), "it ends by itself")
         #expect(all.contains("stop it, unfriend"), "how it stops")
         #expect(all.contains("banner"), "that the person will always see it")
@@ -47,7 +48,6 @@ struct TraceCopyTests {
             #expect(!all.contains(promise), "“\(promise)” is a promise we cannot keep")
         }
         #expect(!all.contains("exact location"), "a phone may only know roughly where it is")
-        #expect(!all.contains("in the background"), "the app shares only while it is open")
     }
 
     @Test func theTracerWordingIsExactlyTheOneGenericAnswer() {

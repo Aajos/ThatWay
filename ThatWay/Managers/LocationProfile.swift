@@ -30,7 +30,8 @@ struct LocationProfile: Equatable {
         hasDestination: Bool,
         distanceToNextTurn: Double?,
         stationary: Bool,
-        lowPower: Bool
+        lowPower: Bool,
+        sharing: Bool = false
     ) -> LocationProfile {
         let tuning = mode.tuning
         var accuracy: CLLocationAccuracy
@@ -42,6 +43,12 @@ struct LocationProfile: Equatable {
             accuracy = near ? kCLLocationAccuracyBest : kCLLocationAccuracyNearestTenMeters
             filter = near ? tuning.nearDistanceFilter : tuning.farDistanceFilter
             heading = 3
+        } else if sharing {
+            // Someone may trace me: good enough to find me (about 10 m), but only a fresh fix every 25 m of movement, which is
+            // what keeps a day-long permission light on the battery.
+            accuracy = kCLLocationAccuracyNearestTenMeters
+            filter = 25
+            heading = 5
         } else if hasDestination {
             accuracy = kCLLocationAccuracyNearestTenMeters
             filter = 10

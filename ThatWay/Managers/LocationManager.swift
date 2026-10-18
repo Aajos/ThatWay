@@ -175,11 +175,10 @@ extension LocationManager: CLLocationManagerDelegate {
         if newHeadingValue != heading { heading = newHeadingValue }
     }
 
-    /// Explicitly opt into iOS's own figure-8 calibration prompt when accuracy is poor,
-    /// rather than leaving it to the implicit default — accurate heading is the whole
-    /// point of a compass app.
     func locationManagerShouldDisplayHeadingCalibration(_ manager: CLLocationManager) -> Bool {
-        true
+        // iOS's own full-screen figure-8 popped up every time a phone came out of a pocket (the compass always reads badly for
+        // a moment) and would not go away. The app's own warning (CompassHealth) waits 10 s and clears itself instead.
+        false
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {

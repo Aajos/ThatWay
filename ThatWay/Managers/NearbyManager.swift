@@ -43,6 +43,9 @@ protocol ProximitySession: AnyObject {
     var onUpdate: ((_ meters: Double, _ bearing: Double?) -> Void)? { get set }
     /// The peer left, timed out, or the session was invalidated.
     var onEnded: (() -> Void)? { get set }
+    /// What the person should do for camera-assisted direction to settle ("move your phone slowly"), nil once it has.
+    var onCoaching: ((String?) -> Void)? { get set }
+    func setCameraAssistance(_ on: Bool)
     /// This phone's archived discovery token, base64.
     func localToken() -> String?
     @discardableResult func run(peerToken: String) -> Bool
@@ -57,6 +60,14 @@ protocol ProximityRanging: AnyObject {
     var latestReading: (reading: ProximityReading, at: Date)? { get }
     /// Called on every new reading, so the pill can follow UWB at its own rate instead of the polling rate.
     var onReading: (() -> Void)? { get set }
+    /// Whether this phone can give a direction once the camera is on (iPhone 14 and later).
+    var cameraAssistanceAvailable: Bool { get }
+    /// Whether this phone gives a direction from the radio alone (iPhone 11 to 13).
+    var directionWithoutCamera: Bool { get }
+    var cameraAssistance: Bool { get }
+    /// Instructions while camera-assisted direction settles; nil when it has (or the camera is off).
+    var coaching: String? { get }
+    func setCameraAssistance(_ on: Bool)
     func start(with friend: Friend)
     func stop()
 }
@@ -65,8 +76,19 @@ protocol ProximityRanging: AnyObject {
 final class NearbyManager: ObservableObject, ProximityRanging {
     @Published private(set) var state: NearbyState = .idle
     @Published private(set) var friend: Friend?
+    @Published private(set) var cameraAssistance = false
+    @Published private(set) var coaching: String?
     private(set) var latestReading: (reading: ProximityReading, at: Date)?
     var onReading: (() -> Void)?
+    var cameraAssistanceAvailable: Bool { NearbySession.supportsCameraAssistance }
+    var directionWithoutCamera: Bool { NearbySession.directionWithoutCamera }
+
+    func setCameraAssistance(_ on: Bool) {
+        cameraAssistance = on && cameraAssistanceAvailable
+        session?.setCameraAssistance(cameraAssistance)
+        if !cameraAssistance { coaching = nil }
+        onReading?()
+    }
 
     private let api: NearbyOfferAPI
     private let capabilityProvider: () -> NearbyCapability
@@ -118,6 +140,8 @@ final class NearbyManager: ObservableObject, ProximityRanging {
 
         session.onUpdate = { [weak self] meters, bearing in self?.handleReading(meters: meters, bearing: bearing) }
         session.onEnded = { [weak self] in self?.handleEnded() }
+        session.onCoaching = { [weak self] text in self?.coaching = text; self?.onReading?() }
+        if cameraAssistance { session.setCameraAssistance(true) }
 
         loop = Task { [weak self] in
             var tick = 0
@@ -168,8 +192,9 @@ final class NearbyManager: ObservableObject, ProximityRanging {
 
     func stop() {
         loop?.cancel(); loop = nil
-        session?.onUpdate = nil; session?.onEnded = nil
+        session?.onUpdate = nil; session?.onEnded = nil; session?.onCoaching = nil
         session?.stop(); session = nil
+        cameraAssistance = false; coaching = nil
         ranging = false; latestReading = nil; usedPeerToken = nil
         if let id = friend?.id { Task { await api.endOffers(friendId: id) } }
         friend = nil

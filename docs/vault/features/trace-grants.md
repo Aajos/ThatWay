@@ -118,6 +118,14 @@ Starts automatically inside about 40 m of GPS distance when both phones have the
 - **Sharing only while ThatWay is open** on screen (plus one last upload on leaving). It does **not** keep location running in the background, and the consent says so.
 - Block, report and the emergency control (opens the dialler only) are one press-and-hold on a friend, with no limits.
 
+## Finding the friend: how the arrow decides (2026-10-18)
+- **Far (GPS):** the arrow shows only when the direction is trustworthy: the uncertainty (atan of both accuracies over the distance) must be under ±30°, and the compass must be reliable. Otherwise "Nearby · 40 m, too close for GPS to tell which way", or a hidden arrow while the compass settles. The subtitle always shows the position's age and ±degrees.
+- **Fresh positions:** while a permission is live the traced phone keeps location running in the background (blue indicator; consent 2026-10-18.1), uploads on 25 m moves, every 2 minutes, and within ~10 s of a look. The tracer's look is followed by up to 25 s of follow-up reads (not new requests) to collect that fresh fix.
+- **Close (UWB):** starts inside 200 m (was 40). Distance needs no camera; "warmer / colder" from the last seconds of distance. iPhone 14 and later give direction only with camera assistance (ARKit tracks the phone's own movement; the camera never looks for the person): "Show direction" turns it on, with coaching from Nearby Interaction's convergence ("move slowly side to side"). Direction maths covers phone flat and held up, and is unit tested.
+- A look from under 200 m pushes the traced person: "X is nearby, looking for you. Open ThatWay so they can find you precisely" (at most every 10 minutes), because UWB needs both apps open.
+- Press and hold the pill for a live debug readout of every input (no coordinates).
+- iOS's own figure-8 calibration screen is no longer requested.
+
 ## Not built / still open
 - **Remote push** is built (2026-10-17): the server sends a request or "still tracing you" through APNs using the team key in Parameter Store (`/thatway/apns/*`), to phones registered with `PUT /devices`. Apple accepted our credentials in the real-AWS test; **delivery to a real phone is not yet seen**. A push says only who is asking. Debug builds use the sandbox server, TestFlight and App Store builds production.
 - **Who reads reports** and how fast: reports are stored for a year in the `Reports` table; nobody is told when one arrives. Decide this before launch; the app promises no reply time.

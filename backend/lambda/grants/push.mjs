@@ -12,7 +12,9 @@ let creds = null, jwt = null, jwtAt = 0;
 
 export const message = (kind, name) => kind === "still"
   ? { title: `${name} is still tracing you`, body: "Open ThatWay to stop it." }
-  : { title: `${name} wants to trace you`, body: "Open ThatWay to review it. Nothing is shared unless you say yes." };
+  : kind === "near"
+    ? { title: `${name} is nearby, looking for you`, body: "Open ThatWay so they can find you precisely. You can stop it there too." }
+    : { title: `${name} wants to trace you`, body: "Open ThatWay to review it. Nothing is shared unless you say yes." };
 
 async function credentials() {
   if (creds) return creds;

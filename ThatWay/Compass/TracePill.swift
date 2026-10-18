@@ -56,6 +56,8 @@ struct TracePill: View {
     let precise: () -> Void
     let follow: (Bool) -> Void
     let stopFollowing: () -> Void
+    /// Press and hold the pill: every input behind the arrow, live (no coordinates). For finding out why it points where it does.
+    @State private var showDebug = false
     /// A short screen (iPhone SE): one row of small buttons instead of two, so the compass still fits under the pill.
     var compact = false
 
@@ -66,6 +68,83 @@ struct TracePill: View {
             .background(RoundedRectangle(cornerRadius: 22).fill(theme.surface(0.07)))
             .overlay(RoundedRectangle(cornerRadius: 22).stroke(theme.accent.opacity(0.55)))
             .accessibilityElement(children: .contain)
+            .onLongPressGesture(minimumDuration: 0.8) { showDebug.toggle() }
+    }
+
+    // MARK: The middle of the pill: only ever what the data can honestly support
+
+    @ViewBuilder
+    private func center(_ reading: TraceReading, friend: Friend) -> some View {
+        if reading.hasUsefulDirection {
+            TraceArrow(app: app, location: app.locationManager, reading: reading, theme: theme)
+            Text(reading.distanceText).font(.nunito(15, .black)).foregroundStyle(theme.ink).lineLimit(1).minimumScaleFactor(0.7)
+            Text(subtitle(reading)).font(.nunito(10, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(1).minimumScaleFactor(0.8)
+        } else if reading.source == .uwb {
+            // Exact distance from the radio, but no angle (yet): warmer / colder.
+            Image(systemName: trace.closing == true ? "arrow.down.forward.and.arrow.up.backward" : "dot.radiowaves.left.and.right")
+                .font(.system(size: 20, weight: .bold)).foregroundStyle(theme.accent).accessibilityHidden(true)
+            Text(reading.distanceText).font(.nunito(17, .black)).foregroundStyle(theme.ink)
+            Text(trace.closing == true ? "Getting closer" : trace.closing == false ? "Getting further" : "Exact distance (radio)")
+                .font(.nunito(10, .extraBold)).foregroundStyle(trace.closing == false ? theme.needleRed : theme.textSecondary)
+        } else {
+            // GPS cannot tell direction at this range: say so instead of guessing.
+            Image(systemName: "dot.radiowaves.left.and.right").font(.system(size: 20, weight: .bold)).foregroundStyle(theme.accent).accessibilityHidden(true)
+            Text("Nearby · \(reading.distanceText)").font(.nunito(14, .black)).foregroundStyle(theme.ink).lineLimit(1).minimumScaleFactor(0.7)
+            Text("Too close for GPS to tell which way").font(.nunito(10, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(2).multilineTextAlignment(.center)
+        }
+    }
+
+    /// Up close: how to get the precise arrow, in one line.
+    @ViewBuilder
+    private func upClose(_ reading: TraceReading?, friend: Friend) -> some View {
+        if let reading {
+            if reading.source == .uwb, !reading.hasUsefulDirection {
+                if trace.cameraOn {
+                    hint(trace.coaching ?? "Hold your phone up and move it slowly from side to side.", icon: "camera.viewfinder")
+                } else if trace.cameraDirectionAvailable {
+                    chip("Show direction", icon: "camera.viewfinder", filled: true) { trace.showDirection() }
+                } else if !trace.directionWithoutCamera {
+                    hint("This phone measures distance only. Walk and watch it shrink.", icon: "figure.walk")
+                }
+            } else if reading.source == .gps, !reading.hasUsefulDirection, !trace.uwbLive {
+                if app.nearbyManager.capability.canRange {
+                    hint("Keep ThatWay open. \(friend.username) has been asked to open it too, then you'll get the exact distance.", icon: "iphone.radiowaves.left.and.right")
+                } else {
+                    hint("This phone can't measure the last few metres. Look around, or call \(friend.username).", icon: "eye")
+                }
+            } else if reading.source == .gps, reading.hasUsefulDirection, !app.locationManager.hasReliableHeading {
+                hint("The compass is settling. Hold the phone flat, away from metal and magnets.", icon: "location.north.circle")
+            }
+            if trace.fetchingFresh { hint("Getting \(friend.username)'s latest location…", icon: "arrow.clockwise") }
+        }
+    }
+
+    private func hint(_ text: String, icon: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).font(.system(size: 11, weight: .bold)).accessibilityHidden(true)
+            Text(text).font(.nunito(11, .semibold)).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(theme.textSecondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var debugPanel: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            let rows = trace.diagnostics(myAccuracy: app.locationManager.location?.horizontalAccuracy)
+                + [("Compass", app.locationManager.hasReliableHeading ? "±\(Int(app.locationManager.headingAccuracy))°" : "unreliable (arrow hidden)")]
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(rows.indices, id: \.self) { i in
+                    HStack {
+                        Text(rows[i].0).foregroundStyle(theme.textSecondary)
+                        Spacer()
+                        Text(rows[i].1).foregroundStyle(theme.ink)
+                    }
+                }
+            }
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 10).fill(theme.ink.opacity(0.06)))
+        }
     }
 
     @ViewBuilder
@@ -93,9 +172,7 @@ struct TracePill: View {
                     avatar(initials: initials(myName), color: theme.accent, label: "You")
                     VStack(spacing: 2) {
                         if let reading {
-                            TraceArrow(app: app, location: app.locationManager, reading: reading, theme: theme)
-                            Text(reading.distanceText).font(.nunito(15, .black)).foregroundStyle(theme.ink).lineLimit(1).minimumScaleFactor(0.7)
-                            Text(subtitle(reading)).font(.nunito(10, .semibold)).foregroundStyle(theme.textSecondary).lineLimit(1)
+                            center(reading, friend: friend)
                         } else if trace.noLocationYet {
                             Image(systemName: "location.slash").font(.system(size: 20, weight: .bold)).foregroundStyle(theme.textSecondary)
                             Text("\(TraceCopy.accepted). \(friend.username)’s phone hasn’t shared a location yet.")
@@ -125,11 +202,13 @@ struct TracePill: View {
                 if !compact {
                     HStack(spacing: 8) {
                         locateChip
-                        if app.nearbyManager.capability.canRange, reading?.source != .uwb {
+                        if app.nearbyManager.capability.canRange, !trace.uwbLive {
                             chip("Find precisely", icon: "dot.radiowaves.left.and.right", filled: false, action: precise)
                         }
                     }
                 }
+                upClose(reading, friend: friend)
+                if showDebug { debugPanel }
                 if let ends = planLine { Text(ends).font(.nunito(10, .semibold)).foregroundStyle(theme.textSecondary) }
             }
             .accessibilityLabel(activeLabel(friend: friend, reading: reading))
@@ -222,7 +301,8 @@ struct TracePill: View {
         case .gps:
             let age = Int(r.peerAgeSeconds ?? 0)
             let seen = age < 60 ? "just now" : age < 3600 ? "\(age / 60) min ago" : "\(age / 3600) h ago"
-            return trace.justAccepted ? "\(TraceCopy.accepted) · seen \(seen)" : "Seen \(seen)"
+            let spread = r.uncertaintyDegrees.map { " · ±\(max(1, Int($0.rounded())))°" } ?? ""
+            return (trace.justAccepted ? "\(TraceCopy.accepted) · seen \(seen)" : "Seen \(seen)") + spread
         }
     }
 
@@ -247,11 +327,17 @@ private struct TraceArrow: View {
         let usable = reading.source == .uwb || location.hasReliableHeading
         let raw = usable ? reading.arrowAngle(heading: app.currentHeading) : nil
         let _ = angle.value.update(to: raw ?? 0)
-        Image(systemName: "location.north.fill")
-            .font(.system(size: 22, weight: .bold))
-            .foregroundStyle(raw == nil ? theme.textSecondary.opacity(0.5) : theme.accent)
-            .rotationEffect(.degrees(angle.value.value))
-            .animation(.easeOut(duration: 0.2), value: angle.value.value)
-            .accessibilityHidden(true)
+        if raw == nil {
+            // No trustworthy heading: never draw an arrow that points somewhere arbitrary.
+            Image(systemName: "location.north.circle").font(.system(size: 22, weight: .bold))
+                .foregroundStyle(theme.textSecondary.opacity(0.6)).accessibilityHidden(true)
+        } else {
+            Image(systemName: "location.north.fill")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(theme.accent)
+                .rotationEffect(.degrees(angle.value.value))
+                .animation(.easeOut(duration: 0.2), value: angle.value.value)
+                .accessibilityHidden(true)
+        }
     }
 }

@@ -29,6 +29,8 @@ private final class FakeTraceAPI: TraceAPI {
     var uploads = 0
     var locateCalls: [(id: String, distance: Double?)] = []
     var locateResult: Result<LocateResult, Error> = .success(LocateResult(position: nil, retryAfter: 120))
+    var followUpResult: LocateResult?
+    var followUps = 0
     /// Runs while a snapshot call is "in flight", to model a sync that overlaps a local action.
     var duringSnapshot: (() async -> Void)?
 
@@ -55,6 +57,10 @@ private final class FakeTraceAPI: TraceAPI {
         locateCalls.append((traceeId, distanceMeters))
         return try locateResult.get()
     }
+    func locateFollowUp(traceeId: String) async throws -> LocateResult {
+        followUps += 1
+        return followUpResult ?? LocateResult(position: nil)
+    }
 }
 
 @MainActor
@@ -62,8 +68,13 @@ private final class FakeRanging: ProximityRanging {
     var capability: NearbyCapability = .uwbWithDirection
     var latestReading: (reading: ProximityReading, at: Date)?
     var onReading: (() -> Void)?
+    var cameraAssistanceAvailable = true
+    var directionWithoutCamera = false
+    var cameraAssistance = false
+    var coaching: String?
     var started: [String] = []
     var stops = 0
+    func setCameraAssistance(_ on: Bool) { cameraAssistance = on && cameraAssistanceAvailable }
     func start(with friend: Friend) { started.append(friend.id) }
     func stop() { stops += 1 }
 }
@@ -500,7 +511,10 @@ struct TraceManagerTests {
         #expect(r.ranging.started == ["bob-id"])
         await r.manager.poll()
         #expect(r.ranging.started.count == 1, "started once")
-        r.advance(121); r.locates(at: 200)
+        r.advance(121); r.locates(at: 250)
+        await r.manager.locate(manual: true)
+        #expect(r.ranging.stops == 0, "still inside the 300 m hysteresis")
+        r.advance(121); r.locates(at: 400)
         await r.manager.locate(manual: true)
         #expect(r.ranging.stops >= 1, "released when they are well away")
     }
@@ -639,7 +653,7 @@ struct TraceManagerTests {
         #expect(r.manager.isSharing)
     }
 
-    @Test func myPositionIsSharedOnlyWhileSomeoneMayTraceMeAndTheAppIsOpen() async {
+    @Test func myPositionIsSharedOnlyWhileSomeoneMayTraceMeIncludingInTheBackground() async {
         let r = Rig()
         await r.manager.poll()
         #expect(r.api.uploads == 0, "nobody may trace me: nothing is uploaded")
@@ -653,7 +667,60 @@ struct TraceManagerTests {
         r.advance(300)
         let before = r.api.uploads
         await r.manager.poll()
-        #expect(r.api.uploads == before, "with the app away, the regular sharing stops")
+        #expect(r.api.uploads > before, "in the background it keeps sharing while the permission lasts, as the consent says")
+        r.tracedSees()
+        await r.manager.poll()
+        r.advance(300)
+        let after = r.api.uploads
+        await r.manager.poll()
+        #expect(r.api.uploads == after, "and stops the moment nobody may trace me")
+    }
+
+    @Test func aLookThatFindsAnOldPositionCollectsTheFreshOneWithoutANewRequest() async {
+        let r = Rig()
+        r.locates(at: 2_000, age: 600)                                    // their phone last uploaded 10 minutes ago
+        r.api.followUpResult = LocateResult(position: r.peer(metres: 1_500, age: 3))
+        await r.manager.request(r.bob, hours: 1)
+        r.tracerSees(r.active())
+        await r.manager.poll()
+        for _ in 0..<2000 where (r.manager.locationAge ?? 999) > 10 { await Task.yield() }
+        #expect(r.api.locateCalls.count == 1, "one request")
+        #expect(r.api.followUps >= 1, "then follow-up reads, which are not requests")
+        #expect((r.manager.locationAge ?? 999) <= 10 && (r.manager.reading?.meters ?? 9999) < 2_000, "the fresh fix replaced the old one (the distance eases towards it)")
+    }
+
+    @Test func gpsAtShortRangeHasNoArrow() async {
+        let r = Rig()
+        await r.tracingBob(metres: 25)
+        #expect(r.manager.reading?.source == .gps)
+        #expect(r.manager.reading?.hasUsefulDirection == false, "25 m apart: GPS cannot tell which way, so no arrow is drawn")
+    }
+
+    @Test func radioDistanceWithoutAnAngleGivesWarmerColderAndOffersTheCamera() async {
+        let r = Rig()
+        await r.tracingBob(metres: 25)
+        r.ranging.latestReading = (ProximityReading(meters: 9, band: .near, relativeBearing: nil), r.clock)
+        r.ranging.onReading?()
+        r.advance(2)
+        r.ranging.latestReading = (ProximityReading(meters: 7, band: .close, relativeBearing: nil), r.clock)
+        r.ranging.onReading?()
+        #expect(r.manager.reading?.source == .uwb && r.manager.reading?.hasUsefulDirection == false)
+        #expect(r.manager.closing == true, "getting closer")
+        #expect(r.manager.uwbLive)
+        r.manager.showDirection()
+        #expect(r.ranging.cameraAssistance, "Show direction turns on the camera assistance")
+        r.ranging.cameraAssistanceAvailable = false; r.ranging.cameraAssistance = false
+        r.manager.showDirection()
+        #expect(!r.ranging.cameraAssistance, "never on a phone that can't")
+    }
+
+    @Test func theDebugReadoutNamesEveryInputAndNoCoordinate() async {
+        let r = Rig()
+        await r.tracingBob(metres: 3_000)
+        let rows = r.manager.diagnostics(myAccuracy: 8)
+        let names = rows.map(\.0)
+        #expect(names.contains("Mode") && names.contains("GPS direction ±") && names.contains("Their fix age") && names.contains("UWB hardware"))
+        #expect(!rows.map(\.1).joined().contains("-37."), "no coordinates")
     }
 
     @Test func leavingTheAppSharesOneLastPosition() async {

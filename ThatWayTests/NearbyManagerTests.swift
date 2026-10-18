@@ -31,12 +31,15 @@ private final class FakeAPI: NearbyOfferAPI {
 private final class FakeSession: ProximitySession {
     var onUpdate: ((Double, Double?) -> Void)?
     var onEnded: (() -> Void)?
+    var onCoaching: ((String?) -> Void)?
+    var camera = false
     var ranToken: String?
     var ranTokens: [String] = []
     var stopped = false
     func localToken() -> String? { "TUJD" }
     func run(peerToken: String) -> Bool { ranToken = peerToken; ranTokens.append(peerToken); return true }
     func stop() { stopped = true }
+    func setCameraAssistance(_ on: Bool) { camera = on }
 }
 
 @MainActor
@@ -175,5 +178,25 @@ struct NearbyManagerTests {
         manager.start(with: friend)
         if case .failed(let message) = manager.state { #expect(message.contains("aren't switched on")) } else { Issue.record("expected failed") }
         #expect(api.published.isEmpty)
+    }
+
+    // MARK: Which way the arrow points (Nearby Interaction's direction vector: x right, y towards the top edge, z out of the screen)
+
+    @Test func flatOnAPalmAheadIsUpAndRightIsRight() {
+        #expect(abs((NearbySession.arrowAngle(direction: (0, 1, 0), horizontalAngle: nil) ?? 99) - 0) < 0.01, "ahead of the top edge: straight up")
+        #expect(abs((NearbySession.arrowAngle(direction: (1, 0.01, 0), horizontalAngle: nil) ?? 0) - 90) < 1, "to the right: right")
+        #expect(abs((NearbySession.arrowAngle(direction: (-0.7, 0.7, 0), horizontalAngle: nil) ?? 0) + 45) < 0.5, "ahead-left: 45 degrees left")
+    }
+
+    @Test func heldUpLikeACameraAheadIsUpAndRightIsRight() {
+        #expect(abs((NearbySession.arrowAngle(direction: (0, 0, -1), horizontalAngle: nil) ?? 99) - 0) < 0.01, "in front of the back camera: straight up")
+        #expect(abs((NearbySession.arrowAngle(direction: (0.7, 0, -0.7), horizontalAngle: nil) ?? 0) - 45) < 0.5, "ahead-right")
+        #expect(abs(abs(NearbySession.arrowAngle(direction: (0, 0, 1), horizontalAngle: nil) ?? 0) - 180) < 0.01, "behind you: points down")
+    }
+
+    @Test func noDirectionFallsBackToTheHorizontalAngleOrNothing() {
+        #expect(abs((NearbySession.arrowAngle(direction: nil, horizontalAngle: .pi / 4) ?? 0) - 45) < 0.01)
+        #expect(NearbySession.arrowAngle(direction: nil, horizontalAngle: nil) == nil, "no angle: warmer/colder, never a made-up arrow")
+        #expect(NearbySession.arrowAngle(direction: (0, 0.01, 0.01), horizontalAngle: nil) == nil, "straight above or below: no bearing")
     }
 }

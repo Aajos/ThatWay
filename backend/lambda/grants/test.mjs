@@ -1,5 +1,5 @@
 // Run:  /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc -m test.mjs     (or: node test.mjs)
-import { makeHandler, distanceBand, GRANT_MAX_SECONDS, GRANT_MIN_SECONDS, REQUEST_TTL_SECONDS, LOCATE_MIN_INTERVAL, NOTICE_MIN_INTERVAL, POSITION_TTL_SECONDS, MAX_OPEN_REQUESTS, MAX_ACTIVE_GRANTS, REPORT_RETENTION_SECONDS } from "./core.mjs";
+import { FOLLOW_UP_WINDOW, NEAR_PUSH_INTERVAL, makeHandler, distanceBand, GRANT_MAX_SECONDS, GRANT_MIN_SECONDS, REQUEST_TTL_SECONDS, LOCATE_MIN_INTERVAL, NOTICE_MIN_INTERVAL, POSITION_TTL_SECONDS, MAX_OPEN_REQUESTS, MAX_ACTIVE_GRANTS, REPORT_RETENTION_SECONDS } from "./core.mjs";
 
 const out = typeof print === "function" ? print : console.log;
 if (typeof console === "undefined") globalThis.console = { log: out, error() {} };
@@ -297,6 +297,28 @@ r = await call("PUT /devices", "tracee", { token: "ab".repeat(32), environment: 
 await call("PUT /devices", "tracee", { token: "cd".repeat(32), environment: "production" });
 r = await call("POST /devices/remove", "tracee", { token: "ab".repeat(32) }); check("sign-out removes that phone only", db.t.Devices.size === 1);
 await call("POST /devices/remove", "tracee", {}); check("or all of them", db.t.Devices.size === 0);
+
+// ---------- follow-up reads and the "nearby" push
+db.t.Grants.clear(); db.t.Positions.clear(); db.t.Friends.clear(); db.t.Blocks.clear(); befriend(db, "tracer", "tracee"); pushes.length = 0;
+await request(); await grant(24);
+r = await locate("tracer", "tracee", 1500); check("a look with nothing uploaded yet returns no position", J(r).position === null);
+tick(5); await upload();
+r = await call("POST /grants/locate", "tracer", { traceeId: "tracee", followUp: true });
+check("a follow-up shortly after collects the fix that look caused", r.statusCode === 200 && J(r).position.age === 0);
+r = await call("GET /grants", "tracee"); const lookedBefore = J(r).asTraced[0].lastLookedAt;
+tick(FOLLOW_UP_WINDOW + 1);
+r = await call("POST /grants/locate", "tracer", { traceeId: "tracee", followUp: true });
+check("but not after the follow-up window: that would be a new request", r.statusCode === 429);
+r = await call("GET /grants", "tracee"); check("a follow-up changes nothing the traced person sees", J(r).asTraced[0].lastLookedAt === lookedBefore);
+pushes.length = 0; tick(LOCATE_MIN_INTERVAL);
+await locate("tracer", "tracee", 120);
+check("a look from under 200 m asks the traced person to open the app", pushes.some((p) => p[1] === "near" && p[0] === "tracee"));
+tick(LOCATE_MIN_INTERVAL); const before = pushes.filter((p) => p[1] === "near").length; await locate("tracer", "tracee", 30);
+check("at most every 10 minutes", pushes.filter((p) => p[1] === "near").length === before);
+tick(NEAR_PUSH_INTERVAL); await locate("tracer", "tracee", 30);
+check("then again", pushes.filter((p) => p[1] === "near").length === before + 1);
+tick(LOCATE_MIN_INTERVAL); const n = pushes.length; await locate("tracer", "tracee", 5000);
+check("a far-away look never sends it", pushes.filter((p) => p[1] === "near").length === before + 1 && pushes.length - n <= 1);
 
 // ---------- failures never leak
 const broken = makeHandler({ db: { ...db, get: async () => { throw Object.assign(new Error("arn:aws lat -37.8"), { name: "Boom" }); } }, now: () => clock });

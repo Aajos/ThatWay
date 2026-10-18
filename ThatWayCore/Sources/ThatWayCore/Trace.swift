@@ -40,11 +40,33 @@ public struct TraceReading: Equatable, Sendable {
     public var relativeBearing: Double?
     /// How old the friend's last position is; nil for UWB (live).
     public var peerAgeSeconds: Double?
+    /// GPS only: how far either side the true direction could be, in degrees, from both positions' accuracy and the distance
+    /// between them. Large when the two phones are close together: GPS cannot tell direction at short range.
+    public var uncertaintyDegrees: Double?
 
     public init(meters: Double, band: ProximityBand, source: TraceSource, trueBearing: Double? = nil,
-                relativeBearing: Double? = nil, peerAgeSeconds: Double? = nil) {
+                relativeBearing: Double? = nil, peerAgeSeconds: Double? = nil, uncertaintyDegrees: Double? = nil) {
         self.meters = meters; self.band = band; self.source = source
         self.trueBearing = trueBearing; self.relativeBearing = relativeBearing; self.peerAgeSeconds = peerAgeSeconds
+        self.uncertaintyDegrees = uncertaintyDegrees
+    }
+
+    /// Beyond this half-angle a GPS arrow would be a guess: the screen says "nearby" instead of pointing.
+    public static let maxUsefulUncertainty = 30.0
+
+    /// Whether there is an honest direction to draw: a UWB angle, or a GPS bearing that is not swamped by GPS error.
+    public var hasUsefulDirection: Bool {
+        switch source {
+        case .uwb: return relativeBearing != nil
+        case .gps: return trueBearing != nil && (uncertaintyDegrees ?? 0) <= Self.maxUsefulUncertainty
+        }
+    }
+
+    /// Half-angle of the direction's uncertainty, from the two positions' accuracy (metres) and the distance between them.
+    public static func uncertainty(meters: Double, myAccuracy: Double?, peerAccuracy: Double?) -> Double {
+        let error = max(0, myAccuracy ?? 15) + max(0, peerAccuracy ?? 15)
+        guard meters > 0.5 else { return 180 }
+        return min(180, atan(error / meters) * 180 / .pi)
     }
 
     /// A friend position older than this is shown as "last seen" rather than live.
@@ -75,10 +97,11 @@ public struct TraceReading: Equatable, Sendable {
 
 /// GPS carries the whole journey; UWB takes over for the last stretch. Pure and deterministic: callers pass the clock.
 public struct TraceFusion: Sendable {
-    /// Start trying UWB inside this GPS distance (UWB itself only reaches about 10 to 20 m, so this is a head start).
-    public static let uwbEngageMeters = 40.0
+    /// Start trying UWB inside this GPS distance. UWB itself reaches about 10 to 30 m, but GPS cannot judge distances that
+    /// short, and the radio costs little while it waits: start early so it is already connected when the friend comes in range.
+    public static let uwbEngageMeters = 200.0
     /// Give UWB back to GPS beyond this (hysteresis so it does not flap at the edge).
-    public static let uwbReleaseMeters = 60.0
+    public static let uwbReleaseMeters = 300.0
     /// A UWB reading older than this no longer counts.
     public static let uwbFreshSeconds = 3.0
 
@@ -100,7 +123,7 @@ public struct TraceFusion: Sendable {
     ///   - peer: the friend's last relayed position
     ///   - uwb: the latest UWB reading and how old it is, if a session is ranging
     public mutating func reading(me: CLLocationCoordinate2D?, peer: TracePeerPosition?,
-                                 uwb: (reading: ProximityReading, ageSeconds: Double)?) -> TraceReading? {
+                                 uwb: (reading: ProximityReading, ageSeconds: Double)?, myAccuracy: Double? = nil) -> TraceReading? {
         if let uwb, uwb.ageSeconds <= Self.uwbFreshSeconds {
             if lastSource != .uwb { smoother.reset(); lastSource = .uwb }
             // The UWB reading is already smoothed by the session owner: pass it through, keep the band from flapping.
@@ -114,6 +137,7 @@ public struct TraceFusion: Sendable {
         let metres = CompassManager.distance(from: me, to: there)
         let band = smoother.add(meters: metres)
         return TraceReading(meters: smoother.meters ?? metres, band: band, source: .gps,
-                            trueBearing: CompassManager.bearing(from: me, to: there), peerAgeSeconds: peer.ageSeconds)
+                            trueBearing: CompassManager.bearing(from: me, to: there), peerAgeSeconds: peer.ageSeconds,
+                            uncertaintyDegrees: TraceReading.uncertainty(meters: metres, myAccuracy: myAccuracy, peerAccuracy: peer.accuracy))
     }
 }

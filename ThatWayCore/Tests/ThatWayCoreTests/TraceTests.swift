@@ -55,10 +55,10 @@ struct TraceTests {
     }
 
     @Test func uwbEngagementHasHysteresis() {
-        #expect(TraceFusion.wantsUWB(gpsMeters: 35, running: false))
-        #expect(!TraceFusion.wantsUWB(gpsMeters: 50, running: false), "not yet")
-        #expect(TraceFusion.wantsUWB(gpsMeters: 50, running: true), "keeps going until 60 m")
-        #expect(!TraceFusion.wantsUWB(gpsMeters: 65, running: true))
+        #expect(TraceFusion.wantsUWB(gpsMeters: 150, running: false), "starts early, so it is connected by the time it is in range")
+        #expect(!TraceFusion.wantsUWB(gpsMeters: 250, running: false), "not yet")
+        #expect(TraceFusion.wantsUWB(gpsMeters: 250, running: true), "keeps going until 300 m")
+        #expect(!TraceFusion.wantsUWB(gpsMeters: 320, running: true))
         #expect(!TraceFusion.wantsUWB(gpsMeters: nil, running: false))
     }
 
@@ -76,5 +76,30 @@ struct TraceTests {
         #expect(TraceReading(meters: 1, band: .here, source: .gps, peerAgeSeconds: 60).isStale)
         #expect(!TraceReading(meters: 1, band: .here, source: .gps, peerAgeSeconds: 5).isStale)
         #expect(!TraceReading(meters: 1, band: .here, source: .uwb).isStale)
+    }
+
+    @Test func gpsCannotTellDirectionAtShortRange() {
+        // Two phones 20 m apart, each ±10 m: the true direction could be 45 degrees either side. No honest arrow.
+        #expect(TraceReading.uncertainty(meters: 20, myAccuracy: 10, peerAccuracy: 10) == 45)
+        let near = TraceReading(meters: 20, band: .near, source: .gps, trueBearing: 10, uncertaintyDegrees: 45)
+        #expect(!near.hasUsefulDirection)
+        // 1 km apart with the same accuracy: about 1 degree. A real arrow.
+        let far = TraceReading(meters: 1000, band: .far, source: .gps, trueBearing: 10,
+                               uncertaintyDegrees: TraceReading.uncertainty(meters: 1000, myAccuracy: 10, peerAccuracy: 10))
+        #expect(far.hasUsefulDirection && (far.uncertaintyDegrees ?? 99) < 2)
+        #expect(TraceReading.uncertainty(meters: 0, myAccuracy: 5, peerAccuracy: 5) == 180)
+    }
+
+    @Test func aRadioReadingWithoutAnAngleHasNoDirection() {
+        #expect(!TraceReading(meters: 3, band: .veryClose, source: .uwb).hasUsefulDirection, "distance only: warmer/colder, never a fake arrow")
+        #expect(TraceReading(meters: 3, band: .veryClose, source: .uwb, relativeBearing: 20).hasUsefulDirection)
+    }
+
+    @Test func theFusionAttachesTheUncertainty() {
+        var fusion = TraceFusion()
+        let me = CLLocationCoordinate2D(latitude: -37.8, longitude: 145.0)
+        let peer = TracePeerPosition(latitude: -37.8 + 30 / 111_320, longitude: 145.0, accuracy: 20, ageSeconds: 5)
+        let r = fusion.reading(me: me, peer: peer, uwb: nil, myAccuracy: 20)
+        #expect((r?.uncertaintyDegrees ?? 0) > 50 && r?.hasUsefulDirection == false)
     }
 }
