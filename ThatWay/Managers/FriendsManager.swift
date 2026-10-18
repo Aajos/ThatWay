@@ -1,0 +1,222 @@
+//
+//  FriendsManager.swift
+//  ThatWay
+//
+//  REST client for the live friends API (API Gateway + Lambda + DynamoDB — see the backend
+//  brief pasted into this project's notes, and backend/SETUP.md for the original provisioning
+//  steps), following the same plain URLSession pattern as RoutingManager. Every request carries
+//  the Cognito *access* token from AuthManager as a bearer token — the API Gateway JWT
+//  authorizer validates access tokens here, not ID tokens.
+//
+
+import Foundation
+import Combine
+
+/// `/friends/search` returns a plain user hit, not a relationship record — it has no
+/// `status`/`requestedAt`/`acceptedAt`, so it's kept separate from `Friend` rather than faking
+/// those fields.
+struct UserSearchResult: Identifiable, Decodable, Equatable {
+    let id: String
+    let username: String
+}
+
+@MainActor
+final class FriendsManager: ObservableObject {
+    @Published var friends: [Friend] = []
+    @Published var incomingRequests: [Friend] = []
+    @Published var outgoingRequests: [Friend] = []
+    @Published var searchResults: [UserSearchResult] = []
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+    @Published var requestPolicy: FriendRequestPolicy = FriendRequestPolicy.load() {
+        didSet { requestPolicy.save(); if requestPolicy == .autoAccept { Task { await autoAcceptPending() } } }
+    }
+    private var autoAcceptTried = Set<String>()
+    private var autoAccepting = false
+
+    private let auth: AuthManager
+    private var cancellables = Set<AnyCancellable>()
+
+    init(auth: AuthManager) {
+        self.auth = auth
+        auth.$authState.sink { [weak self] state in
+            guard let self else { return }
+            if state == .signedIn {
+                Task { await self.refresh() }
+            } else if state == .signedOut {
+                self.friends = []
+                self.incomingRequests = []
+                self.outgoingRequests = []
+                self.searchResults = []
+            }
+        }.store(in: &cancellables)
+    }
+
+    func refresh() async {
+        isLoading = true; errorMessage = nil
+        defer { isLoading = false }
+        do {
+            async let accepted: [Friend] = request(method: "GET", path: "/friends?status=ACCEPTED")
+            async let incoming: [Friend] = request(method: "GET", path: "/friends?status=INCOMING")
+            async let outgoing: [Friend] = request(method: "GET", path: "/friends?status=PENDING")
+            (friends, incomingRequests, outgoingRequests) = try await (accepted, incoming, outgoing)
+            incomingRequests.sort { ($0.requestedAt ?? "") > ($1.requestedAt ?? "") }     // latest first
+            await autoAcceptPending()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Exact-username lookup. Usernames are matched exactly as typed, so a lower-case retry covers the common slip of a
+    /// stray capital. (Your own account is never returned.)
+    /// With "Auto accept" on, requests that arrive are accepted without asking. Done by the app while it is open (the
+    /// server has no such setting yet), once per request so a failure cannot loop.
+    func autoAcceptPending() async {
+        guard !autoAccepting else { return }
+        let ids = requestPolicy.idsToAutoAccept(incoming: incomingRequests, alreadyTried: autoAcceptTried)
+        guard !ids.isEmpty else { return }
+        autoAccepting = true
+        defer { autoAccepting = false }
+        for id in ids {
+            autoAcceptTried.insert(id)
+            let _: EmptyResponse? = try? await request(method: "POST", path: "/friends/respond", body: ["requesterId": id, "action": "accept"])
+        }
+        // Refresh the lists once (the guard above stops this from recursing).
+        if let accepted: [Friend] = try? await request(method: "GET", path: "/friends?status=ACCEPTED"),
+           let incoming: [Friend] = try? await request(method: "GET", path: "/friends?status=INCOMING") {
+            friends = accepted
+            incomingRequests = incoming.sorted { ($0.requestedAt ?? "") > ($1.requestedAt ?? "") }
+        }
+    }
+
+    func searchUsers(query: String) async {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { searchResults = []; return }
+        errorMessage = nil
+        do {
+            var hits = try await lookUp(trimmed)
+            if hits.isEmpty, trimmed != trimmed.lowercased() { hits = try await lookUp(trimmed.lowercased()) }
+            let me = auth.currentUser?.id
+            searchResults = hits.filter { $0.id != me }
+        } catch {
+            errorMessage = error.localizedDescription
+            searchResults = []
+        }
+    }
+
+    private func lookUp(_ username: String) async throws -> [UserSearchResult] {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "username", value: username)]
+        let encodedQuery = components.percentEncodedQuery.map { "?\($0)" } ?? ""
+        return try await request(method: "GET", path: "/friends/search\(encodedQuery)")
+    }
+
+    @discardableResult
+    func sendRequest(to userId: String) async -> Bool {
+        errorMessage = nil
+        do {
+            let _: EmptyResponse = try await request(method: "POST", path: "/friends/request", body: ["friendId": userId])
+            await refresh()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// `requesterId` is the other person's id — only the recipient of their incoming request
+    /// can respond to it.
+    func respond(to requesterId: String, accept: Bool) async {
+        errorMessage = nil
+        do {
+            let _: EmptyResponse = try await request(method: "POST", path: "/friends/respond", body: [
+                "requesterId": requesterId,
+                "action": accept ? "accept" : "reject",
+            ])
+            await refresh()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func removeFriend(id: String) async {
+        errorMessage = nil
+        do {
+            let _: EmptyResponse = try await request(method: "DELETE", path: "/friends/\(id)")
+            await refresh()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func request<T: Decodable>(method: String, path: String, body: [String: Any]? = nil, allowRefresh: Bool = true) async throws -> T {
+        guard Config.apiConfigured else { throw FriendsError.notConfigured }
+        guard let url = URL(string: Config.apiBaseURL + path) else { throw FriendsError.badURL }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = method
+        if let token = auth.bearerToken {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let body {
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        guard let http = response as? HTTPURLResponse else { throw FriendsError.unreachable }
+
+        // Access tokens last 60 minutes; a 401 here almost always means it just expired.
+        // Refresh once and retry the same call before surfacing an error.
+        if http.statusCode == 401, allowRefresh, await auth.refreshAccessToken() {
+            return try await request(method: method, path: path, body: body, allowRefresh: false)
+        }
+
+        guard 200..<300 ~= http.statusCode else {
+            let decoded = try? JSONDecoder().decode(ErrorBody.self, from: data)
+            let message = decoded?.error ?? decoded?.message
+            throw FriendsError.status(http.statusCode, message ?? "The friends service couldn't be reached.", retryAfter: decoded?.retryAfter)
+        }
+        // A 204 has no body at all, which JSONDecoder rejects: treat it as the empty success it is.
+        if data.isEmpty, let empty = EmptyResponse() as? T { return empty }
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+}
+
+extension FriendsManager {
+    /// Tells the server this phone's push token (so requests reach a closed app).
+    func registerDevice(token: String, environment: String) async {
+        let _: EmptyResponse? = try? await request(method: "PUT", path: "/devices", body: ["token": token, "environment": environment])
+    }
+
+    /// Sign-out: this phone stops receiving this account's pushes.
+    func removeDevice(token: String?) async {
+        let _: EmptyResponse? = try? await request(method: "POST", path: "/devices/remove", body: token.map { ["token": $0] } ?? [:])
+    }
+}
+
+struct EmptyResponse: Decodable {}
+private struct ErrorBody: Decodable { let error: String?; let message: String?; let retryAfter: Double? }
+
+enum FriendsError: LocalizedError {
+    case badURL
+    case notConfigured
+    case unreachable
+    case server(String)
+    /// The service answered with an error status: 402 (a plan is needed), 403 (not allowed), 429 (too soon, `retryAfter` seconds)...
+    case status(Int, String, retryAfter: Double?)
+
+    var errorDescription: String? {
+        switch self {
+        case .notConfigured: return "Friends aren't switched on yet: the app doesn't have its friends service address."
+        case .badURL, .unreachable: return "The friends service couldn't be reached."
+        case .server(let message): return message
+        case .status(_, let message, _): return message
+        }
+    }
+
+    /// The HTTP status, when the service answered with one.
+    var httpStatus: Int? {
+        if case .status(let code, _, _) = self { return code }
+        return nil
+    }
+}

@@ -1,0 +1,324 @@
+{
+  "nodes": [
+    {
+      "id": "n050",
+      "type": "file",
+      "file": "flows/flow-first-launch.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 140,
+      "color": "6"
+    },
+    {
+      "id": "n051",
+      "type": "file",
+      "file": "flows/flow-start-guidance.md",
+      "x": 360,
+      "y": 0,
+      "width": 320,
+      "height": 140,
+      "color": "6"
+    },
+    {
+      "id": "n052",
+      "type": "file",
+      "file": "flows/flow-guidance-refresh.md",
+      "x": 720,
+      "y": 0,
+      "width": 320,
+      "height": 140,
+      "color": "6"
+    },
+    {
+      "id": "n053",
+      "type": "file",
+      "file": "flows/flow-off-route.md",
+      "x": 1080,
+      "y": 0,
+      "width": 320,
+      "height": 140,
+      "color": "6"
+    },
+    {
+      "id": "n054",
+      "type": "file",
+      "file": "flows/flow-mode-change.md",
+      "x": 1440,
+      "y": 0,
+      "width": 320,
+      "height": 140,
+      "color": "6"
+    },
+    {
+      "id": "n055",
+      "type": "file",
+      "file": "flows/flow-offline-midroute.md",
+      "x": 0,
+      "y": 360,
+      "width": 320,
+      "height": 140,
+      "color": "6"
+    },
+    {
+      "id": "n056",
+      "type": "file",
+      "file": "flows/flow-phone-locked.md",
+      "x": 360,
+      "y": 360,
+      "width": 320,
+      "height": 140,
+      "color": "6"
+    },
+    {
+      "id": "n057",
+      "type": "file",
+      "file": "flows/flow-compass-wrong.md",
+      "x": 720,
+      "y": 360,
+      "width": 320,
+      "height": 140,
+      "color": "6"
+    },
+    {
+      "id": "n058",
+      "type": "file",
+      "file": "flows/flow-arrival.md",
+      "x": 1080,
+      "y": 360,
+      "width": 320,
+      "height": 140,
+      "color": "6"
+    },
+    {
+      "id": "n059",
+      "type": "file",
+      "file": "flows/flow-relaunch-restore.md",
+      "x": 1440,
+      "y": 360,
+      "width": 320,
+      "height": 140,
+      "color": "6"
+    },
+    {
+      "id": "n069",
+      "type": "file",
+      "file": "features/guidance-mode.md",
+      "x": 0,
+      "y": 760,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "n071",
+      "type": "file",
+      "file": "features/routing-governor.md",
+      "x": 360,
+      "y": 760,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "n073",
+      "type": "file",
+      "file": "features/route-progress.md",
+      "x": 720,
+      "y": 760,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "n075",
+      "type": "file",
+      "file": "features/off-route-reroute.md",
+      "x": 1080,
+      "y": 760,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "n077",
+      "type": "file",
+      "file": "features/compass-health.md",
+      "x": 1440,
+      "y": 760,
+      "width": 320,
+      "height": 110,
+      "color": "2"
+    },
+    {
+      "id": "n079",
+      "type": "file",
+      "file": "features/background-guidance.md",
+      "x": 1800,
+      "y": 760,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "n081",
+      "type": "file",
+      "file": "features/arrival.md",
+      "x": 2160,
+      "y": 760,
+      "width": 320,
+      "height": 110,
+      "color": "2"
+    },
+    {
+      "id": "n083",
+      "type": "file",
+      "file": "features/auth.md",
+      "x": 2520,
+      "y": 760,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "n085",
+      "type": "text",
+      "text": "## Reading this\nPurple = situations (flows). Red = high-risk features they lean on. Orange = medium. Open a flow to see its seams and what catches each failure.",
+      "x": 0,
+      "y": -230,
+      "width": 720,
+      "height": 140
+    },
+    {
+      "id": "n086",
+      "type": "file",
+      "file": "process/P9 How the app works.md",
+      "x": 1080,
+      "y": -230,
+      "width": 320,
+      "height": 110,
+      "color": "6"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e060",
+      "fromNode": "n050",
+      "fromSide": "right",
+      "toNode": "n051",
+      "toSide": "left"
+    },
+    {
+      "id": "e061",
+      "fromNode": "n051",
+      "fromSide": "right",
+      "toNode": "n052",
+      "toSide": "left"
+    },
+    {
+      "id": "e062",
+      "fromNode": "n052",
+      "fromSide": "right",
+      "toNode": "n053",
+      "toSide": "left"
+    },
+    {
+      "id": "e063",
+      "fromNode": "n053",
+      "fromSide": "right",
+      "toNode": "n054",
+      "toSide": "left"
+    },
+    {
+      "id": "e064",
+      "fromNode": "n055",
+      "fromSide": "right",
+      "toNode": "n056",
+      "toSide": "left"
+    },
+    {
+      "id": "e065",
+      "fromNode": "n056",
+      "fromSide": "right",
+      "toNode": "n057",
+      "toSide": "left"
+    },
+    {
+      "id": "e066",
+      "fromNode": "n057",
+      "fromSide": "right",
+      "toNode": "n058",
+      "toSide": "left"
+    },
+    {
+      "id": "e067",
+      "fromNode": "n058",
+      "fromSide": "right",
+      "toNode": "n059",
+      "toSide": "left"
+    },
+    {
+      "id": "e068",
+      "fromNode": "n054",
+      "fromSide": "bottom",
+      "toNode": "n055",
+      "toSide": "top"
+    },
+    {
+      "id": "e070",
+      "fromNode": "n051",
+      "fromSide": "bottom",
+      "toNode": "n069",
+      "toSide": "top"
+    },
+    {
+      "id": "e072",
+      "fromNode": "n051",
+      "fromSide": "bottom",
+      "toNode": "n071",
+      "toSide": "top"
+    },
+    {
+      "id": "e074",
+      "fromNode": "n052",
+      "fromSide": "bottom",
+      "toNode": "n073",
+      "toSide": "top"
+    },
+    {
+      "id": "e076",
+      "fromNode": "n053",
+      "fromSide": "bottom",
+      "toNode": "n075",
+      "toSide": "top"
+    },
+    {
+      "id": "e078",
+      "fromNode": "n057",
+      "fromSide": "bottom",
+      "toNode": "n077",
+      "toSide": "top"
+    },
+    {
+      "id": "e080",
+      "fromNode": "n056",
+      "fromSide": "bottom",
+      "toNode": "n079",
+      "toSide": "top"
+    },
+    {
+      "id": "e082",
+      "fromNode": "n058",
+      "fromSide": "bottom",
+      "toNode": "n081",
+      "toSide": "top"
+    },
+    {
+      "id": "e084",
+      "fromNode": "n050",
+      "fromSide": "bottom",
+      "toNode": "n083",
+      "toSide": "top"
+    }
+  ]
+}

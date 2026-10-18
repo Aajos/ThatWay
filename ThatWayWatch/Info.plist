@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Test 1 uses exactly one of these at a time, chosen in the app: A = location, B = workout-processing.
+	     CoreLocation asserts on UIBackgroundModes (even on watchOS) before it allows background updates;
+	     WKBackgroundModes carries the watch-specific modes. Both are declared. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+	<key>WKBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>workout-processing</string>
+	</array>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+</dict>
+</plist>

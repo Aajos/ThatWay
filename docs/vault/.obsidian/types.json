@@ -1,0 +1,19 @@
+{
+  "types": {
+    "introduced": "date",
+    "last_verified": "date",
+    "value": "number",
+    "tags": "tags",
+    "depends_on": "multitext",
+    "files": "multitext",
+    "tests": "multitext",
+    "manual_checks": "multitext",
+    "features": "multitext",
+    "build": "text",
+    "release": "text",
+    "tier": "text",
+    "cpu": "text",
+    "memory": "text",
+    "battery": "text"
+  }
+}
