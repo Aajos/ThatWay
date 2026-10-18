@@ -9,9 +9,10 @@
 //    - The TRACER asks, then looks at one friend at a time and may hold up to ten permissions. They see only "Accepted" and,
 //      if anything goes wrong for any reason, "User cannot be traced, error has occurred". Never how long they have.
 //    - The tracer's own position is never uploaded. Only a rounded distance band travels with their look.
-//    - The traced phone uploads its position only while someone may see it and ThatWay is on screen (plus once on leaving).
+//    - The traced phone uploads its position only while someone may see it, in the background too (blue indicator), with
+//      "While Using" location and Precise on (SharingReadiness is checked before allowing, and the banner says when it lapses).
 //      A look is not continuous: "request a new location" is limited to once every 2 minutes, and what comes back says how old
-//      it is. Inside about 40 m Ultra Wideband takes over on both phones.
+//      it is. Inside about 200 m Ultra Wideband takes over once both apps are open.
 //
 //  Every other safety decision is the server's, every time (backend/lambda/grants). This class only asks, shows and obeys.
 //  Stopping a trace needs no authentication; allowing one needs the phone's owner (OwnerAuthenticating).

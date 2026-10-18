@@ -7,7 +7,7 @@
 //
 //    TraceRequestSheet   the TRACER asks for a length of time. Whether it is once or ongoing is the traced person's decision.
 //    GrantConsentSheet   the TRACED person: first the full safety information (I understand / Cancel), then a short screen
-//                        with the kind, a slider and an unticked box, a second confirmation, and the owner check.
+//                        with the kind, a slider and an unticked box, a location check, and the owner check.
 //
 
 import SwiftUI
@@ -100,6 +100,7 @@ struct TraceRequestSheet: View {
 struct GrantConsentSheet: View {
     @ObservedObject var trace: TraceManager
     @ObservedObject var owner: OwnerAuthCoordinator
+    @ObservedObject var location: LocationManager
     let email: EmailVerifying
     let request: IncomingTrace
     let theme: AppTheme
@@ -109,11 +110,11 @@ struct GrantConsentSheet: View {
     @State private var hours: Double
     @State private var choice: GrantKindChoice = .once
     @State private var ticked = false
-    @State private var confirming = false
+    @State private var needsLocation = false
     @State private var working = false
 
-    init(trace: TraceManager, owner: OwnerAuthCoordinator, email: EmailVerifying, request: IncomingTrace, theme: AppTheme, close: @escaping () -> Void) {
-        self.trace = trace; self.owner = owner; self.email = email; self.request = request; self.theme = theme; self.close = close
+    init(trace: TraceManager, owner: OwnerAuthCoordinator, location: LocationManager, email: EmailVerifying, request: IncomingTrace, theme: AppTheme, close: @escaping () -> Void) {
+        self.trace = trace; self.owner = owner; self.location = location; self.email = email; self.request = request; self.theme = theme; self.close = close
         _hours = State(initialValue: min(TraceWindow.clamp(request.requestedHours), 1))     // starts SHORT: the person lengthens it on purpose
     }
 
@@ -125,14 +126,15 @@ struct GrantConsentSheet: View {
     }
 
     var body: some View {
-        Group { if understood { choices } else { safety } }
+        Group { if !understood { safety } else if needsLocation { locationStep } else { choices } }
             .background(theme.screen.ignoresSafeArea())
             .presentationDetents([.large])
-            .alert("Allow \(name) to trace you for \(TraceWindow.label(hours: hours))?", isPresented: $confirming) {
-                Button("Cancel", role: .cancel) {}
-                Button("Allow") { allow() }
-            } message: {
-                Text("They will be able to see where you are until \(endText). You’ll be asked to confirm it’s you.")
+            // Fixed (in iOS's prompt or in Settings): carry straight on to the owner check. The short pause lets the app be fully
+            // back in front after Settings, or Face ID refuses to start.
+            .onChange(of: location.sharingReadiness) { _, now in
+                guard needsLocation, now == .ready else { return }
+                needsLocation = false
+                Task { try? await Task.sleep(for: .milliseconds(600)); allow() }
             }
             // The owner check can need its own screen (an app passcode); it sits on top of this one.
             .sheet(item: Binding(get: { owner.prompt }, set: { _ in })) { prompt in
@@ -220,7 +222,7 @@ struct GrantConsentSheet: View {
 
                 if let message = trace.errorMessage { Text(message).font(.nunito(13, .extraBold)).foregroundStyle(theme.needleRed) }
 
-                Button { confirming = true } label: {
+                Button { allowTapped() } label: {
                     let ready = ticked && !working
                     Text(working ? "Checking…" : (ticked ? "Allow for \(TraceWindow.label(hours: hours))" : "Tick the box to allow"))
                         .font(.nunito(15, .black)).foregroundStyle(ready ? theme.onAccent : theme.ink.opacity(0.55))
@@ -241,6 +243,35 @@ struct GrantConsentSheet: View {
             }
             .padding(24)
         }
+    }
+
+    // MARK: Step 3 (only when needed): location settings that would stop sharing
+
+    private var locationStep: some View {
+        let readiness = location.sharingReadiness
+        return VStack(alignment: .leading, spacing: 18) {
+            Image(systemName: "location.slash.fill").font(.system(size: 34, weight: .bold)).foregroundStyle(theme.accent)
+                .padding(.top, 8).accessibilityHidden(true)
+            Text("Location needed").font(.nunito(24, .black)).foregroundStyle(theme.ink)
+            Text(readiness.explanation(name: name)).font(.nunito(14, .semibold)).foregroundStyle(theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Nothing is allowed yet. Once it’s fixed, you’ll confirm it’s you and the trace starts.")
+                .font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button { readiness.fix(using: location) } label: {
+                Text(readiness.buttonTitle).font(.nunito(15, .black)).foregroundStyle(theme.onAccent)
+                    .frame(maxWidth: .infinity).frame(height: 52)
+                    .background(RoundedRectangle(cornerRadius: 16).fill(theme.accent))
+            }
+            .buttonStyle(.plain)
+            Button("Back") { needsLocation = false }.font(.nunito(14, .extraBold)).foregroundStyle(theme.textSecondary)
+                .frame(maxWidth: .infinity, minHeight: 36)
+        }
+        .padding(24)
+    }
+
+    private func allowTapped() {
+        if location.sharingReadiness == .ready { allow() } else { withAnimation(.easeInOut(duration: 0.2)) { needsLocation = true } }
     }
 
     private func allow() {

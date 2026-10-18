@@ -114,7 +114,7 @@ Starts automatically inside about 40 m of GPS distance when both phones have the
 
 ## What the app does
 - The tracer taps a friend: if already allowed, looks at them; otherwise the request sheet (once or keep, up to 15 min to 24 h, plain list of what they will and won't see). The pill shows **Accepted**, the arrow and distance **with the age of their location**, Point me / Guide me, **Request new location** (counting down 2 minutes), Find precisely (UWB phones), and the tracer's own plan end. Anything going wrong, for any reason, shows only "User cannot be traced, error has occurred".
-- The traced person sees a **banner on every tab** (who can trace you / who is asking), a **WHO CAN TRACE YOU** strip on the You tab (until when, last looked and how far, STOP, block/report), the consent screen (wording version-pinned, slider starting short, unticked box, second confirmation, owner check), and "X is still tracing you. Want to stop?" at most every 30 minutes.
+- The traced person sees a **banner on every tab** (who can trace you / who is asking), a **WHO CAN TRACE YOU** strip on the You tab (until when, last looked and how far, STOP, block/report), the consent screen (wording version-pinned, slider starting short, unticked box, a location-settings check, owner check; the separate "Allow?" pop-up was dropped 2026-10-19 because the owner check already confirms), and "X is still tracing you. Want to stop?" at most every 30 minutes.
 - **Sharing only while ThatWay is open** on screen (plus one last upload on leaving). It does **not** keep location running in the background, and the consent says so.
 - Block, report and the emergency control (opens the dialler only) are one press-and-hold on a friend, with no limits.
 
@@ -125,6 +125,12 @@ Starts automatically inside about 40 m of GPS distance when both phones have the
 - A look from under 200 m pushes the traced person: "X is nearby, looking for you. Open ThatWay so they can find you precisely" (at most every 10 minutes), because UWB needs both apps open.
 - Press and hold the pill for a live debug readout of every input (no coordinates).
 - iOS's own figure-8 calibration screen is no longer requested.
+
+## Location settings before saying yes (2026-10-19)
+- iOS never offers "Always" on the first prompt (only Allow Once / While Using / Don't Allow), and **ThatWay does not need it**: during a grant the phone shares in the background on "While Using" with the blue indicator.
+- Before the owner check, `SharingReadiness` (ThatWay/Managers/SharingReadiness.swift) must be `.ready`: While Using or Always, **and Precise Location on**. Otherwise one screen explains what to change with one button (iOS's prompt if never asked or an Allow Once lapsed, else Settings); when it's fixed the flow carries on to the owner check by itself.
+- While a grant is live and settings stop sharing, a red banner "Sharing paused: …" with FIX shows on every tab. The tracer keeps seeing the last position with its age.
+- "Allow Once" looks like While Using until it lapses; the banner catches the lapse.
 
 ## Not built / still open
 - **Remote push** is built (2026-10-17): the server sends a request or "still tracing you" through APNs using the team key in Parameter Store (`/thatway/apns/*`), to phones registered with `PUT /devices`. Apple accepted our credentials in the real-AWS test; **delivery to a real phone is not yet seen**. A push says only who is asking. Debug builds use the sandbox server, TestFlight and App Store builds production.

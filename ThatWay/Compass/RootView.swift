@@ -57,7 +57,7 @@ struct RootView: View {
         ZStack {
             VStack(spacing: 6) {
                 // Banners that stay for as long as they are true, on every tab: who can trace you, and a phone with no lock.
-                StatusBanners(trace: app.traceManager, lock: app.screenLock, theme: app.currentTheme,
+                StatusBanners(trace: app.traceManager, lock: app.screenLock, location: app.locationManager, theme: app.currentTheme,
                               openTraced: { app.selectTab(.profile) }, openLockHelp: { showLockHelp = true })
                     .zIndex(1)         // above the compass backdrop, which paints past its own edges
                 Group {

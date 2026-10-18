@@ -57,7 +57,7 @@ struct ProfileScreen: View {
         .padding(.top, 8)
         .background(theme.screen)
         .sheet(item: $reviewing) { request in
-            GrantConsentSheet(trace: app.traceManager, owner: app.ownerAuth, email: app.authManager, request: request, theme: theme) { reviewing = nil }
+            GrantConsentSheet(trace: app.traceManager, owner: app.ownerAuth, location: app.locationManager, email: app.authManager, request: request, theme: theme) { reviewing = nil }
         }
         .sheet(item: $safetyFriend) { friend in
             FriendSafetySheet(safety: app.safetyManager, friend: friend, theme: theme) { safetyFriend = nil }

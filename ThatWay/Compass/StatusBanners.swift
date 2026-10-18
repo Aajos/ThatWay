@@ -5,6 +5,8 @@
 //  Two banners that stay on screen, on every tab, for as long as they are true. Neither blocks anything.
 //
 //    TracedByBanner      "sam can trace you" / "sam is asking to trace you". Sharing your location is never invisible.
+//    SharingPausedBanner "Sharing paused: location is off for ThatWay". Someone may trace you but your settings stop the phone
+//                        from sharing; one tap fixes it (iOS's prompt, or Settings).
 //    NoScreenLockBanner  "Your phone has no screen lock". An app passcode is a weaker protection than a phone lock, and the
 //                        app keeps saying so until the person turns a real lock on.
 //
@@ -16,6 +18,7 @@ import ThatWayUI
 struct StatusBanners: View {
     @ObservedObject var trace: TraceManager
     @ObservedObject var lock: ScreenLockStatus
+    @ObservedObject var location: LocationManager
     let theme: AppTheme
     let openTraced: () -> Void
     let openLockHelp: () -> Void
@@ -24,6 +27,10 @@ struct StatusBanners: View {
         VStack(spacing: 6) {
             if !trace.incoming.isEmpty || !trace.watchers.isEmpty {
                 TracedByBanner(trace: trace, theme: theme, action: openTraced)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if !trace.watchers.isEmpty, location.sharingReadiness != .ready {
+                SharingPausedBanner(readiness: location.sharingReadiness, theme: theme) { location.sharingReadiness.fix(using: location) }
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
             if lock.phoneHasNoLock {
@@ -73,6 +80,29 @@ struct TracedByBanner: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(s.text + (s.urgent ? ". Review" : ". Manage who can trace you"))
+    }
+}
+
+struct SharingPausedBanner: View {
+    let readiness: SharingReadiness
+    let theme: AppTheme
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: "location.slash.fill").font(.system(size: 13, weight: .bold))
+                Text(readiness.bannerText).font(.nunito(12, .extraBold)).lineLimit(1).minimumScaleFactor(0.8)
+                Spacer(minLength: 4)
+                Text("FIX").font(.nunito(10, .black)).tracking(0.8)
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
+            }
+            .foregroundStyle(theme.onAccent)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(Capsule().fill(theme.needleRed))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(readiness.bannerText + ". " + readiness.buttonTitle)
     }
 }
 
