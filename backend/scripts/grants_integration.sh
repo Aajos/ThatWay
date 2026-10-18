@@ -98,6 +98,8 @@ r=$(api b PUT /grants/position '{"lat":-37.8136,"lon":144.9631,"acc":8}'); check
 r=$(api a POST /grants/locate "{\"traceeId\":\"$B\",\"distanceM\":1500}"); check "a locates b" "$(st "$r")" 200
 check "and gets a position with its age" "$(j "$r" "d['position']['age']>=0")" True
 r=$(api a POST /grants/locate "{\"traceeId\":\"$B\",\"distanceM\":1500}"); check "asking again within 2 minutes is limited" "$(st "$r")" 429
+r=$(api a POST /grants/locate "{\"traceeId\":\"$B\",\"distanceM\":1500,\"followUp\":true}"); check "but a follow-up read right after is allowed" "$(st "$r")" 200
+check "and returns the position" "$(j "$r" "d['position']['age']>=0")" True
 r=$(api c POST /grants/locate "{\"traceeId\":\"$B\",\"distanceM\":10}"); check "a stranger gets the generic answer" "$(st "$r")" 403
 check "word for word" "$(j "$r" "d['error']")" "User cannot be traced"
 r=$(api b GET /grants); check "b is told someone is still tracing" "$(j "$r" "d['asTraced'][0].get('stillTracing')")" True
