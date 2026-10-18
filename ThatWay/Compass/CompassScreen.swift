@@ -351,15 +351,7 @@ struct CompassScreen: View {
         .sheet(item: $safetyFriend) { friend in
             FriendSafetySheet(safety: app.safetyManager, friend: friend, theme: app.currentTheme) { safetyFriend = nil }
         }
-        .sheet(isPresented: paywallBinding) { paywallSheet }
-        .alert("Couldn't start the trace", isPresented: Binding(
-            get: { app.traceManager.requestError != nil },
-            set: { if !$0 { app.traceManager.requestError = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(app.traceManager.requestError ?? "")
-        }
+        .modifier(TracePresentations(trace: app.traceManager, paywall: { paywallSheet }))
         .alert(
             "Route there?",
             isPresented: Binding(
@@ -738,10 +730,6 @@ struct CompassScreen: View {
 
     /// The friends roster. Tapping a friend asks (after a confirmation) to trace them: nothing is shared until they
     /// accept, and the pill below takes this row's place for as long as the trace lasts.
-    private var paywallBinding: Binding<Bool> {
-        Binding(get: { app.traceManager.needsUpgrade }, set: { app.traceManager.needsUpgrade = $0 })
-    }
-
     private var paywallSheet: some View {
         PaywallSheet(entitlements: app.entitlements, store: app.planStore, theme: app.currentTheme) { app.traceManager.needsUpgrade = false }
     }
@@ -1036,5 +1024,22 @@ private struct SearchResultsPanel: View {
             liveResults = found
             isSearching = false
         }
+    }
+}
+
+
+/// The paywall sheet and the "couldn't start the trace" alert. They hang off the trace manager's own state, so this must OBSERVE that
+/// manager: a screen that only reads it inside a binding is never told when it changes, and the sheet then opens late and refuses to
+/// close (the screen only caught up when something unrelated redrew it).
+struct TracePresentations<Paywall: View>: ViewModifier {
+    @ObservedObject var trace: TraceManager
+    @ViewBuilder var paywall: () -> Paywall
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $trace.needsUpgrade) { paywall() }
+            .alert("Couldn't start the trace", isPresented: Binding(get: { trace.requestError != nil }, set: { if !$0 { trace.requestError = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: { Text(trace.requestError ?? "") }
     }
 }

@@ -90,21 +90,7 @@ struct RootView: View {
         .sheet(isPresented: $showLockHelp) {
             ScreenLockHelpSheet(theme: app.currentTheme, hasAppPasscode: app.authManager.currentUser.map { app.ownerAuth.appPasscode.isSet(for: $0.id) } ?? false) { showLockHelp = false }
         }
-        // "X is still tracing you. Want to stop?" (at most every 30 minutes while they keep looking.)
-        .alert(
-            app.traceManager.stillTracing.map { TraceCopy.stillTracing(name: $0.username) } ?? "",
-            isPresented: Binding(get: { app.traceManager.stillTracing != nil }, set: { if !$0 { app.traceManager.dismissStillTracing() } })
-        ) {
-            Button("Stop tracing", role: .destructive) {
-                if let friend = app.traceManager.stillTracing, let watcher = app.traceManager.watchers.first(where: { $0.id == friend.id }) {
-                    Task { await app.traceManager.revoke(watcher) }
-                }
-                app.traceManager.dismissStillTracing()
-            }
-            Button("Keep allowing", role: .cancel) { app.traceManager.dismissStillTracing() }
-        } message: {
-            Text("Do you want to stop them?")
-        }
+        .modifier(StillTracingAlert(trace: app.traceManager))
     }
 
     private var closeAccountSheet: some View {
@@ -197,5 +183,28 @@ enum TabBarMetrics {
         let inset = UIApplication.shared.connectedScenes
             .compactMap { ($0 as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom }.first
         return inset == 0 ? 22 : 0      // unknown (no window yet) counts as none
+    }
+}
+
+/// "X is still tracing you. Want to stop?" (at most every 30 minutes while they keep looking.) Observes the trace manager so it
+/// appears the moment the server raises it.
+struct StillTracingAlert: ViewModifier {
+    @ObservedObject var trace: TraceManager
+
+    func body(content: Content) -> some View {
+        content.alert(
+            trace.stillTracing.map { TraceCopy.stillTracing(name: $0.username) } ?? "",
+            isPresented: Binding(get: { trace.stillTracing != nil }, set: { if !$0 { trace.dismissStillTracing() } })
+        ) {
+            Button("Stop tracing", role: .destructive) {
+                if let friend = trace.stillTracing, let watcher = trace.watchers.first(where: { $0.id == friend.id }) {
+                    Task { await trace.revoke(watcher) }
+                }
+                trace.dismissStillTracing()
+            }
+            Button("Keep allowing", role: .cancel) { trace.dismissStillTracing() }
+        } message: {
+            Text("Do you want to stop them?")
+        }
     }
 }

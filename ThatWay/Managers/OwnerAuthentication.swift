@@ -90,6 +90,7 @@ final class LocalAuthSystem: SystemOwnerAuth {
         do {
             return try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) ? .success : .failed
         } catch let error as LAError {
+            NSLog("TW owner check: LAError %d", error.code.rawValue)
             switch error.code {
             case .userCancel, .appCancel, .systemCancel: return .cancelled
             case .biometryLockout: return .lockedOut
@@ -148,9 +149,11 @@ final class OwnerAuthCoordinator: ObservableObject, OwnerAuthenticating {
     var phoneHasNoLock: Bool { !system.hasDevicePasscode() }
 
     func authenticate(reason: String) async -> OwnerAuthResult {
+        NSLog("TW owner check: method %@", String(describing: method))
         switch method {
         case .biometric, .devicePasscode:
             let result = await system.evaluate(reason: reason)
+            NSLog("TW owner check: system answered %@", String(describing: result))
             return result
         case .appPasscode:
             return await present(.enterPasscode(reason: reason))
