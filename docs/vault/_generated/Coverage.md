@@ -16,7 +16,7 @@ tags: [generated]
 | [[plans-and-billing]] | spike | high | 4 | 5 | 0 (0 / 0 / 0 / 0) |
 | [[safety-and-account]] | spike | high | 6 | 5 | 0 (0 / 0 / 0 / 0) |
 | [[trace-friends]] | dormant | high | 4 | 8 | 18 (14 / 2 / 2 / 0) |
-| [[trace-grants]] | spike | high | 7 | 6 | 0 (0 / 0 / 0 / 0) |
+| [[trace-grants]] | spike | high | 8 | 7 | 0 (0 / 0 / 0 / 0) |
 | [[avatars-social-decor]] | setting-only | low | 0 | 0 | 1 (0 / 0 / 1 / 0) |
 | [[persistence-defaults]] | shipped | low | 1 | 1 | 2 (0 / 0 / 2 / 0) |
 | [[settings-profile]] | shipped | low | 0 | 1 | 3 (0 / 1 / 2 / 0) |

@@ -20,6 +20,8 @@ files:
   - backend/lambda/nearby/core.mjs
   - ThatWay/Managers/TraceManager.swift
   - ThatWay/Managers/TraceNotifier.swift
+  - ThatWay/Managers/PushRegistrar.swift
+  - ThatWay/Managers/SharingReadiness.swift
   - ThatWay/Compass/TraceCopy.swift
   - ThatWay/Compass/TraceSheets.swift
   - ThatWay/Compass/TracePill.swift
@@ -34,6 +36,7 @@ tests:
   - backend/scripts/grants_integration.sh
   - ThatWayTests/TraceManagerTests.swift
   - ThatWayTests/TraceCopyTests.swift
+  - ThatWayTests/SharingReadinessTests.swift
   - ThatWayCore/Tests/ThatWayCoreTests/GrantsTests.swift
 manual_checks:
   - Two phones, two friends: ask (once, then keep tracing), see the banner and the request card on the other, allow with Face ID, see Accepted and a direction with its age
@@ -41,6 +44,7 @@ manual_checks:
   - Removing the friend or blocking ends every grant at once, with no hint to the other person which it was
   - The traced person can see who may trace them, until when, when they last looked and how far, and stop it in one tap
   - Opening the compass during an active window runs every safety check on the server first
+  - With location off (or Allow Once lapsed, or Precise off), tapping Allow shows "Location needed" with one button, and fixing it carries on to the owner check by itself; while a grant is live, a red "Sharing paused" banner shows on every tab
   - On a phone with no Face ID, passcode or app passcode, allowing a trace is blocked until an app passcode is set up with an email code
 depends_on: [friends, auth, nearby-proximity, owner-authentication, safety-and-account, plans-and-billing]
 tags: [feature, area/accounts-backend, status/spike, risk/high]

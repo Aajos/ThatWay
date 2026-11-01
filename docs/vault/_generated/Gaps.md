@@ -88,4 +88,4 @@ tags: [generated]
 - [[watch-voice-search]]: spike
 
 ## Source files no feature claims
-- `ThatWay/Managers/PushRegistrar.swift`
+- none: every Swift source file is mapped
