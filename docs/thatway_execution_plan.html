@@ -1,0 +1,856 @@
+<!doctype html>
+<html lang="en-AU" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ThatWay execution plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0A0A; --panel:#141210; --raise:#1C1916; --line:#2D2824; --text:#F3EEE9; --muted:#A59C94;
+  --accent:#FF5A36; --accent-text:#FF7A5C; --on-accent:#140805; --ok:#7BC47F; --late:#FF8A8A; --focus:#FFD0C4;
+  --dev:#FF5A36; --test:#F2B14C; --market:#6BB6E8; --money:#7BC47F; --life:#B79CFF;
+  color-scheme:dark;
+}
+:root[data-theme="light"]{
+  --bg:#F8F5F1; --panel:#FFFDFA; --raise:#EFE9E1; --line:#DCD3C8; --text:#1D1A16; --muted:#675E56;
+  --accent:#E64D2E; --accent-text:#BF3A1C; --on-accent:#140805; --ok:#2F7D3E; --late:#B3261E; --focus:#1D1A16;
+  --dev:#E64D2E; --test:#A86A0F; --market:#1F73AD; --money:#2F7D3E; --life:#6B4BD0;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Nunito",ui-rounded,"SF Pro Rounded",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.55;font-weight:500;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:28px 20px 90px}
+h1,h2,h3{margin:0;font-weight:900;letter-spacing:-.01em;line-height:1.1}
+h1{font-size:clamp(2rem,4.4vw,3.1rem);letter-spacing:-.025em}
+h2{font-size:1.55rem}
+h3{font-size:1.05rem;font-weight:800}
+p{margin:0}
+.muted{color:var(--muted)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+
+header.top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
+.theme-btn{flex:none;width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-weight:800;font-size:.8rem}
+.theme-btn:hover{border-color:var(--accent)}
+.lede{margin-top:14px;font-size:1.15rem;max-width:64ch}
+.lede b{font-weight:800}
+
+section{margin-top:60px}
+section>.intro{margin-top:8px;max-width:66ch;color:var(--muted)}
+
+/* ---------- timeline ---------- */
+.tl-scroll{overflow-x:auto;margin-top:22px;padding-bottom:12px}
+.tl{display:grid;grid-template-columns:132px 1fr;min-width:1000px;padding-right:18px}
+.tl-labels .sp0{height:30px}.tl-labels .sp1{height:34px}.tl-labels .sp2{height:26px}
+.lane-label,.lane{height:54px}
+.lane-label{display:flex;align-items:center;gap:8px;font-weight:800;font-size:.9rem;border-top:1px solid var(--line)}
+.lane-label i{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}
+.tl-tracks{position:relative}
+.tl-tracks .sp0{height:30px}
+.phases,.months{position:relative}
+.phases{height:34px}.months{height:26px}
+.phase{position:absolute;top:2px;height:28px;border-left:2px solid var(--line);padding:2px 8px;font-size:.78rem;font-weight:800;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.phase.now{color:var(--text);border-left-color:var(--accent)}
+.month{position:absolute;top:3px;font-size:.78rem;color:var(--muted);padding-left:5px;font-weight:600}
+.gridline{position:absolute;top:64px;bottom:0;width:1px;background:var(--line);opacity:.55}
+.lane{position:relative;border-top:1px solid var(--line)}
+.lane::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line)}
+.dot{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;border:2px solid var(--c);background:var(--bg);transform:translate(-50%,-50%);padding:0;cursor:pointer}
+.dot.done{background:var(--c)}
+.dot.done::after{content:"";position:absolute;left:3px;top:0;width:4px;height:8px;border:solid var(--bg);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.dot.late{border-color:var(--late);border-radius:3px;transform:translate(-50%,-50%) rotate(45deg)}
+.dot.next{width:20px;height:20px;box-shadow:0 0 0 4px color-mix(in srgb,var(--c) 28%,transparent)}
+.needle{position:absolute;top:0;bottom:0;left:0;width:0;pointer-events:none;z-index:3}
+.needle .flag{position:absolute;top:0;left:0;transform:translateX(-50%);background:var(--accent);color:var(--on-accent);font-weight:900;font-size:.78rem;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.needle .tip{position:absolute;left:-7px;top:22px;width:14px;height:10px;background:var(--accent);clip-path:polygon(50% 100%,0 0,100% 0)}
+.needle .stem{position:absolute;left:-1px;top:31px;bottom:0;width:2px;background:var(--accent)}
+.needle.sweep{transition:left 1.2s cubic-bezier(.2,.8,.2,1)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:6px;font-size:.85rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.legend .k{width:12px;height:12px;border:2px solid var(--muted);border-radius:50%;display:inline-block}
+.legend .k.d{background:var(--muted)}
+.legend .k.l{border-radius:2px;transform:rotate(45deg);border-color:var(--late)}
+
+/* ---------- status row ---------- */
+.status{display:grid;grid-template-columns:2fr 1fr 1fr;margin-top:26px;border-top:1px solid var(--line)}
+.status>div{padding:18px 22px 4px 0}
+.status>div+div{padding-left:22px;border-left:1px solid var(--line)}
+.status .big{font-size:2rem;font-weight:900;line-height:1.1}
+.status .lab{color:var(--muted);margin-top:4px;font-size:.95rem}
+
+/* ---------- checks ---------- */
+.check{display:inline-flex;cursor:pointer;flex:none}
+.check input{position:absolute;opacity:0;width:1px;height:1px}
+.check .box{width:22px;height:22px;border-radius:7px;border:2px solid var(--muted);display:inline-block;position:relative;background:var(--bg)}
+.check input:checked+.box{background:var(--accent);border-color:var(--accent)}
+.check input:checked+.box::after{content:"";position:absolute;left:6px;top:2px;width:5px;height:10px;border:solid var(--on-accent);border-width:0 2.5px 2.5px 0;transform:rotate(45deg)}
+.check input:focus-visible+.box{outline:2px solid var(--focus);outline-offset:3px}
+
+/* ---------- milestones ---------- */
+.month-group{margin-top:26px}
+.month-group h3{color:var(--muted);font-weight:800;margin-bottom:4px}
+ul.plain{list-style:none;margin:0;padding:0}
+.ms{display:grid;grid-template-columns:26px 62px 1fr auto;gap:0 14px;align-items:start;padding:12px 0;border-top:1px solid var(--line)}
+.ms .when{font-weight:800}
+.ms .what strong{display:block;font-weight:800}
+.ms .gate{display:block;color:var(--muted);font-size:.92rem}
+.ms .meta{text-align:right;font-size:.88rem;display:flex;flex-direction:column;gap:2px;align-items:flex-end}
+.lanetag{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.lanetag i{width:9px;height:9px;border-radius:50%;background:var(--c)}
+.ms.done .what strong{color:var(--muted);text-decoration:line-through;text-decoration-thickness:1px}
+.ms.late .state{color:var(--late);font-weight:800}
+.ms.next .state{color:var(--accent-text);font-weight:800}
+.ms.done .state{color:var(--ok);font-weight:800}
+.ms.flash{animation:flash 1.3s ease-out}
+@keyframes flash{0%{background:color-mix(in srgb,var(--accent) 26%,transparent)}100%{background:transparent}}
+
+/* ---------- features ---------- */
+.versions{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));margin-top:22px}
+.version{padding:0 22px 0 18px;border-left:1px solid var(--line)}
+.version:first-child{padding-left:0;border-left:0}
+.version .when{color:var(--muted);font-size:.9rem;margin:4px 0 12px}
+.feat{display:flex;gap:10px;align-items:flex-start;padding:7px 0;font-size:.97rem}
+.st{flex:none;margin-top:4px;width:14px;height:14px;border-radius:50%;border:2px solid var(--muted)}
+.st.done{background:var(--ok);border-color:var(--ok)}
+.st.now{border-color:var(--accent);background:linear-gradient(90deg,var(--accent) 50%,transparent 50%)}
+.st.next{border-color:var(--text)}
+.st.later{border-style:dashed}
+.feat small{display:block;color:var(--muted);font-size:.8rem}
+
+/* ---------- testing ---------- */
+.layers{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:6px 40px;margin-top:20px}
+.layer h3{display:flex;justify-content:space-between;gap:10px;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:8px}
+.layer h3 span{font-weight:600;font-size:.88rem;color:var(--muted)}
+.layer li{display:flex;gap:12px;align-items:flex-start;padding:9px 0}
+
+/* ---------- budget ---------- */
+.two{display:grid;grid-template-columns:1.25fr 1fr;gap:40px;margin-top:22px}
+@media (max-width:860px){.two{grid-template-columns:1fr;gap:28px}.status{grid-template-columns:1fr}.status>div+div{border-left:0;padding-left:0;border-top:1px solid var(--line);margin-top:10px}.ms{grid-template-columns:26px 54px 1fr}.ms .meta{grid-column:3;align-items:flex-start;text-align:left}}
+table{width:100%;border-collapse:collapse;font-size:.95rem}
+th{text-align:left;font-weight:800;color:var(--muted);font-size:.85rem;padding:0 8px 8px 0}
+td{padding:6px 8px 6px 0;border-top:1px solid var(--line);vertical-align:middle}
+td.n{min-width:150px}
+input[type=number],input[type=month],input[type=date],input[type=time],select{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:7px 9px;width:100%;min-width:0}
+input[type=number]{max-width:110px}
+.field{display:grid;gap:4px;margin-bottom:14px}
+.field label{font-weight:800;font-size:.92rem}
+.field small{color:var(--muted)}
+.results{border-top:2px solid var(--accent);padding-top:14px;margin-top:6px}
+.results dl{margin:0;display:grid;grid-template-columns:1fr auto;gap:6px 16px}
+.results dt{color:var(--muted)}
+.results dd{margin:0;font-weight:800;text-align:right}
+.results .total dt,.results .total dd{color:var(--text);padding-top:8px;border-top:1px solid var(--line)}
+.callout{margin-top:14px;padding:12px 14px;border-left:3px solid var(--accent);background:var(--raise);border-radius:0 10px 10px 0;font-size:.95rem}
+.callout.bad{border-left-color:var(--late)}
+.rule{margin-top:18px;max-width:70ch}
+
+/* ---------- marketing ---------- */
+.mk{margin-top:22px;display:grid;gap:0}
+.mk-row{display:grid;grid-template-columns:200px 1fr;gap:6px 24px;padding:14px 0;border-top:1px solid var(--line)}
+.mk-row .w{font-weight:800}
+.mk-row .w span{display:block;color:var(--muted);font-weight:600;font-size:.9rem}
+.mk-row ul{margin:0;padding-left:18px}
+@media (max-width:700px){.mk-row{grid-template-columns:1fr}}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-block;padding:11px 18px;border-radius:12px;border:1px solid var(--line);background:var(--panel);font-weight:800;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.quiet{background:transparent}
+.row-btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.cal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 24px}
+.checkline{display:flex;gap:12px;align-items:center;margin:6px 0}
+.honest li{margin:8px 0;max-width:72ch}
+footer.foot{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:.92rem}
+details summary{cursor:pointer;font-weight:800;color:var(--text)}
+@media (prefers-reduced-motion:reduce){.needle.sweep{transition:none}.ms.flash{animation:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div>
+    <h1>Where ThatWay stands</h1>
+    <p class="lede" id="lede"></p>
+  </div>
+  <button class="theme-btn" id="themeBtn" type="button" aria-label="Switch between Ember and Paper themes">Ember</button>
+</header>
+
+<section id="year" style="margin-top:34px">
+  <h2>The year at a glance</h2>
+  <div class="tl-scroll"><div class="tl" id="tl">
+    <div class="tl-labels" id="tlLabels"></div>
+    <div class="tl-tracks" id="tlTracks"></div>
+  </div></div>
+  <div class="legend">
+    <span><i class="k"></i>Coming up</span>
+    <span><i class="k d"></i>Done</span>
+    <span><i class="k l"></i>Overdue</span>
+    <span>Select any marker to jump to it in the list</span>
+  </div>
+  <div class="status" id="status"></div>
+</section>
+
+<section id="milestones">
+  <h2>Milestones</h2>
+  <p class="intro">Tick each one when its gate is true, not before. The marker, the counts and the calendar reminders all follow your ticks.</p>
+  <div id="msList"></div>
+</section>
+
+<section id="features">
+  <h2>What ships when</h2>
+  <p class="intro">Each version stays small enough to test properly on a real phone.</p>
+  <div class="versions" id="versions"></div>
+</section>
+
+<section id="testing">
+  <h2>How it gets tested</h2>
+  <p class="intro">Layers, from cheapest to most real. Nothing moves to the next layer on a guess.</p>
+  <div class="layers" id="layers"></div>
+</section>
+
+<section id="budget">
+  <h2>Costs and marketing</h2>
+  <p class="intro">Every figure here is an estimate you can overwrite. Marketing spend follows development cash spend, up to a cap you choose.</p>
+  <div class="two">
+    <div>
+      <h3>Cash development costs</h3>
+      <table id="costTable" style="margin-top:12px"></table>
+    </div>
+    <div>
+      <div class="field">
+        <label for="ratio">Marketing for every A$1 of development cash</label>
+        <input type="number" id="ratio" min="0" step="0.25">
+        <small>1 means match it dollar for dollar.</small>
+      </div>
+      <div class="field">
+        <label for="cap">Marketing cap for the year (A$)</label>
+        <input type="number" id="cap" min="0" step="50">
+      </div>
+      <div class="field">
+        <label for="savings">Savings you have now (A$, optional)</label>
+        <input type="number" id="savings" min="0" step="500">
+      </div>
+      <div class="field">
+        <label for="guard">Most savings you will put into this project (%)</label>
+        <input type="number" id="guard" min="0" max="100" step="1">
+      </div>
+    </div>
+  </div>
+  <div class="two">
+    <div class="results" id="results"></div>
+    <div>
+      <h3>Track what you actually spend</h3>
+      <div class="field" style="margin-top:12px">
+        <label for="spentDev">Development cash spent so far (A$)</label>
+        <input type="number" id="spentDev" min="0" step="10">
+      </div>
+      <div class="field">
+        <label for="spentMkt">Marketing spent so far (A$)</label>
+        <input type="number" id="spentMkt" min="0" step="10">
+      </div>
+      <div id="spendOut"></div>
+    </div>
+  </div>
+  <p class="rule"><b>The rule:</b> marketing spend can match development cash spend, never more, and never past the cap. Paid ads wait until the paid tier exists and you have measured conversion from free users.</p>
+  <div class="mk" id="mk"></div>
+</section>
+
+<section id="calendar">
+  <h2>Put it in your calendar</h2>
+  <p class="intro">This makes a calendar file with every milestone as an all-day event, plus a weekly check-in so the plan gets looked at.</p>
+  <div class="two" style="margin-top:18px">
+    <div>
+      <div class="field"><label for="alarm">Remind me before each milestone</label>
+        <select id="alarm">
+          <option value="">No reminder</option>
+          <option value="-P1D">1 day before</option>
+          <option value="-P3D">3 days before</option>
+          <option value="-P7D">1 week before</option>
+        </select></div>
+      <div class="checkline"><label class="check"><input type="checkbox" id="onlyOpen"><span class="box"></span><span class="sr">Only include unfinished milestones</span></label><span>Only include unfinished milestones</span></div>
+      <div class="checkline"><label class="check"><input type="checkbox" id="weekly"><span class="box"></span><span class="sr">Add a weekly Sunday check-in</span></label><span>Add a weekly Sunday check-in</span></div>
+      <div class="field" style="margin-top:12px"><label for="weeklyTime">Check-in time</label><input type="time" id="weeklyTime"></div>
+      <div class="row-btns"><button class="btn primary" type="button" id="icsBtn">Download calendar file</button></div>
+    </div>
+    <div>
+      <h3>How to import it</h3>
+      <p class="muted" style="margin-top:8px">Apple Calendar: open the downloaded .ics file and choose a calendar. Google Calendar: Settings, then Import and export, then Import. Outlook: File, then Open and export, then Import.</p>
+      <h3 style="margin-top:18px">The weekly check-in asks three things</h3>
+      <p class="muted" style="margin-top:8px">What shipped this week? What is blocked? What are the three things for next week? Then tick any milestone whose gate is now true.</p>
+    </div>
+  </div>
+</section>
+
+<section id="honest">
+  <h2>Honest notes</h2>
+  <ul class="honest" id="honestList"></ul>
+</section>
+
+<footer class="foot">
+  <p>Your ticks and numbers are saved in this browser only. To move them to another browser, save a progress file and load it there.</p>
+  <div class="row-btns">
+    <button class="btn" type="button" id="saveBtn">Save progress file</button>
+    <label class="btn" for="loadFile" style="margin:0">Load progress file</label>
+    <input type="file" id="loadFile" accept="application/json" class="sr">
+    <button class="btn quiet" type="button" id="resetBtn">Clear all ticks</button>
+  </div>
+  <details style="margin-top:18px">
+    <summary>Preview another date</summary>
+    <div class="field" style="margin-top:10px;max-width:260px">
+      <label for="preview">Pretend today is</label>
+      <input type="date" id="preview">
+      <small id="previewNote">Showing the real date.</small>
+    </div>
+    <button class="btn quiet" type="button" id="previewClear">Use the real date</button>
+  </details>
+</footer>
+
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =====================================================================
+   DATA. Dates, milestones, features and costs live here.
+   ===================================================================== */
+function parseDate(s){var p=s.split('-').map(Number);return new Date(p[0],p[1]-1,p[2]);}
+
+var START=parseDate('2026-10-01'), END=parseDate('2027-10-01');
+var LAUNCH=parseDate('2027-01-15'), BUDGET_END=parseDate('2027-09-30');
+
+var LANES=[
+  {key:'dev',label:'Build'},
+  {key:'test',label:'Testing'},
+  {key:'market',label:'Marketing'},
+  {key:'money',label:'Money and site'},
+  {key:'life',label:'Life and runway'}
+];
+
+var PHASES=[
+  {from:'2026-10-01',to:'2027-01-15',label:'v1.0 build and test'},
+  {from:'2027-01-15',to:'2027-04-30',label:'v1.1 paid tier'},
+  {from:'2027-04-30',to:'2027-06-30',label:'Contracting starts, v1.2'},
+  {from:'2027-06-30',to:'2027-10-01',label:'Growth and review'}
+];
+
+var MILESTONES=[
+  {id:'m01',date:'2026-10-15',lane:'dev',title:'App verified against the backend, polyline fixed',gate:'The line matches the roads on 3 real routes'},
+  {id:'m02',date:'2026-10-31',lane:'dev',title:'Routing provider, routing host and data-driven skins',gate:'Changing the routing base URL needs no other code change'},
+  {id:'m03',date:'2026-11-15',lane:'dev',title:'v1.0 feature complete',gate:'Power and memory baselines are written down'},
+  {id:'m04',date:'2027-01-15',lane:'dev',title:'Submit v1.0 (free: core navigation and basic friends)',gate:'Your release checklist passes'},
+  {id:'m05',date:'2027-02-28',lane:'dev',title:'Backend brief done: push, entitlements, proximity tokens',gate:'The new Lambdas are curl-tested'},
+  {id:'m06',date:'2027-04-30',lane:'dev',title:'v1.1 live: paid tier with tracking and proximity',gate:'Purchase and restore both work'},
+  {id:'m07',date:'2027-06-30',lane:'dev',title:'v1.2 live: skins and themes',gate:'Skins load from data, nothing hardcoded'},
+
+  {id:'t01',date:'2026-10-14',lane:'test',title:'Polyline checked on 3 routes',gate:'Drive, walk and a roundabout, with no phantom turns'},
+  {id:'t02',date:'2026-11-14',lane:'test',title:'Power and memory baselines',gate:'A written baseline per mode and no memory growth over 30 minutes'},
+  {id:'t03',date:'2026-12-01',lane:'test',title:'Internal TestFlight with you and 2 friends',gate:'A full drive and walk with no crash'},
+  {id:'t04',date:'2026-12-20',lane:'test',title:'20 to 50 outside testers recruited',gate:'Invites sent and a feedback form ready'},
+  {id:'t05',date:'2027-01-10',lane:'test',title:'App Store ready',gate:'External beta done, review dry run done, privacy labels set'},
+  {id:'t06',date:'2027-03-31',lane:'test',title:'Proximity field-tested',gate:'UWB between 2 friends\' phones, Bluetooth on the SE 2nd gen'},
+
+  {id:'k01',date:'2026-12-15',lane:'market',title:'Waitlist page and demo videos',gate:'Compass clips recorded and the waitlist form is live'},
+  {id:'k02',date:'2027-01-25',lane:'market',title:'Launch push',gate:'Store listing live and community posts out'},
+  {id:'k03',date:'2027-02-15',lane:'market',title:'First post built on your measured battery and memory numbers',gate:'Every claim comes from your Instruments results'},
+  {id:'k04',date:'2027-05-15',lane:'market',title:'First small paid-ads test',gate:'Only if the paid tier is live and conversion is measured'},
+
+  {id:'c01',date:'2026-11-15',lane:'money',title:'Apple Developer Program and Small Business Program enrolled',gate:'Needed before TestFlight'},
+  {id:'c02',date:'2027-01-05',lane:'money',title:'Info website and privacy policy live',gate:'The privacy policy URL is ready for App Store Connect'},
+  {id:'c03',date:'2027-06-30',lane:'money',title:'Website sign-in offers live',gate:'The one-time unlock also exists as an in-app purchase'},
+
+  {id:'l01',date:'2027-05-01',lane:'life',title:'Start DevOps contracting outreach',gate:'Profiles live and first pitches sent'},
+  {id:'l02',date:'2027-05-31',lane:'life',title:'First retainer client signed',gate:'Roughly 10 to 15 hours a week'},
+  {id:'l03',date:'2027-08-31',lane:'life',title:'Review: users, retention and the offline routing decision',gate:'Numbers are in and you have decided what comes next'},
+  {id:'l04',date:'2027-10-01',lane:'life',title:'Runway checkpoint',gate:'Decide: continue, adjust, or lean on contracting'}
+];
+
+var FEATURES=[
+  {v:'v1.0',when:'Submit 15 Jan 2027',note:'Free: core navigation and basic friends',items:[
+    ['Compass, tilt and guidance cards','done'],
+    ['Sign-in and friends backend','done'],
+    ['Friends screens wired to the backend','now'],
+    ['Polyline fix','now'],
+    ['Routing provider and routing host','next'],
+    ['Power and memory baselines','next'],
+    ['Data-driven skins and themes','next'],
+    ['TestFlight and App Store submission','next']]},
+  {v:'v1.1',when:'Live by 30 Apr 2027',note:'Paid tier',items:[
+    ['Push, entitlements and proximity backend','next'],
+    ['Proximity with UWB and Bluetooth','next'],
+    ['Real-time friend tracking','next'],
+    ['In-app purchase and restore','next']]},
+  {v:'v1.2',when:'Live by 30 Jun 2027',note:'Looks and the website',items:[
+    ['Skins and themes','next'],
+    ['Website sign-in offers for the one-time unlock','next']]},
+  {v:'Later',when:'Decide by 31 Aug 2027',note:'Only if the numbers say so',items:[
+    ['Offline routing and block downloads','later'],
+    ['Creator skins and a revenue share','later']]}
+];
+
+var TESTING=[
+  {id:'auto',title:'Automated',items:['Unit tests on saved OSRM responses for roundabout exit','Unit test that step advance never double-advances','Backend curl run passes, sign-up through remove']},
+  {id:'device',title:'On device',items:['Drive route checked','Walk route checked','Roundabout route checked','Instruments energy and memory baselines recorded','30 minute session with no memory growth']},
+  {id:'beta',title:'Beta',items:['Internal TestFlight with 2 friends','20 to 50 outside testers']},
+  {id:'prox',title:'Proximity',items:['UWB between 2 friends\' phones','Bluetooth on the SE 2nd gen']},
+  {id:'release',title:'Release checks',items:['App Review dry run: no website mention, in-app unlock present','Privacy labels and policy URL set','Screenshots and reviewer notes ready']}
+];
+
+var MARKETING=[
+  {when:'Before launch',range:'Dec 2026 to Jan 2027',items:['Short demo videos of the compass in use','A simple waitlist page','Recruit testers from hiking, camping and festival groups in Melbourne']},
+  {when:'Launch',range:'Late Jan 2027',items:['App Store keywords and screenshots','A few independent iOS writers','One post in each relevant community']},
+  {when:'After launch',range:'Feb 2027 onward',items:['Content built on your real battery and memory numbers','Invite rewards, because friends bring friends']},
+  {when:'Paid ads',range:'May 2027 at the earliest',items:['Only once the paid tier exists and free-to-paid conversion is measured']}
+];
+
+var HONEST=[
+  'Your own revenue range is $5k to $25k a year, so marketing stays small until paying users show up.',
+  'January only holds if v1.0 stays core. Proximity and payments belong in v1.1.',
+  'Contracting starts in May and cuts your build hours, so the 30 April date is the one most at risk.',
+  'All costs here are estimates and none have been checked against current prices.'
+];
+
+var DEFAULT_BUDGET={
+  ratio:1, cap:800, savings:'', guard:5, spentDev:0, spentMkt:0,
+  items:[
+    {id:'apple',name:'Apple Developer Program',amount:150,start:'2026-11',repeat:'once'},
+    {id:'web',name:'Domain and website hosting',amount:100,start:'2026-12',repeat:'once'},
+    {id:'aws',name:'AWS, after credits and free tier',amount:25,start:'2026-11',repeat:'monthly'},
+    {id:'route',name:'Routing server, if you self-host',amount:45,start:'2027-01',repeat:'monthly'},
+    {id:'legal',name:'Privacy policy and terms',amount:0,start:'2027-01',repeat:'once'},
+    {id:'other',name:'Other',amount:0,start:'2027-01',repeat:'once'}
+  ]
+};
+
+/* =====================================================================
+   Helpers and state
+   ===================================================================== */
+var DAY=86400000, KEY='thatway-plan-v1';
+var state={done:{},theme:null,budget:JSON.parse(JSON.stringify(DEFAULT_BUDGET)),cal:{alarm:'-P3D',onlyOpen:true,weekly:true,time:'18:00'},preview:''};
+var MS=MILESTONES.map(function(m){var o=Object.assign({},m);o.d=parseDate(m.date);return o;}).sort(function(a,b){return a.d-b.d;});
+var LANE={};LANES.forEach(function(l){LANE[l.key]=l.label;});
+
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function pad(n){return String(n).padStart(2,'0');}
+function ymd(d){return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate());}
+function fmtShort(d){return d.toLocaleDateString('en-AU',{day:'numeric',month:'short'});}
+function fmtLong(d){return d.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});}
+function daysBetween(a,b){return Math.round((b-a)/DAY);}
+function money(n){return 'A$'+Math.round(n).toLocaleString('en-AU');}
+function plural(n,w){return n+' '+w+(n===1?'':'s');}
+function pct(d){return Math.max(0,Math.min(100,(d-START)/(END-START)*100));}
+function today(){
+  if(state.preview){return parseDate(state.preview);}
+  var n=new Date();return new Date(n.getFullYear(),n.getMonth(),n.getDate());
+}
+
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+function load(){
+  try{
+    var raw=localStorage.getItem(KEY);
+    if(!raw){return;}
+    merge(JSON.parse(raw));
+  }catch(e){}
+}
+function merge(saved){
+  if(!saved||typeof saved!=='object'){return;}
+  if(saved.done&&typeof saved.done==='object'){state.done=saved.done;}
+  if(saved.theme==='dark'||saved.theme==='light'){state.theme=saved.theme;}
+  if(saved.cal&&typeof saved.cal==='object'){state.cal=Object.assign(state.cal,saved.cal);}
+  if(saved.budget&&typeof saved.budget==='object'){
+    var b=saved.budget;
+    ['ratio','cap','savings','guard','spentDev','spentMkt'].forEach(function(k){if(k in b){state.budget[k]=b[k];}});
+    if(Array.isArray(b.items)){
+      state.budget.items=DEFAULT_BUDGET.items.map(function(def){
+        var found=b.items.filter(function(x){return x&&x.id===def.id;})[0];
+        return found?Object.assign({},def,found):def;
+      });
+    }
+  }
+}
+
+function statusOf(m,t){
+  if(state.done[m.id]){return 'done';}
+  return m.d<t?'late':'open';
+}
+function nextMilestone(t){
+  for(var i=0;i<MS.length;i++){if(!state.done[MS[i].id]){return MS[i];}}
+  return null;
+}
+
+/* =====================================================================
+   Rendering
+   ===================================================================== */
+function renderTheme(){
+  var theme=state.theme||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');
+  document.documentElement.setAttribute('data-theme',theme);
+  document.getElementById('themeBtn').textContent=theme==='dark'?'Ember':'Paper';
+}
+
+function currentPhase(t){
+  for(var i=0;i<PHASES.length;i++){
+    var f=parseDate(PHASES[i].from),to=parseDate(PHASES[i].to);
+    if(t>=f&&t<to){return PHASES[i];}
+  }
+  return null;
+}
+
+function renderLede(t){
+  var ph=currentPhase(t),nx=nextMilestone(t),el=document.getElementById('lede');
+  var html='Today is <b>'+esc(fmtLong(t))+'</b>.';
+  if(t<START){html+=' The plan starts on '+esc(fmtShort(START))+'.';}
+  else if(t>=END){html+=' The plan year is over. Time for the next one.';}
+  else if(ph){html+=' You are in <b>'+esc(ph.label)+'</b>.';}
+  if(nx){
+    var n=daysBetween(t,nx.d);
+    var when=n<0?plural(-n,'day')+' overdue':(n===0?'due today':'due in '+plural(n,'day'));
+    html+=' Next up: '+esc(nx.title)+', '+when+'.';
+  }else{html+=' Every milestone is ticked.';}
+  el.innerHTML=html;
+}
+
+function buildTimelineShell(){
+  var labels='<div class="sp0"></div><div class="sp1"></div><div class="sp2"></div>';
+  LANES.forEach(function(l){labels+='<div class="lane-label" style="--c:var(--'+l.key+')"><i></i>'+esc(l.label)+'</div>';});
+  document.getElementById('tlLabels').innerHTML=labels;
+
+  var tracks='<div class="sp0"></div><div class="phases" id="phases"></div><div class="months" id="months"></div>';
+  LANES.forEach(function(l){tracks+='<div class="lane" id="lane-'+l.key+'" style="--c:var(--'+l.key+')"></div>';});
+  tracks+='<div id="grid"></div><div class="needle" id="needle"><div class="flag" id="flag"></div><div class="tip"></div><div class="stem"></div></div>';
+  document.getElementById('tlTracks').innerHTML=tracks;
+
+  var months='',grid='';
+  var d=new Date(START.getFullYear(),START.getMonth(),1);
+  while(d<=END){
+    var p=pct(d);
+    grid+='<div class="gridline" style="left:'+p+'%"></div>';
+    if(d<END){
+      var lbl=d.toLocaleDateString('en-AU',{month:'short'})+(d.getMonth()===0||d.getTime()===START.getTime()?' '+d.getFullYear():'');
+      months+='<div class="month" style="left:'+p+'%">'+esc(lbl)+'</div>';
+    }
+    d=new Date(d.getFullYear(),d.getMonth()+1,1);
+  }
+  document.getElementById('months').innerHTML=months;
+  document.getElementById('grid').innerHTML=grid;
+}
+
+function renderTimeline(t){
+  var nx=nextMilestone(t);
+  var ph='';
+  PHASES.forEach(function(p){
+    var f=parseDate(p.from),to=parseDate(p.to),now=(t>=f&&t<to);
+    ph+='<div class="phase'+(now?' now':'')+'" style="left:'+pct(f)+'%;width:'+(pct(to)-pct(f))+'%" title="'+esc(p.label)+'">'+esc(p.label)+'</div>';
+  });
+  document.getElementById('phases').innerHTML=ph;
+
+  LANES.forEach(function(l){
+    var html='';
+    MS.filter(function(m){return m.lane===l.key;}).forEach(function(m){
+      var s=statusOf(m,t),cls='dot '+(s==='done'?'done':s==='late'?'late':'')+(nx&&nx.id===m.id?' next':'');
+      html+='<button type="button" class="'+cls+'" data-jump="'+m.id+'" style="left:'+pct(m.d)+'%" title="'+esc(fmtShort(m.d)+': '+m.title)+'" aria-label="'+esc(fmtShort(m.d)+', '+m.title+', '+(s==='done'?'done':s==='late'?'overdue':'coming up'))+'"></button>';
+    });
+    document.getElementById('lane-'+l.key).innerHTML=html;
+  });
+
+  var flag=document.getElementById('flag');
+  flag.textContent=(state.preview?'Preview ':'Today ')+fmtShort(t);
+  setNeedle(pct(t));
+}
+
+var swept=false;
+function setNeedle(p){
+  var n=document.getElementById('needle');
+  if(!swept){
+    swept=true;
+    n.style.left='0%';
+    requestAnimationFrame(function(){requestAnimationFrame(function(){n.classList.add('sweep');n.style.left=p+'%';});});
+  }else{n.style.left=p+'%';}
+}
+
+function renderStatus(t){
+  var nx=nextMilestone(t),done=0,late=0;
+  MS.forEach(function(m){if(state.done[m.id]){done++;}else if(m.d<t){late++;}});
+  var due=MS.filter(function(m){return m.d<=t;}).length;
+  var big,lab;
+  if(nx){
+    var n=daysBetween(t,nx.d);
+    big=n<0?plural(-n,'day')+' late':(n===0?'Due today':plural(n,'day'));
+    lab=(n<0?'past the date for: ':'until: ')+nx.title;
+  }else{big='All done';lab='Every milestone is ticked.';}
+  document.getElementById('status').innerHTML=
+    '<div><div class="big">'+esc(big)+'</div><div class="lab">'+esc(lab)+'</div></div>'+
+    '<div><div class="big">'+done+' of '+MS.length+'</div><div class="lab">milestones done'+(due?', '+due+' due so far':'')+'</div></div>'+
+    '<div><div class="big">'+late+'</div><div class="lab">'+(late===1?'milestone overdue':'milestones overdue')+'</div></div>';
+}
+
+function renderMilestones(t){
+  var nx=nextMilestone(t),groups={},order=[];
+  MS.forEach(function(m){
+    var k=m.d.getFullYear()+'-'+pad(m.d.getMonth()+1);
+    if(!groups[k]){groups[k]=[];order.push(k);}
+    groups[k].push(m);
+  });
+  var html='';
+  order.forEach(function(k){
+    var d=groups[k][0].d;
+    html+='<div class="month-group"><h3>'+esc(d.toLocaleDateString('en-AU',{month:'long',year:'numeric'}))+'</h3><ul class="plain">';
+    groups[k].forEach(function(m){
+      var s=statusOf(m,t),isNext=nx&&nx.id===m.id,n=daysBetween(t,m.d),st;
+      if(s==='done'){st='Done';}
+      else if(s==='late'){st=plural(-n,'day')+' overdue';}
+      else if(isNext){st=n===0?'Next, due today':'Next, in '+plural(n,'day');}
+      else{st=n===0?'Due today':'In '+plural(n,'day');}
+      html+='<li class="ms '+s+(isNext?' next':'')+'" id="ms-'+m.id+'" style="--c:var(--'+m.lane+')">'+
+        '<label class="check"><input type="checkbox" data-done="'+m.id+'"'+(state.done[m.id]?' checked':'')+'><span class="box"></span><span class="sr">Mark done: '+esc(m.title)+'</span></label>'+
+        '<div class="when">'+esc(fmtShort(m.d))+'</div>'+
+        '<div class="what"><strong>'+esc(m.title)+'</strong><span class="gate">'+esc(m.gate)+'</span></div>'+
+        '<div class="meta"><span class="lanetag"><i></i>'+esc(LANE[m.lane])+'</span><span class="state">'+esc(st)+'</span></div></li>';
+    });
+    html+='</ul></div>';
+  });
+  document.getElementById('msList').innerHTML=html;
+}
+
+function renderFeatures(){
+  var labels={done:'Done',now:'In progress',next:'Up next',later:'Later'};
+  var html='';
+  FEATURES.forEach(function(v){
+    html+='<div class="version"><h3>'+esc(v.v)+'</h3><div class="when">'+esc(v.when)+'. '+esc(v.note)+'</div>';
+    v.items.forEach(function(it){
+      html+='<div class="feat"><span class="st '+it[1]+'" aria-hidden="true"></span><span>'+esc(it[0])+'<small>'+labels[it[1]]+'</small></span></div>';
+    });
+    html+='</div>';
+  });
+  document.getElementById('versions').innerHTML=html;
+}
+
+function renderTesting(){
+  var html='';
+  TESTING.forEach(function(g){
+    var done=0;
+    var items=g.items.map(function(txt,i){
+      var id='chk:'+g.id+':'+i,on=!!state.done[id];if(on){done++;}
+      return '<li><label class="check"><input type="checkbox" data-done="'+id+'"'+(on?' checked':'')+'><span class="box"></span><span class="sr">'+esc(txt)+'</span></label><span>'+esc(txt)+'</span></li>';
+    }).join('');
+    html+='<div class="layer"><h3>'+esc(g.title)+'<span>'+done+' of '+g.items.length+'</span></h3><ul class="plain">'+items+'</ul></div>';
+  });
+  document.getElementById('layers').innerHTML=html;
+}
+
+function renderMarketing(){
+  document.getElementById('mk').innerHTML=MARKETING.map(function(m){
+    return '<div class="mk-row"><div class="w">'+esc(m.when)+'<span>'+esc(m.range)+'</span></div><ul>'+m.items.map(function(i){return '<li>'+esc(i)+'</li>';}).join('')+'</ul></div>';
+  }).join('');
+}
+
+function renderHonest(){
+  document.getElementById('honestList').innerHTML=HONEST.map(function(h){return '<li>'+esc(h)+'</li>';}).join('');
+}
+
+/* ---------- budget ---------- */
+function costThrough(item,D){
+  var p=item.start.split('-').map(Number),si=p[0]*12+(p[1]-1),di=D.getFullYear()*12+D.getMonth();
+  var amt=Number(item.amount)||0;
+  if(di<si){return 0;}
+  return item.repeat==='once'?amt:amt*(di-si+1);
+}
+function sumThrough(D){return state.budget.items.reduce(function(s,it){return s+costThrough(it,D);},0);}
+
+function renderCostTable(){
+  var html='<thead><tr><th>Item</th><th>Amount</th><th>Starts</th><th>Repeats</th></tr></thead><tbody>';
+  state.budget.items.forEach(function(it){
+    html+='<tr><td class="n">'+esc(it.name)+'</td>'+
+      '<td><input type="number" min="0" step="5" data-item="'+it.id+'" data-f="amount" value="'+esc(it.amount)+'" aria-label="Amount for '+esc(it.name)+'"></td>'+
+      '<td><input type="month" data-item="'+it.id+'" data-f="start" value="'+esc(it.start)+'" aria-label="Start month for '+esc(it.name)+'"></td>'+
+      '<td><select data-item="'+it.id+'" data-f="repeat" aria-label="Repeats for '+esc(it.name)+'"><option value="once"'+(it.repeat==='once'?' selected':'')+'>Once</option><option value="monthly"'+(it.repeat==='monthly'?' selected':'')+'>Monthly</option></select></td></tr>';
+  });
+  document.getElementById('costTable').innerHTML=html+'</tbody>';
+}
+
+function budgetFigures(){
+  var b=state.budget,ratio=Number(b.ratio)||0,cap=Number(b.cap)||0;
+  var devLaunch=sumThrough(LAUNCH),devYear=sumThrough(BUDGET_END);
+  var mktLaunch=Math.min(cap,ratio*devLaunch),mktYear=Math.min(cap,ratio*devYear);
+  var spentDev=Number(b.spentDev)||0,spentMkt=Number(b.spentMkt)||0;
+  var allowedNow=Math.min(cap,ratio*spentDev);
+  return {devLaunch:devLaunch,devYear:devYear,mktLaunch:mktLaunch,mktYear:mktYear,total:devYear+mktYear,spentDev:spentDev,spentMkt:spentMkt,allowedNow:allowedNow,remaining:allowedNow-spentMkt};
+}
+
+function renderBudgetOut(){
+  var f=budgetFigures(),b=state.budget;
+  document.getElementById('results').innerHTML=
+    '<dl><dt>Development cash to launch (15 Jan 2027)</dt><dd>'+money(f.devLaunch)+'</dd>'+
+    '<dt>Marketing you can match by launch</dt><dd>'+money(f.mktLaunch)+'</dd>'+
+    '<dt>Development cash to the end of Sep 2027</dt><dd>'+money(f.devYear)+'</dd>'+
+    '<dt>Marketing you can match across the year</dt><dd>'+money(f.mktYear)+'</dd>'+
+    '<dt class="total">Total project cash for the year</dt><dd class="total">'+money(f.total)+'</dd></dl>'+
+    guardText(f);
+  var rem=f.remaining,txt;
+  if(!f.spentDev&&!f.spentMkt){txt='Enter what you have spent to see how much marketing you have earned.';}
+  else if(rem>=0){txt='Marketing earned so far: '+money(f.allowedNow)+'. You have '+money(rem)+' left to spend.';}
+  else{txt='Marketing earned so far: '+money(f.allowedNow)+'. You are '+money(-rem)+' over, so pause marketing spend.';}
+  document.getElementById('spendOut').innerHTML='<div class="callout'+(rem<0?' bad':'')+'">'+esc(txt)+'</div>';
+}
+function guardText(f){
+  var b=state.budget,sav=Number(b.savings)||0,g=Number(b.guard)||0;
+  if(!sav){return '<div class="callout">Add your savings above to check this against your limit.</div>';}
+  var limit=sav*g/100,over=f.total>limit;
+  return '<div class="callout'+(over?' bad':'')+'">'+(over?
+    'The year totals '+money(f.total)+', which is over your limit of '+money(limit)+' ('+g+'% of savings). Lower the cap or the match.':
+    'The year totals '+money(f.total)+', inside your limit of '+money(limit)+' ('+g+'% of savings).')+'</div>';
+}
+
+function syncInputs(){
+  var b=state.budget;
+  document.getElementById('ratio').value=b.ratio;
+  document.getElementById('cap').value=b.cap;
+  document.getElementById('savings').value=b.savings;
+  document.getElementById('guard').value=b.guard;
+  document.getElementById('spentDev').value=b.spentDev;
+  document.getElementById('spentMkt').value=b.spentMkt;
+  document.getElementById('alarm').value=state.cal.alarm;
+  document.getElementById('onlyOpen').checked=!!state.cal.onlyOpen;
+  document.getElementById('weekly').checked=!!state.cal.weekly;
+  document.getElementById('weeklyTime').value=state.cal.time;
+  document.getElementById('preview').value=state.preview||'';
+  document.getElementById('previewNote').textContent=state.preview?'Previewing '+fmtLong(parseDate(state.preview))+'.':'Showing the real date.';
+}
+
+function renderAll(){
+  var t=today();
+  renderTheme();renderLede(t);renderTimeline(t);renderStatus(t);renderMilestones(t);renderTesting();renderBudgetOut();
+}
+
+/* =====================================================================
+   Calendar file
+   ===================================================================== */
+function icsEscape(s){return String(s).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n');}
+function fold(line){
+  var out=[],l=line;
+  while(l.length>74){out.push(l.slice(0,74));l=' '+l.slice(74);}
+  out.push(l);
+  return out.join('\r\n');
+}
+function stampUTC(){
+  var n=new Date();
+  return n.getUTCFullYear()+pad(n.getUTCMonth()+1)+pad(n.getUTCDate())+'T'+pad(n.getUTCHours())+pad(n.getUTCMinutes())+pad(n.getUTCSeconds())+'Z';
+}
+function floating(d){return ymd(d)+'T'+pad(d.getHours())+pad(d.getMinutes())+'00';}
+function nextSunday(d){var x=new Date(d);x.setDate(x.getDate()+((7-x.getDay())%7));return x;}
+
+function buildICS(){
+  var t=today(),stamp=stampUTC(),L=[];
+  L.push('BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//ThatWay//Execution plan//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH','X-WR-CALNAME:ThatWay plan');
+  var list=MS.filter(function(m){return !(state.cal.onlyOpen&&state.done[m.id]);});
+  list.forEach(function(m){
+    var end=new Date(m.d.getFullYear(),m.d.getMonth(),m.d.getDate()+1);
+    L.push('BEGIN:VEVENT','UID:'+m.id+'@thatway-plan','DTSTAMP:'+stamp,
+      'DTSTART;VALUE=DATE:'+ymd(m.d),'DTEND;VALUE=DATE:'+ymd(end),
+      'SUMMARY:'+icsEscape('ThatWay: '+m.title),
+      'DESCRIPTION:'+icsEscape('Gate: '+m.gate+'. Lane: '+LANE[m.lane]+'.'),
+      'TRANSP:TRANSPARENT');
+    if(state.cal.alarm){L.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+icsEscape(m.title),'TRIGGER:'+state.cal.alarm,'END:VALARM');}
+    L.push('END:VEVENT');
+  });
+  if(state.cal.weekly){
+    var tm=(state.cal.time||'18:00').split(':').map(Number),s=nextSunday(t);
+    var start=new Date(s.getFullYear(),s.getMonth(),s.getDate(),tm[0]||0,tm[1]||0);
+    var end2=new Date(start.getTime()+30*60000);
+    L.push('BEGIN:VEVENT','UID:weekly-checkin@thatway-plan','DTSTAMP:'+stamp,
+      'DTSTART:'+floating(start),'DTEND:'+floating(end2),
+      'RRULE:FREQ=WEEKLY;BYDAY=SU;UNTIL='+ymd(END)+'T235959',
+      'SUMMARY:ThatWay weekly check-in',
+      'DESCRIPTION:'+icsEscape('What shipped this week? What is blocked? What are the three things for next week? Then tick any milestone whose gate is now true.'),
+      'BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:ThatWay weekly check-in','TRIGGER:-PT15M','END:VALARM','END:VEVENT');
+  }
+  L.push('END:VCALENDAR');
+  return L.map(fold).join('\r\n')+'\r\n';
+}
+
+function download(name,text,type){
+  var blob=new Blob([text],{type:type}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},1500);
+}
+
+/* =====================================================================
+   Events
+   ===================================================================== */
+function bind(){
+  document.addEventListener('change',function(e){
+    var t=e.target;
+    if(t.matches&&t.matches('[data-done]')){
+      var id=t.getAttribute('data-done');
+      if(t.checked){state.done[id]=true;}else{delete state.done[id];}
+      save();renderAll();return;
+    }
+    if(t.matches&&t.matches('[data-item]')){
+      var it=state.budget.items.filter(function(x){return x.id===t.getAttribute('data-item');})[0];
+      if(it){it[t.getAttribute('data-f')]=t.getAttribute('data-f')==='amount'?(Number(t.value)||0):t.value;}
+      save();renderBudgetOut();return;
+    }
+    if(t.id==='alarm'){state.cal.alarm=t.value;save();}
+    if(t.id==='onlyOpen'){state.cal.onlyOpen=t.checked;save();}
+    if(t.id==='weekly'){state.cal.weekly=t.checked;save();}
+    if(t.id==='weeklyTime'){state.cal.time=t.value||'18:00';save();}
+    if(t.id==='preview'){state.preview=t.value;save();syncInputs();renderAll();}
+  });
+  document.addEventListener('input',function(e){
+    var t=e.target,map={ratio:'ratio',cap:'cap',savings:'savings',guard:'guard',spentDev:'spentDev',spentMkt:'spentMkt'};
+    if(t.id&&map[t.id]){state.budget[map[t.id]]=t.value===''?'':Number(t.value);save();renderBudgetOut();}
+    if(t.matches&&t.matches('input[data-item]')&&t.type==='number'){
+      var it=state.budget.items.filter(function(x){return x.id===t.getAttribute('data-item');})[0];
+      if(it){it.amount=Number(t.value)||0;save();renderBudgetOut();}
+    }
+  });
+  document.addEventListener('click',function(e){
+    var j=e.target.closest&&e.target.closest('[data-jump]');
+    if(j){
+      var el=document.getElementById('ms-'+j.getAttribute('data-jump'));
+      if(el){
+        var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        el.scrollIntoView({behavior:reduce?'auto':'smooth',block:'center'});
+        el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');
+      }
+    }
+  });
+  document.getElementById('themeBtn').addEventListener('click',function(){
+    var cur=document.documentElement.getAttribute('data-theme');
+    state.theme=cur==='dark'?'light':'dark';save();renderTheme();
+  });
+  document.getElementById('icsBtn').addEventListener('click',function(){download('thatway-plan.ics',buildICS(),'text/calendar;charset=utf-8');});
+  document.getElementById('saveBtn').addEventListener('click',function(){download('thatway-progress.json',JSON.stringify({version:1,saved:new Date().toISOString(),state:state},null,2),'application/json');});
+  document.getElementById('loadFile').addEventListener('change',function(e){
+    var f=e.target.files&&e.target.files[0];if(!f){return;}
+    var r=new FileReader();
+    r.onload=function(){
+      try{var obj=JSON.parse(r.result);merge(obj.state||obj);save();syncInputs();renderCostTable();renderAll();}
+      catch(err){alert('That file could not be read as a ThatWay progress file.');}
+    };
+    r.readAsText(f);e.target.value='';
+  });
+  document.getElementById('resetBtn').addEventListener('click',function(){
+    if(confirm('Clear every tick? Your cost numbers stay as they are.')){state.done={};save();renderAll();}
+  });
+  document.getElementById('previewClear').addEventListener('click',function(){state.preview='';save();syncInputs();renderAll();});
+}
+
+/* =====================================================================
+   Start
+   ===================================================================== */
+load();
+buildTimelineShell();
+renderFeatures();renderMarketing();renderHonest();renderCostTable();
+syncInputs();renderAll();bind();
+
+window.__plan={buildICS:buildICS,budgetFigures:budgetFigures,state:state,milestones:MS,today:today};
+})();
+</script>
+</body>
+</html>

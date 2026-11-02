@@ -1,0 +1,324 @@
+//
+//  FriendsStrip.swift
+//  ThatWay
+//
+//  The friends bar on the compass screen: a labelled Find button first (so it is never buried behind a long list), then the
+//  friends. Tap Find and the bar opens into a search field that searches *your friends* as you type. If nothing among them matches and
+//  you stop typing for three quarters of a second, the app looks up that exact username and offers "+ Add", so a request can
+//  be sent from here too. Tapping a friend asks to trace them (the caller opens the request sheet; nothing is shared until they
+//  say yes) or, if they have already allowed it, looks at them. A friend you may trace right now wears a small dot. Pressing and
+//  holding a friend opens block, report and the emergency control.
+//
+
+import SwiftUI
+import ThatWayCore
+import ThatWayUI
+
+struct FriendsStrip: View {
+    @ObservedObject var friendsManager: FriendsManager
+    @ObservedObject var trace: TraceManager
+    let theme: AppTheme
+    let k: CGFloat
+    let myId: String?
+    let onTrace: (Friend) -> Void
+    /// Opens the You page, where every request can be read and answered.
+    let onOpenRequests: () -> Void
+    /// Block, report and the emergency control for a friend.
+    let onSafety: (Friend) -> Void
+
+    @State private var searching = false
+    @State private var query = ""
+    @State private var settledFor: String?          // the query the server last answered
+    @State private var lookingUp = false
+    @State private var requested = Set<String>()    // ids asked this session (until the lists refresh)
+    @FocusState private var focused: Bool
+
+    /// How long the person has to stop typing, with no friend matching, before the server is asked.
+    static let idleBeforeLookup: Duration = .milliseconds(750)
+
+    private var trimmed: String { query.trimmingCharacters(in: .whitespaces) }
+    private var matches: [Friend] {
+        trimmed.isEmpty ? friendsManager.friends : friendsManager.friends.filter { $0.username.localizedCaseInsensitiveContains(trimmed) }
+    }
+
+    var body: some View {
+        Group {
+            if searching { searchPanel } else { row }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: searching)
+    }
+
+    // MARK: The row
+
+    private var row: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 12) {
+                // First, so it is always in reach however many friends there are.
+                findButton
+                latestRequest
+                if friendsManager.friends.isEmpty {
+                    Text("No friends yet. Tap Find to add someone by their username")
+                        .font(.nunito(12, .semibold))
+                        .foregroundStyle(theme.textSecondary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 200, alignment: .leading)
+                        .padding(.top, 8)
+                }
+                ForEach(friendsManager.friends) { f in
+                    let allowed = trace.heldTraces.contains(f.id)
+                    VStack(spacing: 6) {
+                        ZStack(alignment: .topTrailing) {
+                            avatar(f, size: 52)
+                            if allowed {
+                                Circle().fill(theme.accent).frame(width: 13, height: 13)
+                                    .overlay(Circle().stroke(theme.screen, lineWidth: 2)).offset(x: 2, y: -2)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                        Text(f.username)
+                            .font(.nunito(11, .semibold))
+                            .foregroundStyle(theme.textSecondary)
+                            .lineLimit(1)
+                    }
+                    .frame(width: 56)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onTrace(f) }
+                    .contextMenu { Button("Block, report or get help…", systemImage: "hand.raised") { onSafety(f) } }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(allowed ? "Trace \(f.username), allowed" : "Ask to trace \(f.username)")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction(named: "Block, report or get help") { onSafety(f) }
+                }
+            }
+            .padding(.horizontal, 16 * k)
+        }
+        .scrollClipDisabled()
+    }
+
+    /// Only the newest request is shown here (with a count for the rest), so a pile of requests can never crowd the row.
+    @ViewBuilder
+    private var latestRequest: some View {
+        if friendsManager.requestPolicy == .requestsOnly, let latest = friendsManager.incomingRequests.first {
+            VStack(spacing: 5) {
+                ZStack(alignment: .topTrailing) {
+                    avatar(latest, size: 52)
+                    Circle().fill(theme.needleRed).frame(width: 12, height: 12)
+                        .overlay(Circle().stroke(theme.screen, lineWidth: 2)).offset(x: 2, y: -2)
+                }
+                HStack(spacing: 6) {
+                    miniButton("xmark", filled: false) { Task { await friendsManager.respond(to: latest.id, accept: false) } }
+                        .accessibilityLabel("Decline \(latest.username)")
+                    miniButton("checkmark", filled: true) { Task { await friendsManager.respond(to: latest.id, accept: true) } }
+                        .accessibilityLabel("Accept \(latest.username)")
+                }
+            }
+            .frame(width: 64)
+            .accessibilityElement(children: .contain)
+            if friendsManager.incomingRequests.count > 1 {
+                Button(action: onOpenRequests) {
+                    VStack(spacing: 6) {
+                        ZStack {
+                            Circle().fill(theme.ink.opacity(0.1)).frame(width: 52, height: 52)
+                            Text("+\(friendsManager.incomingRequests.count - 1)").font(.nunito(15, .black)).foregroundStyle(theme.ink)
+                        }
+                        Text("more").font(.nunito(11, .semibold)).foregroundStyle(theme.textSecondary)
+                    }
+                    .frame(width: 56)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(friendsManager.incomingRequests.count - 1) more friend requests")
+            }
+        }
+    }
+
+    private func miniButton(_ icon: String, filled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.system(size: 11, weight: .bold))
+                .foregroundStyle(filled ? theme.onAccent : theme.ink.opacity(0.7))
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(filled ? theme.accent : theme.ink.opacity(0.1)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// "Find" with a person-plus icon: finds a friend you have, or adds one you don't. (A magnifier here was confused with
+    /// the place search above it.)
+    private var findButton: some View {
+        Button {
+            searching = true
+            focused = true
+        } label: {
+            VStack(spacing: 6) {
+                ZStack {
+                    Circle().fill(theme.accent.opacity(0.16)).frame(width: 52, height: 52)
+                    Circle().stroke(theme.accent.opacity(0.8), lineWidth: 1.5).frame(width: 52, height: 52)
+                    Image(systemName: "person.badge.plus").font(.system(size: 19, weight: .bold)).foregroundStyle(theme.accent)
+                }
+                Text("Find").font(.nunito(11, .extraBold)).foregroundStyle(theme.accent)
+            }
+            .frame(width: 56)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Find or add a friend")
+    }
+
+    // MARK: The search panel
+
+    private var searchPanel: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(theme.textSecondary)
+                    TextField("Search friends or add by username", text: $query)
+                        .font(.nunito(14, .semibold))
+                        .foregroundStyle(theme.ink)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                        .focused($focused)
+                    if !query.isEmpty {
+                        Button { query = "" } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(theme.textSecondary.opacity(0.6))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clear")
+                    }
+                }
+                .padding(.horizontal, 14).frame(height: 46)
+                .background(Capsule().fill(theme.surface(0.07)))
+                .overlay(Capsule().stroke(theme.accent.opacity(0.6)))
+
+                Button { close() } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 26)).foregroundStyle(theme.textSecondary.opacity(0.75))
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close search")
+            }
+
+            results
+        }
+        .padding(.horizontal, 16 * k)
+        .task(id: query) { await lookUpIfNeeded() }
+        .onAppear { focused = true }
+    }
+
+    @ViewBuilder
+    private var results: some View {
+        let list = matches
+        VStack(spacing: 6) {
+            ForEach(list.prefix(5)) { f in
+                resultRow(avatar: avatar(f, size: 34), name: f.username) {
+                    pillButton("Trace", filled: false) { close(); onTrace(f) }
+                }
+            }
+            if list.count > 5 {
+                Text("\(list.count - 5) more: keep typing to narrow it down")
+                    .font(.nunito(11, .semibold)).foregroundStyle(theme.textSecondary)
+            }
+            if !trimmed.isEmpty, list.isEmpty { unknown }
+        }
+    }
+
+    /// Nobody among your friends matches and typing has paused: the exact-username lookup and its "+ Add".
+    @ViewBuilder
+    private var unknown: some View {
+        if lookingUp {
+            HStack(spacing: 8) { ProgressView().tint(theme.accent); Text("Looking for “\(trimmed)”…").font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary) }
+                .padding(.vertical, 6)
+        } else if settledFor == trimmed {
+            let found = friendsManager.searchResults.filter { $0.id != myId }
+            if friendsManager.errorMessage != nil && found.isEmpty {
+                Text("Couldn't look that up. Check your connection.").font(.nunito(12, .semibold)).foregroundStyle(theme.needleRed)
+            } else if found.isEmpty {
+                Text("No one is called “\(trimmed)”. Usernames have to match exactly.")
+                    .font(.nunito(12, .semibold)).foregroundStyle(theme.textSecondary).multilineTextAlignment(.center)
+            } else {
+                ForEach(found) { user in
+                    resultRow(avatar: initialsAvatar(user.username), name: user.username) { addControl(for: user) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func addControl(for user: UserSearchResult) -> some View {
+        if requested.contains(user.id) || friendsManager.outgoingRequests.contains(where: { $0.id == user.id }) {
+            Text("Requested").font(.nunito(12, .extraBold)).foregroundStyle(theme.textSecondary)
+        } else if friendsManager.incomingRequests.contains(where: { $0.id == user.id }) {
+            pillButton("Accept", filled: true) { Task { await friendsManager.respond(to: user.id, accept: true) } }
+        } else {
+            pillButton("+ Add", filled: true) {
+                Task { if await friendsManager.sendRequest(to: user.id) { requested.insert(user.id) } }
+            }
+        }
+    }
+
+    // MARK: Pieces
+
+    private func resultRow<Trailing: View>(avatar: some View, name: String, @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(spacing: 10) {
+            avatar
+            Text(name).font(.nunito(14, .extraBold)).foregroundStyle(theme.ink).lineLimit(1)
+            Spacer(minLength: 8)
+            trailing()
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 16).fill(theme.surface(0.07)))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.borderColor))
+    }
+
+    private func pillButton(_ title: String, filled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.nunito(12, .black))
+                .foregroundStyle(filled ? theme.onAccent : theme.ink)
+                .padding(.horizontal, 14).padding(.vertical, 7)
+                .background(Capsule().fill(filled ? theme.accent : theme.ink.opacity(0.1)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func avatar(_ f: Friend, size: CGFloat) -> some View {
+        ZStack {
+            Circle().fill(LinearGradient(colors: [theme.accent, Color(hex: "34D6A5")], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: size, height: size)
+            Circle().fill(theme.screen).frame(width: size - 4, height: size - 4)
+            Circle().fill(f.color).frame(width: size - 10, height: size - 10)
+            Text(f.initials).font(.nunito(size * 0.29, .extraBold)).foregroundStyle(Color(hex: "241A14"))
+        }
+    }
+
+    private func initialsAvatar(_ name: String) -> some View {
+        ZStack {
+            Circle().fill(theme.ink.opacity(0.12)).frame(width: 34, height: 34)
+            Text(String(name.prefix(2)).uppercased()).font(.nunito(10, .extraBold)).foregroundStyle(theme.ink)
+        }
+    }
+
+    private func close() {
+        searching = false
+        query = ""
+        settledFor = nil
+        focused = false
+        friendsManager.searchResults = []
+    }
+
+    // MARK: The lookup
+
+    /// Runs on every change of the query (and is cancelled by the next one, which is what makes it a debounce).
+    private func lookUpIfNeeded() async {
+        friendsManager.searchResults = []
+        settledFor = nil
+        lookingUp = false
+        guard !trimmed.isEmpty, matches.isEmpty else { return }
+        try? await Task.sleep(for: Self.idleBeforeLookup)
+        guard !Task.isCancelled else { return }
+        let asked = trimmed
+        lookingUp = true
+        await friendsManager.searchUsers(query: asked)
+        guard !Task.isCancelled else { return }
+        lookingUp = false
+        settledFor = asked
+    }
+}

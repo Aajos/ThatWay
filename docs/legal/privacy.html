@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ThatWay Privacy Policy</title>
+<style>
+  :root { --bg:#fff; --ink:#14201c; --muted:#53635d; --accent:#0d7a5f; --rule:#dfe7e3; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0b1419; --ink:#e6f1ec; --muted:#9db3aa; --accent:#3dd6a6; --rule:#22343a; } }
+  body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.6 -apple-system, system-ui, "Segoe UI", sans-serif; }
+  main { max-width:44rem; margin:0 auto; padding:2rem 1.25rem 4rem; }
+  h1 { font-size:2rem; margin:0 0 .25rem; } h2 { font-size:1.25rem; margin:2.2rem 0 .4rem; padding-top:1rem; border-top:1px solid var(--rule); }
+  p, li { margin:.5rem 0; } ul { padding-left:1.2rem; } .muted { color:var(--muted); } a { color:var(--accent); }
+  table { border-collapse:collapse; width:100%; font-size:.95rem; } th, td { text-align:left; vertical-align:top; padding:.5rem .6rem; border-bottom:1px solid var(--rule); } th { color:var(--muted); font-weight:600; }
+  .box { border:1px solid var(--rule); border-radius:12px; padding:.2rem 1rem; margin:1rem 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>ThatWay Privacy Policy</h1>
+<p class="muted">Last updated: [DATE]. Applies to the ThatWay iPhone app and its server.</p>
+
+<p>ThatWay is a compass that can point you to a friend, but only if that friend agrees. This page says what we collect, why, who sees it, how long we keep it, and how to delete it. We wrote it to match what the app actually does.</p>
+
+<div class="box">
+<p><strong>The short version</strong></p>
+<ul>
+  <li>Your location is shared with a friend <strong>only while you have allowed that friend to trace you</strong>, and only for the time you chose (15 minutes to 24 hours). You can stop it at any moment.</li>
+  <li>We store only your <strong>latest</strong> shared position, and it is deleted within 2 hours at most, and straight away when a trace ends.</li>
+  <li>The person tracing you never has their own location uploaded. Only a rounded distance band is sent when they look.</li>
+  <li>No advertising, no analytics, no tracking, no data sold, and no third-party SDKs in the app.</li>
+  <li>You can delete your account and data inside the app.</li>
+</ul>
+</div>
+
+<h2>Who we are</h2>
+<p>ThatWay is operated by [YOUR NAME OR BUSINESS NAME] ("we", "us"). Contact: <a href="mailto:[CONTACT EMAIL]">[CONTACT EMAIL]</a>.</p>
+
+<h2>What we collect, and why</h2>
+<table>
+<tr><th>Information</th><th>Why</th><th>How long we keep it</th></tr>
+<tr><td><strong>Account:</strong> email address, username, password</td><td>To create your account and sign you in. Your password is handled by Amazon Cognito; we cannot read it. Your email is used for verification codes and account recovery, not marketing.</td><td>Until you delete your account (or 12 months after you deactivate it)</td></tr>
+<tr><td><strong>Friends:</strong> who you are friends with, pending friend requests, who you have blocked</td><td>To let friends find each other and to enforce blocks</td><td>Friend requests expire after 2 hours if unanswered. The rest until you remove it or delete your account</td></tr>
+<tr><td><strong>Trace permissions:</strong> who may trace you, until when, whether it is once or ongoing, when they last looked, a rounded distance band ("under 200 m"), the version of the consent wording you agreed to</td><td>To run the permission you gave, show you who can trace you, and end it on time</td><td>While the permission is live. Removed when it ends or you stop it</td></tr>
+<tr><td><strong>Your location (only while someone may trace you):</strong> latitude, longitude, accuracy and time</td><td>To show your friend where you are, as a direction and distance on their compass</td><td>Only the latest position is kept, deleted within 2 hours at most and when the permission ends</td></tr>
+<tr><td><strong>Trace requests:</strong> who asked whom, and for how long</td><td>So you can accept or decline</td><td>Expire after 30 minutes if unanswered</td></tr>
+<tr><td><strong>Nearby (Ultra Wideband) tokens:</strong> a short random code and who it is for, with no location</td><td>So two friends' phones can find each other precisely when close</td><td>2 minutes</td></tr>
+<tr><td><strong>Push notification token</strong> for your phone</td><td>To send "someone is asking to trace you" and similar notifications</td><td>Until you sign out, or Apple tells us it is no longer valid, or you delete your account</td></tr>
+<tr><td><strong>Purchases:</strong> product, Apple's transaction identifier, dates and when your plan ends. We never see your card or payment details; Apple handles payment</td><td>To verify with Apple's signature that you bought a plan and to end tracing when the plan ends</td><td>The purchase record is kept after account deletion as identifiers only, so a purchase can't be claimed twice</td></tr>
+<tr><td><strong>Reports</strong> you make about another user: who, the category and any details you write (up to 500 characters). No locations are included</td><td>To keep people safe and act on abuse</td><td>12 months, including after the account is deleted</td></tr>
+</table>
+
+<h2>What stays on your phone</h2>
+<ul>
+  <li>The compass, heading, and your own location when you are not being traced are used on your phone and not sent to us.</li>
+  <li>Preferences and the compass theme are stored on your phone.</li>
+  <li>Your sign-in is stored in the iOS Keychain.</li>
+</ul>
+
+<h2>Location in the background</h2>
+<p>While you have allowed at least one friend to trace you, ThatWay keeps sharing your location with that friend even when the app is in the background. iOS shows its blue location indicator while this happens. It stops when the permission ends, when you stop it, or if you swipe ThatWay away completely. ThatWay needs "While Using the App" and Precise Location to do this. It does not need "Always".</p>
+<p>We also use your location, without sharing it, to point the compass, find places near you, and guide you on a trip. During a trip guided by the app, location keeps working with the screen locked.</p>
+
+<h2>Camera</h2>
+<p>If you tap "Show direction" when finding a friend up close, ThatWay turns on the camera so the phone can work out which way to point. The camera is used only for that, only while it is on. ThatWay does not record, store or send camera images.</p>
+
+<h2>Who else receives information</h2>
+<ul>
+  <li><strong>Your friend</strong>, as described above: only what the trace permission covers.</li>
+  <li><strong>Amazon Web Services</strong> hosts our servers, sign-in and database, in Sydney, Australia.</li>
+  <li><strong>Apple</strong> provides maps and place search (MapKit), push notifications, and purchases. Apple's privacy policy applies to what Apple handles.</li>
+  <li><strong>A route-planning service.</strong> To draw a route, the app sends the start and end points of that route to a public routing service based on OpenStreetMap data, currently operated by FOSSGIS e.V. in Germany. It does not receive your name, email or account. [UPDATE THIS PARAGRAPH if the routing provider changes before launch.]</li>
+</ul>
+<p>We do not sell your information, use it for advertising, or share it with data brokers. We may disclose information if the law requires it or to protect someone's safety; where we can, we will tell the person concerned.</p>
+
+<h2>Your choices and rights</h2>
+<ul>
+  <li><strong>Stop a trace</strong> any time: the banner in the app, or the You tab, with no confirmation needed.</li>
+  <li><strong>Block or report</strong> a person from their profile or the You tab.</li>
+  <li><strong>Deactivate</strong> your account: your friends and traces are removed and you are hidden from search; your sign-in and plan are kept and the account is deleted automatically after 12 months unless you come back.</li>
+  <li><strong>Delete everything</strong> in the app (You tab): your friendships, requests, permissions, position, blocks, profile and sign-in are removed. Reports and purchase identifiers are kept as stated above.</li>
+  <li><strong>Ask us</strong> for a copy of what we hold about you, or to correct it, at <a href="mailto:[CONTACT EMAIL]">[CONTACT EMAIL]</a>.</li>
+  <li>You can turn off location, camera or notifications for ThatWay in iOS Settings at any time. Some features then stop working, and the app tells you which.</li>
+</ul>
+
+<h2>Security</h2>
+<p>Data travels over encrypted connections. Allowing a trace needs the phone's owner to confirm with Face ID, Touch ID or the phone passcode (or a ThatWay passcode on a phone with no lock). No system is perfectly secure, and we cannot promise it.</p>
+
+<h2>Children</h2>
+<p>ThatWay is not for anyone under 18. We do not knowingly collect information from them. If you believe a child has an account, contact us and we will delete it.</p>
+
+<h2>Safety notice</h2>
+<p>ThatWay is not an emergency service and cannot send help. If you are in danger, call your local emergency number.</p>
+
+<h2>Changes</h2>
+<p>If we change how we use your information in a way that matters, we will tell you in the app before it applies, and ask for your agreement again where a trace permission depends on it. The date at the top shows the latest version.</p>
+
+<h2>Contact and complaints</h2>
+<p><a href="mailto:[CONTACT EMAIL]">[CONTACT EMAIL]</a>. [If you are in Australia and are not satisfied, you can complain to the Office of the Australian Information Commissioner (oaic.gov.au).]</p>
+
+</main>
+</body>
+</html>

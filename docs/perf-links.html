@@ -1,0 +1,99 @@
+<!doctype html><meta charset=utf-8><title>ThatWay link-by-link</title>
+<style>body{font-family:-apple-system,Helvetica;margin:24px;max-width:900px}table{border-collapse:collapse;font-size:12px}td,th{border:1px solid #ccc;padding:4px 8px;text-align:right}td:first-child,th:first-child{text-align:left}</style>
+<h1>ThatWay: link-by-link (2-minute A/B, Release, SE 2nd gen sim, walk guidance)</h1>
+<p>Orange = a case that saved more than the baseline noise; blue = no measurable change. Grey dashed line = baseline.
+Noise (spread across three baselines): CPU ±0.68 points.</p>
+<svg width="760" height="480" font-family="-apple-system,Helvetica" font-size="12">
+<text x="0" y="16" font-weight="700" font-size="14">App CPU %</text>
+<text x="0" y="43">baseline</text><rect x="110" y="30" width="331.8" height="16" fill="#8a8a8a" rx="3"/><text x="447.8" y="43">2.20</text>
+<text x="0" y="65">loc</text><rect x="110" y="52" width="123.3" height="16" fill="#ff7a1f" rx="3"/><text x="239.3" y="65">0.82</text>
+<text x="0" y="87">locprofile</text><rect x="110" y="74" width="361.0" height="16" fill="#4a90d9" rx="3"/><text x="477.0" y="87">2.40</text>
+<text x="0" y="109">tick</text><rect x="110" y="96" width="214.6" height="16" fill="#ff7a1f" rx="3"/><text x="330.6" y="109">1.43</text>
+<text x="0" y="131">refresh</text><rect x="110" y="118" width="236.2" height="16" fill="#4a90d9" rx="3"/><text x="352.2" y="131">1.57</text>
+<text x="0" y="153">sched</text><rect x="110" y="140" width="362.7" height="16" fill="#4a90d9" rx="3"/><text x="478.7" y="153">2.41</text>
+<text x="0" y="175">advance</text><rect x="110" y="162" width="393.8" height="16" fill="#4a90d9" rx="3"/><text x="509.8" y="175">2.62</text>
+<text x="0" y="197">arrival</text><rect x="110" y="184" width="367.7" height="16" fill="#4a90d9" rx="3"/><text x="483.7" y="197">2.44</text>
+<text x="0" y="219">eta</text><rect x="110" y="206" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="219">3.45</text>
+<text x="0" y="241">tilt</text><rect x="110" y="228" width="211.3" height="16" fill="#ff7a1f" rx="3"/><text x="327.3" y="241">1.40</text>
+<text x="0" y="263">audio</text><rect x="110" y="250" width="278.1" height="16" fill="#4a90d9" rx="3"/><text x="394.1" y="263">1.85</text>
+<text x="0" y="285">persist</text><rect x="110" y="272" width="385.7" height="16" fill="#4a90d9" rx="3"/><text x="501.7" y="285">2.56</text>
+<text x="0" y="307">topbar</text><rect x="110" y="294" width="349.2" height="16" fill="#4a90d9" rx="3"/><text x="465.2" y="307">2.32</text>
+<text x="0" y="329">cards</text><rect x="110" y="316" width="363.7" height="16" fill="#4a90d9" rx="3"/><text x="479.7" y="329">2.42</text>
+<text x="0" y="351">dial</text><rect x="110" y="338" width="282.7" height="16" fill="#4a90d9" rx="3"/><text x="398.7" y="351">1.88</text>
+<text x="0" y="373">dialfx</text><rect x="110" y="360" width="332.1" height="16" fill="#4a90d9" rx="3"/><text x="448.1" y="373">2.21</text>
+<text x="0" y="395">aura</text><rect x="110" y="382" width="375.1" height="16" fill="#4a90d9" rx="3"/><text x="491.1" y="395">2.49</text>
+<text x="0" y="417">anim</text><rect x="110" y="404" width="310.9" height="16" fill="#4a90d9" rx="3"/><text x="426.9" y="417">2.07</text>
+<text x="0" y="439">etarow</text><rect x="110" y="426" width="366.8" height="16" fill="#4a90d9" rx="3"/><text x="482.8" y="439">2.44</text>
+<text x="0" y="461">all</text><rect x="110" y="448" width="50.1" height="16" fill="#ff7a1f" rx="3"/><text x="166.1" y="461">0.33</text>
+<line x1="441.8" y1="24" x2="441.8" y2="480" stroke="#888" stroke-dasharray="3"/>
+</svg><svg width="760" height="480" font-family="-apple-system,Helvetica" font-size="12">
+<text x="0" y="16" font-weight="700" font-size="14">Main-thread CPU %</text>
+<text x="0" y="43">baseline</text><rect x="110" y="30" width="335.8" height="16" fill="#8a8a8a" rx="3"/><text x="451.8" y="43">1.58</text>
+<text x="0" y="65">loc</text><rect x="110" y="52" width="169.4" height="16" fill="#ff7a1f" rx="3"/><text x="285.4" y="65">0.80</text>
+<text x="0" y="87">locprofile</text><rect x="110" y="74" width="393.1" height="16" fill="#4a90d9" rx="3"/><text x="509.1" y="87">1.85</text>
+<text x="0" y="109">tick</text><rect x="110" y="96" width="220.9" height="16" fill="#4a90d9" rx="3"/><text x="336.9" y="109">1.04</text>
+<text x="0" y="131">refresh</text><rect x="110" y="118" width="236.9" height="16" fill="#4a90d9" rx="3"/><text x="352.9" y="131">1.12</text>
+<text x="0" y="153">sched</text><rect x="110" y="140" width="365.8" height="16" fill="#4a90d9" rx="3"/><text x="481.8" y="153">1.73</text>
+<text x="0" y="175">advance</text><rect x="110" y="162" width="381.4" height="16" fill="#4a90d9" rx="3"/><text x="497.4" y="175">1.80</text>
+<text x="0" y="197">arrival</text><rect x="110" y="184" width="373.6" height="16" fill="#4a90d9" rx="3"/><text x="489.6" y="197">1.76</text>
+<text x="0" y="219">eta</text><rect x="110" y="206" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="219">2.45</text>
+<text x="0" y="241">tilt</text><rect x="110" y="228" width="141.2" height="16" fill="#ff7a1f" rx="3"/><text x="257.2" y="241">0.67</text>
+<text x="0" y="263">audio</text><rect x="110" y="250" width="376.6" height="16" fill="#4a90d9" rx="3"/><text x="492.6" y="263">1.78</text>
+<text x="0" y="285">persist</text><rect x="110" y="272" width="379.1" height="16" fill="#4a90d9" rx="3"/><text x="495.1" y="285">1.79</text>
+<text x="0" y="307">topbar</text><rect x="110" y="294" width="351.2" height="16" fill="#4a90d9" rx="3"/><text x="467.2" y="307">1.66</text>
+<text x="0" y="329">cards</text><rect x="110" y="316" width="371.9" height="16" fill="#4a90d9" rx="3"/><text x="487.9" y="329">1.75</text>
+<text x="0" y="351">dial</text><rect x="110" y="338" width="248.5" height="16" fill="#4a90d9" rx="3"/><text x="364.5" y="351">1.17</text>
+<text x="0" y="373">dialfx</text><rect x="110" y="360" width="308.0" height="16" fill="#4a90d9" rx="3"/><text x="424.0" y="373">1.45</text>
+<text x="0" y="395">aura</text><rect x="110" y="382" width="385.6" height="16" fill="#4a90d9" rx="3"/><text x="501.6" y="395">1.82</text>
+<text x="0" y="417">anim</text><rect x="110" y="404" width="268.0" height="16" fill="#4a90d9" rx="3"/><text x="384.0" y="417">1.26</text>
+<text x="0" y="439">etarow</text><rect x="110" y="426" width="380.9" height="16" fill="#4a90d9" rx="3"/><text x="496.9" y="439">1.80</text>
+<text x="0" y="461">all</text><rect x="110" y="448" width="68.9" height="16" fill="#ff7a1f" rx="3"/><text x="184.9" y="461">0.33</text>
+<line x1="445.8" y1="24" x2="445.8" y2="480" stroke="#888" stroke-dasharray="3"/>
+</svg><svg width="760" height="480" font-family="-apple-system,Helvetica" font-size="12">
+<text x="0" y="16" font-weight="700" font-size="14">AppModel published-state changes per second</text>
+<text x="0" y="43">baseline</text><rect x="110" y="30" width="520.0" height="16" fill="#8a8a8a" rx="3"/><text x="636.0" y="43">2.19</text>
+<text x="0" y="65">loc</text><rect x="110" y="52" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="65">2.19</text>
+<text x="0" y="87">locprofile</text><rect x="110" y="74" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="87">2.19</text>
+<text x="0" y="109">tick</text><rect x="110" y="96" width="45.6" height="16" fill="#ff7a1f" rx="3"/><text x="161.6" y="109">0.19</text>
+<text x="0" y="131">refresh</text><rect x="110" y="118" width="45.6" height="16" fill="#ff7a1f" rx="3"/><text x="161.6" y="131">0.19</text>
+<text x="0" y="153">sched</text><rect x="110" y="140" width="474.4" height="16" fill="#ff7a1f" rx="3"/><text x="590.4" y="153">2.00</text>
+<text x="0" y="175">advance</text><rect x="110" y="162" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="175">2.19</text>
+<text x="0" y="197">arrival</text><rect x="110" y="184" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="197">2.19</text>
+<text x="0" y="219">eta</text><rect x="110" y="206" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="219">2.19</text>
+<text x="0" y="241">tilt</text><rect x="110" y="228" width="45.6" height="16" fill="#ff7a1f" rx="3"/><text x="161.6" y="241">0.19</text>
+<text x="0" y="263">audio</text><rect x="110" y="250" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="263">2.19</text>
+<text x="0" y="285">persist</text><rect x="110" y="272" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="285">2.19</text>
+<text x="0" y="307">topbar</text><rect x="110" y="294" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="307">2.19</text>
+<text x="0" y="329">cards</text><rect x="110" y="316" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="329">2.19</text>
+<text x="0" y="351">dial</text><rect x="110" y="338" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="351">2.19</text>
+<text x="0" y="373">dialfx</text><rect x="110" y="360" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="373">2.19</text>
+<text x="0" y="395">aura</text><rect x="110" y="382" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="395">2.19</text>
+<text x="0" y="417">anim</text><rect x="110" y="404" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="417">2.19</text>
+<text x="0" y="439">etarow</text><rect x="110" y="426" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="439">2.19</text>
+<text x="0" y="461">all</text><rect x="110" y="448" width="0.0" height="16" fill="#ff7a1f" rx="3"/><text x="116.0" y="461">0.00</text>
+<line x1="630.0" y1="24" x2="630.0" y2="480" stroke="#888" stroke-dasharray="3"/>
+</svg><svg width="760" height="480" font-family="-apple-system,Helvetica" font-size="12">
+<text x="0" y="16" font-weight="700" font-size="14">CompassScreen body evaluations per second</text>
+<text x="0" y="43">baseline</text><rect x="110" y="30" width="520.0" height="16" fill="#8a8a8a" rx="3"/><text x="636.0" y="43">1.10</text>
+<text x="0" y="65">loc</text><rect x="110" y="52" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="65">1.10</text>
+<text x="0" y="87">locprofile</text><rect x="110" y="74" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="87">1.10</text>
+<text x="0" y="109">tick</text><rect x="110" y="96" width="45.6" height="16" fill="#ff7a1f" rx="3"/><text x="161.6" y="109">0.10</text>
+<text x="0" y="131">refresh</text><rect x="110" y="118" width="45.6" height="16" fill="#ff7a1f" rx="3"/><text x="161.6" y="131">0.10</text>
+<text x="0" y="153">sched</text><rect x="110" y="140" width="474.4" height="16" fill="#ff7a1f" rx="3"/><text x="590.4" y="153">1.00</text>
+<text x="0" y="175">advance</text><rect x="110" y="162" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="175">1.10</text>
+<text x="0" y="197">arrival</text><rect x="110" y="184" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="197">1.10</text>
+<text x="0" y="219">eta</text><rect x="110" y="206" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="219">1.10</text>
+<text x="0" y="241">tilt</text><rect x="110" y="228" width="150.6" height="16" fill="#ff7a1f" rx="3"/><text x="266.6" y="241">0.32</text>
+<text x="0" y="263">audio</text><rect x="110" y="250" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="263">1.10</text>
+<text x="0" y="285">persist</text><rect x="110" y="272" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="285">1.10</text>
+<text x="0" y="307">topbar</text><rect x="110" y="294" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="307">1.10</text>
+<text x="0" y="329">cards</text><rect x="110" y="316" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="329">1.10</text>
+<text x="0" y="351">dial</text><rect x="110" y="338" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="351">1.10</text>
+<text x="0" y="373">dialfx</text><rect x="110" y="360" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="373">1.10</text>
+<text x="0" y="395">aura</text><rect x="110" y="382" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="395">1.10</text>
+<text x="0" y="417">anim</text><rect x="110" y="404" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="417">1.10</text>
+<text x="0" y="439">etarow</text><rect x="110" y="426" width="520.0" height="16" fill="#4a90d9" rx="3"/><text x="636.0" y="439">1.10</text>
+<text x="0" y="461">all</text><rect x="110" y="448" width="0.0" height="16" fill="#ff7a1f" rx="3"/><text x="116.0" y="461">0.00</text>
+<line x1="630.0" y1="24" x2="630.0" y2="480" stroke="#888" stroke-dasharray="3"/>
+</svg>
+<h2>All numbers</h2><table><tr><th>case</th><th>App CPU %</th><th>Main-thread CPU %</th><th>AppModel publishes /s</th><th>CompassScreen body /s</th><th>Dial body /s</th><th>Δ CPU vs base</th><th>locGap p95 ms</th><th>dial gap p95 ms</th><th>visual diff</th></tr><tr><td><b>baseline (3 runs)</b></td><td>2.20 ±0.68</td><td>1.58 ±0.73</td><td>2.19 ±0.00</td><td>1.10 ±0.00</td><td>1.10 ±0.00</td><td>-</td><td>-</td><td>-</td><td>0</td></tr><tr><td>loc</td><td>0.82</td><td>0.80</td><td>2.19</td><td>1.10</td><td>1.10</td><td style='color:#2a7'>-1.38</td><td>0</td><td>1003</td><td>3.14</td></tr><tr><td>locprofile</td><td>2.40</td><td>1.85</td><td>2.19</td><td>1.10</td><td>1.10</td><td style='color:#888'>+0.19</td><td>3027</td><td>1005</td><td>0.21</td></tr><tr><td>tick</td><td>1.43</td><td>1.04</td><td>0.19</td><td>0.10</td><td>0.10</td><td style='color:#2a7'>-0.78</td><td>3024</td><td>10015</td><td>5.36</td></tr><tr><td>refresh</td><td>1.57</td><td>1.12</td><td>0.19</td><td>0.10</td><td>0.10</td><td style='color:#888'>-0.64</td><td>3025</td><td>10009</td><td>5.36</td></tr><tr><td>sched</td><td>2.41</td><td>1.73</td><td>2.00</td><td>1.00</td><td>1.00</td><td style='color:#888'>+0.21</td><td>5036</td><td>1005</td><td>0.18</td></tr><tr><td>advance</td><td>2.62</td><td>1.80</td><td>2.19</td><td>1.10</td><td>1.10</td><td style='color:#888'>+0.41</td><td>5031</td><td>1006</td><td>0.15</td></tr><tr><td>arrival</td><td>2.44</td><td>1.76</td><td>2.19</td><td>1.10</td><td>1.10</td><td style='color:#888'>+0.24</td><td>5036</td><td>1006</td><td>0.18</td></tr><tr><td>eta</td><td>3.45</td><td>2.45</td><td>2.19</td><td>1.10</td><td>1.10</td><td style='color:#c33'>+1.25</td><td>5032</td><td>1006</td><td>4.73</td></tr><tr><td>tilt</td><td>1.40</td><td>0.67</td><td>0.19</td><td>0.32</td><td>0.10</td><td style='color:#2a7'>-0.80</td><td>5028</td><td>10008</td><td>3.56</td></tr><tr><td>audio</td><td>1.85</td><td>1.78</td><td>2.19</td><td>1.10</td><td>1.10</td><td style='color:#888'>-0.36</td><td>5026</td><td>1006</td><td>0.15</td></tr><tr><td>persist</td><td>2.56</td><td>1.79</td><td>2.19</td><td>1.10</td><td>1.10</td><td style='color:#888'>+0.36</td><td>5036</td><td>1005</td><td>0.31</td></tr><tr><td>topbar</td><td>2.32</td><td>1.66</td><td>2.19</td><td>1.10</td><td>1.10</td><td style='color:#888'>+0.12</td><td>5032</td><td>1004</td><td>8.04</td></tr><tr><td>cards</td><td>2.42</td><td>1.75</td><td>2.19</td><td>1.10</td><td>1.10</td><td style='color:#888'>+0.21</td><td>5033</td><td>1007</td><td>9.48</td></tr><tr><td>dial</td><td>1.88</td><td>1.17</td><td>2.19</td><td>1.10</td><td>0.00</td><td style='color:#888'>-0.33</td><td>5038</td><td>0</td><td>2.91</td></tr><tr><td>dialfx</td><td>2.21</td><td>1.45</td><td>2.19</td><td>1.10</td><td>1.10</td><td style='color:#888'>+0.00</td><td>5043</td><td>1006</td><td>2.06</td></tr><tr><td>aura</td><td>2.49</td><td>1.82</td><td>2.19</td><td>1.10</td><td>1.10</td><td style='color:#888'>+0.29</td><td>5046</td><td>1008</td><td>0.30</td></tr><tr><td>anim</td><td>2.07</td><td>1.26</td><td>2.19</td><td>1.10</td><td>1.10</td><td style='color:#888'>-0.14</td><td>5037</td><td>1005</td><td>0.30</td></tr><tr><td>etarow</td><td>2.44</td><td>1.80</td><td>2.19</td><td>1.10</td><td>1.10</td><td style='color:#888'>+0.23</td><td>5038</td><td>1006</td><td>4.53</td></tr><tr><td>all</td><td>0.33</td><td>0.33</td><td>0.00</td><td>0.00</td><td>0.00</td><td style='color:#2a7'>-1.87</td><td>3026</td><td>0</td><td>8.97</td></tr></table>

@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import ThatWayUI
 
 struct ContentView: View {
+    init() { Perf.start() }
     var body: some View {
         RootView()
     }
