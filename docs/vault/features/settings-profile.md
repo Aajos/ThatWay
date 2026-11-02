@@ -19,7 +19,7 @@ files:
   - ThatWay/Compass/AppModel.swift
 tests:
 manual_checks:
-  - Change each row and look for an effect; the three unwired ones have none
+  - Change each row and look for an effect (all five rows have one); quit and relaunch and the theme, skin, tilt and units are kept
 depends_on: [compass-tilt, audio-manager, theme-system, trip-log, persistence-defaults]
 tags: [feature, area/app-shell, status/shipped, risk/low]
 ---
@@ -34,7 +34,8 @@ tags: [feature, area/app-shell, status/shipped, risk/low]
 - The Achievements section is gone (replaced by a better idea); "Visible to" (map visibility) is replaced by the Friends setting, see [[friends]]
 - WIRED: Compass skin, Theme, Compass tilt (Off/Slight/Hard), Audio guidance (Off/Tone/Voice), Units, Default mode, Record test logs
 - Rows open their options in place (inline picker) instead of the system Menu, which scrolled the page to the top and sat detached from its row
-- NOT WIRED (stored in memory only, nothing reads them): Voice of directions, Haptics on turns, Share destination
+- REMOVED 2026-11-02: Voice of directions, Haptics on turns, Share destination. They were stored and read by nothing, so the app promised what it did not do. They come back only when the feature behind them exists (see [[haptics-ios]]).
+- Remembered between launches (2026-11-02): theme, skin, tilt, units, see [[persistence-defaults]]
 - Decorative: Visibility and close-by radius, achievements
 
 ## Depends on
@@ -52,9 +53,9 @@ tags: [feature, area/app-shell, status/shipped, risk/low]
 
 | ID | What breaks | Caught by |
 |---|---|---|
-| SP-1 | Settings that do nothing (voice, haptics, share) mislead the user | none: known gap |
+| SP-1 | A setting that does nothing misleads the user | manual: every row in Settings changes something; the three that did not were removed |
 | SP-3 | The system Menu scrolled the Profile page to the top and looked detached for a few seconds after a choice | manual: inline picker, verified in the simulator |
-| SP-2 | `NavOptions` values are not persisted: tilt/units/voice reset on every launch | none: known gap |
+| SP-2 | Tilt or units reset on every launch | ThatWayTests/SavedPreferencesTests.swift::choicesSurviveARelaunch |
 
 ## Tests
 - none yet

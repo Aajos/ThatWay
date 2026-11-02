@@ -17,8 +17,10 @@ files:
   - ThatWay/Compass/AppModel.swift
   - ThatWay/Managers/RoutePersistence.swift
   - ThatWay/Managers/KeychainStore.swift
+  - ThatWay/Managers/SavedPreferences.swift
 tests:
   - ThatWayTests/TravelModeTests.swift
+  - ThatWayTests/SavedPreferencesTests.swift
 manual_checks:
   - Change mode, audio style, quit, relaunch
 depends_on: []
@@ -32,10 +34,11 @@ tags: [feature, area/app-shell, status/shipped, risk/low]
 **Area:** [[area-app-shell]] · **Status:** shipped · **Risk:** low
 
 ## What it covers
-- UserDefaults keys: `travelMode.v1`, `audioStyle.v1`, `recentSearches.v1`, `testLogging.v1`, watch `watchTheme`/`watchSkin`
+- UserDefaults keys: `travelMode.v1`, `audioStyle.v1`, `recentSearches.v1`, `testLogging.v1`, `prefs.theme.v1`, `prefs.lastDark.v1`, `prefs.skin.v1`, `prefs.tilt.v1`, `prefs.units.v1`, watch `watchTheme`/`watchSkin`
+- `SavedPreferences` (2026-11-02) loads and saves the five Settings choices; a missing or unrecognised value, or a skin the person does not own, falls back to the default
 - Active trip file (Application Support)
 - Auth refresh token in Keychain
-- NOT persisted: NavOptions (tilt, units, voice, haptics, share), theme and skin on the iPhone, default mode, visibility
+- NOT persisted: default mode, visibility
 
 ## Depends on
 - (nothing: a leaf)
@@ -53,10 +56,11 @@ tags: [feature, area/app-shell, status/shipped, risk/low]
 | ID | What breaks | Caught by |
 |---|---|---|
 | PD-1 | A key renamed without migration silently resets users' choices | none |
-| PD-2 | Theme and skin choice reset on relaunch (iPhone) | none: known gap |
+| PD-2 | Theme, skin, tilt or units reset on relaunch (iPhone) | ThatWayTests/SavedPreferencesTests.swift::choicesSurviveARelaunch |
 
 ## Tests
 - `ThatWayTests/TravelModeTests.swift`
+- `ThatWayTests/SavedPreferencesTests.swift`
 
 ## Manual checks
 - Change mode, audio style, quit, relaunch

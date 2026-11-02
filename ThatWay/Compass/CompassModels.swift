@@ -188,9 +188,6 @@ enum FriendRequestPolicy: String, CaseIterable, Identifiable {
 }
 
 struct NavOptions {
-    var voice = "Friendly"
-    var haptics = "Strong"
-    var share = "Off"
     var units = "Kilometres"
     var tilt = "Hard"
 }

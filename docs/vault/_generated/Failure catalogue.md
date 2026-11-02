@@ -25,10 +25,7 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | CA-1 | [[continuous-angle]] | low | Angle value grows without bound over a very long session | none: Double precision is ample | none |
 | HI-1 | [[haptics-ios]] | low | A setting that does nothing erodes trust | none: known gap | none |
 | PD-1 | [[persistence-defaults]] | low | A key renamed without migration silently resets users' choices | none | none |
-| PD-2 | [[persistence-defaults]] | low | Theme and skin choice reset on relaunch (iPhone) | none: known gap | none |
 | SL-1 | [[watch-spike-log]] | low | Log lines carry a location by mistake | none: no unit test on the watch side | none |
-| SP-1 | [[settings-profile]] | low | Settings that do nothing (voice, haptics, share) mislead the user | none: known gap | none |
-| SP-2 | [[settings-profile]] | low | `NavOptions` values are not persisted: tilt/units/voice reset on every launch | none: known gap | none |
 | AM-1 | [[audio-manager]] | high | Starting an audio engine stalls the test host (tests only configure the session) | by design in tests | other |
 | AM-3 | [[audio-manager]] | high | Audio cues cost about 0.5 CPU points in the simulator | perf harness; verify on device | other |
 | BC-1 | [[backend-config]] | high | A test build ships with the gate off (or the repo is left with it flipped) | process: restored after every test build; verified by grep | other |
@@ -60,8 +57,10 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | CT-1 | [[compass-tilt]] | low | A published write per second redraws the whole screen even when unchanged (was the biggest redraw source) | perf harness: `body.compass` counter | other |
 | ETA-1 | [[eta]] | low | A red light or stop inflates the pace factor and the ETA jumps | partly: smoothing 0.97/0.03; manual | other |
 | ETA-2 | [[eta]] | low | Walking ETA used for cycling/running | known: only driving uses road data | other |
+| PD-2 | [[persistence-defaults]] | low | Theme, skin, tilt or units reset on relaunch (iPhone) | ThatWayTests/SavedPreferencesTests.swift::choicesSurviveARelaunch | other |
 | PH-1 | [[perf-harness]] | low | More than two simulators at once thrashes the machine and ruins results | process rule | other |
 | PH-2 | [[perf-harness]] | low | Probe overhead distorts what it measures | mitigated: flush every 15 s | other |
+| SP-2 | [[settings-profile]] | low | Tilt or units reset on every launch | ThatWayTests/SavedPreferencesTests.swift::choicesSurviveARelaunch | other |
 | SR-1 | [[synthetic-route]] | low | Flat-earth offsets drift for legs over a few kilometres | by design: test aid | other |
 | TL-2 | [[trip-log]] | low | Device-wide network bytes misread as the app's own | documented caveat | other |
 | AM-2 | [[audio-manager]] | high | Session left active after the trip (blocks other apps' audio) | manual: END and arrival call `finishGuidance` | manual |
@@ -117,6 +116,7 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | WG-2 | [[watch-gestures]] | medium | A swipe starting on a button triggers the button instead | manual | manual |
 | WVS-3 | [[watch-voice-search]] | medium | Search or route fails offline | manual | manual |
 | FR-6 | [[friends]] | low | A pile of friend requests crowds the home screen | manual: the home bar shows one request plus a count; the You dropdown scrolls inside 260 pt | manual |
+| SP-1 | [[settings-profile]] | low | A setting that does nothing misleads the user | manual: every row in Settings changes something; the three that did not were removed | manual |
 | SP-3 | [[settings-profile]] | low | The system Menu scrolled the Profile page to the top and looked detached for a few seconds after a choice | manual: inline picker, verified in the simulator | manual |
 | SS-1 | [[store-skins]] | low | Donate action has no real destination yet | manual | manual |
 | SU-1 | [[search-ui]] | low | Panel extends under the keyboard and rows are unreachable | manual: fixed | manual |

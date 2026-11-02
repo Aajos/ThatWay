@@ -7,13 +7,15 @@ tags: [index]
 
 Hand-kept list of things that are known to be missing, unwired or unproven. The checker adds computed gaps (features with no tests, `none` failure points, unmapped files) in `_generated/Gaps`.
 
+> Launch blockers and decisions are collected in `docs/launch-readiness-report.md` (2026-11-02). This note is the long-running list.
+
 ## Unwired or dead (the app promises, the code does not deliver)
-- "Voice of directions", "Haptics on turns", "Share destination" settings: stored, read by nothing. See [[settings-profile]], [[haptics-ios]].
+- Fixed 2026-11-02: "Voice of directions", "Haptics on turns" and "Share destination" were stored and read by nothing, so they were removed from Settings until the feature exists. See [[settings-profile]], [[haptics-ios]].
 - Visibility, close-by radius, achievements, avatar photo options: decorative. See [[avatars-social-decor]].
-- Friends and tracing: the backend is live and verified against the real tables (2026-10-12), but neither friends nor a trace has been driven from two phones in the app yet. See [[friends]], [[backend-config]], [[P10 Backend and proximity runbook]].
+- Friends and tracing: server verified against the real tables and AWS (`grants_integration.sh`); friends, requests, consent, push and background sharing have run between real phones, but **UWB and the camera-assisted arrow have never run on real radios**. See [[friends]], [[trace-grants]], [[nearby-proximity]].
 
 ## Not persisted
-- iPhone theme, skin, tilt, units, default mode, visibility reset on every launch. See [[persistence-defaults]].
+- Fixed 2026-11-02: theme, skin, tilt and units are remembered ([[persistence-defaults]]). Still reset: default mode, visibility.
 
 ## Unproven (needs a real device or real walks)
 - Heading on a real phone/watch, background running over a long locked walk, battery over 30+ minutes, Airplane Mode mid-route: see [[background-guidance]], [[flow-phone-locked]], [[flow-offline-midroute]].
@@ -33,19 +35,21 @@ Hand-kept list of things that are known to be missing, unwired or unproven. The 
 - Persisted trips have no schema version: [[route-models]], [[route-persistence]].
 - No UI or snapshot tests: [[compass-screen-layout]], [[guidance-cards]].
 - Demo OSRM hosts: [[routing-provider-seam]].
-- Sign-up confirmation email not arriving (AWS side, unresolved); the app now recovers: resend code, unconfirmed sign-in goes back to the code step. Test builds run with the gate off: [[auth]], [[backend-config]], [[P10 Backend and proximity runbook]].
+- Sign-up and password emails go through Cognito's default sender (capped at 50 a day, often lands in spam) and SES is still in sandbox, so a launch with real users will lose sign-up codes. Needs SES production access and a verified sender (needs a domain): [[auth]], [[backend-config]], [[P10 Backend and proximity runbook]]. The app recovers meanwhile: resend code, unconfirmed sign-in goes back to the code step.
+- The API is on the `Dev` stage and the app points at it; there is no separate production stage.
+- No production routing host: the public OSRM demo servers are used (non-commercial, no uptime promise): [[routing-provider-seam]].
 
-## Tracing friends (new)
-- A trace request is only seen while the app is running: remote push needs the Apple Developer Program (not enrolled; free teams have no push entitlement). A local notification covers a running or backgrounded-but-alive app. See [[trace-friends]].
-- Polling every 3 s and uploading a position every 3 to 15 s while active: battery cost not measured.
+## Tracing friends
+- Remote push is built and verified (APNs key in Parameter Store): the server pushes requests, "still tracing you" and "nearby". Delivery has been seen on a real phone; iOS notification settings still decide whether a banner stays on the lock screen. See [[trace-grants]].
+- Battery cost of sharing in the background (uploads on 25 m of movement, every 2 minutes, and when looked at) is not measured.
 - The watch does not show friends (deliberate for now).
 - No walkie talkie yet; the design and the safety questions are in [[walkie-talkie]].
-- Background sharing only lasts while iOS keeps the app alive (an accepted trace keeps location running; a force-quit app stops sharing, which is the safe failure).
+- Background sharing lasts only while iOS keeps the app alive (a force-quit app stops sharing, which is the safe failure, and the consent says so).
+- Reports reach the owner by email (2026-11-02, topic `thatway-alerts`; the address must confirm the subscription) and are read and acted on with `backend/scripts/reports.sh`. Nobody else can review them yet.
 
-## Proximity (new)
+## Proximity
 - UWB needs two UWB phones; the iPhone SE (the test phone) and the simulator cannot range. Logic and backend are tested; the radio is not. See [[nearby-proximity]].
-- The `nearby` Lambda, table and routes now exist in AWS (2026-10-12); the authenticated smoke test passed on 2026-10-12. See [[P10 Backend and proximity runbook]].
-- No Bluetooth fallback and no push yet.
+- There is no Bluetooth fallback, so the plan's "Bluetooth on the SE 2nd gen" is not met: the SE gets the GPS arrow and distance only.
 
 ## Accessibility (new, measured 2026-10-09)
 - Text on the accent colour fails contrast on Paper (2.6:1), Ember (3.1:1) and Arcade (3.5:1); VoiceOver cannot read the dial or cards; Reduce Motion is honoured only by the carousel. See [[P5 Accessibility testing]].

@@ -385,9 +385,6 @@ struct ProfileScreen: View {
                 SettingsRow("Audio guidance", value: app.audioStyle.displayName, options: AudioGuidanceStyle.allCases.map(\.displayName), theme: theme) { v in
                     app.audioStyle = AudioGuidanceStyle.allCases.first { $0.displayName == v } ?? .tone
                 }
-                SettingsRow("Voice of directions", value: app.opts.voice, options: ["Friendly", "Terse", "Cheeky"], theme: theme) { app.opts.voice = $0 }
-                SettingsRow("Haptics on turns", value: app.opts.haptics, options: ["Off", "Light", "Strong"], theme: theme) { app.opts.haptics = $0 }
-                SettingsRow("Share destination", value: app.opts.share, options: ["Off", "Friends only", "Everyone"], theme: theme) { app.opts.share = $0 }
                 SettingsRow("Units", value: app.opts.units, options: ["Kilometres", "Miles"], theme: theme, isLast: true) { app.opts.units = $0 }
             }
             .background(RoundedRectangle(cornerRadius: 20).fill(theme.ink.opacity(0.05)))

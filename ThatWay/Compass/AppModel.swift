@@ -19,10 +19,10 @@ final class AppModel: ObservableObject {
     @Published var mode: NavMode = .point {
         didSet { updateBackgroundTracking() }
     }
-    @Published var skin: SkinID = .needle
+    @Published var skin: SkinID = .needle { didSet { savePreferences() } }
     // Tide is the default everywhere: it matches the green app icon.
-    @Published var theme: ThemeID = .tide
-    @Published var lastDark: ThemeID = .tide
+    @Published var theme: ThemeID = .tide { didSet { savePreferences() } }
+    @Published var lastDark: ThemeID = .tide { didSet { savePreferences() } }
     @Published var ownedSkins: Set<SkinID> = [.needle, .wheel, .clock]
     @Published var ownedAvatars: Set<AvatarID> = [.initials, .dot, .ring]
     @Published var avatar: AvatarID = .initials
@@ -218,13 +218,20 @@ final class AppModel: ObservableObject {
     /// of this — it only governs what picking a destination defaults to.
     @Published var defaultNavMode: NavMode = .point
 
-    @Published var opts = NavOptions()
+    @Published var opts = NavOptions() { didSet { savePreferences() } }
+
+    /// Settings choices survive a relaunch (see SavedPreferences).
+    private func savePreferences() {
+        SavedPreferences(theme: theme, lastDark: lastDark, skin: skin, tilt: opts.tilt, units: opts.units).save()
+    }
 
 
     private var timer: AnyCancellable?
 
     init(routingManager: RoutingManager? = nil) {
         self.routingManager = routingManager ?? RoutingManager()
+        let saved = SavedPreferences.load(owned: ownedSkins)
+        theme = saved.theme; lastDark = saved.lastDark; skin = saved.skin; opts.tilt = saved.tilt; opts.units = saved.units
         audioManager.style = audioStyle
         watchLink.start(mode: travelMode)
         startTick()

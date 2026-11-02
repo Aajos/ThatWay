@@ -18,8 +18,8 @@ tags: [generated]
 | [[trace-friends]] | dormant | high | 4 | 8 | 18 (14 / 2 / 2 / 0) |
 | [[trace-grants]] | spike | high | 8 | 7 | 0 (0 / 0 / 0 / 0) |
 | [[avatars-social-decor]] | setting-only | low | 0 | 0 | 1 (0 / 0 / 1 / 0) |
-| [[persistence-defaults]] | shipped | low | 1 | 1 | 2 (0 / 0 / 2 / 0) |
-| [[settings-profile]] | shipped | low | 0 | 1 | 3 (0 / 1 / 2 / 0) |
+| [[persistence-defaults]] | shipped | low | 2 | 1 | 2 (0 / 0 / 1 / 1) |
+| [[settings-profile]] | shipped | low | 0 | 1 | 3 (0 / 2 / 0 / 1) |
 | [[store-skins]] | shipped | low | 0 | 1 | 1 (0 / 1 / 0 / 0) |
 | [[audio-cue-plan]] | shipped | medium | 1 | 1 | 2 (1 / 1 / 0 / 0) |
 | [[audio-manager]] | shipped | high | 1 | 2 | 3 (0 / 1 / 0 / 2) |
@@ -76,4 +76,4 @@ tags: [generated]
 | [[watch-travel-modes]] | spike | low | 1 | 1 | 2 (0 / 2 / 0 / 0) |
 | [[watch-voice-search]] | spike | medium | 0 | 2 | 3 (0 / 1 / 1 / 1) |
 
-**Totals:** 68 features, 166 failure points: 47 caught by tests, 64 by manual checks, 35 partly, 20 not caught at all.
+**Totals:** 68 features, 166 failure points: 47 caught by tests, 65 by manual checks, 37 partly, 17 not caught at all.
