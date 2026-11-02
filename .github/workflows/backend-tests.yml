@@ -1,0 +1,35 @@
+name: Backend tests
+
+# Runs every Lambda test suite (no AWS access needed) and checks the five friends copies have not drifted, on every push and pull
+# request that touches the backend. The deploy workflow does not run tests itself, so this is the only gate before a merge.
+on:
+  push:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-tests.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-tests.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The friends copies match
+        run: backend/scripts/sync_friends.sh --check
+      - name: Run every suite
+        run: |
+          set -euo pipefail
+          for suite in backend/lambda/*/test.mjs; do
+            echo "== $suite"
+            (cd "$(dirname "$suite")" && node test.mjs)
+          done
