@@ -39,6 +39,7 @@ tags: [feature, area/shared-modules, status/shipped, risk/high]
 - [[core-package]] — Shared packages (ThatWayCore, ThatWayUI)
 
 ## Used by
+- [[map-prefetch]] — Map download planner and trip planner
 - [[route-persistence]] — Trip persistence and restore
 - [[route-progress]] — Route progress tracking
 - [[route-tracker]] — Route tracker (shared progress maths)

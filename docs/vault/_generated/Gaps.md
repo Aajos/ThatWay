@@ -68,6 +68,7 @@ tags: [generated]
 - [[avatars-social-decor]]: setting-only
 - [[haptics-ios]]: setting-only
 - [[walkie-talkie]]: planned
+- [[map-prefetch]]: spike
 - [[heading-blender]]: spike
 - [[phone-watch-link]]: spike
 - [[route-tracker]]: spike

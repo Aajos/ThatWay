@@ -34,6 +34,13 @@ of it is waiting on a decision or a login from you.
 | Location-settings check before saying yes to a trace; "Sharing paused" banner | Done (needs a phone test) |
 | Release build compiles; 291 app tests, all backend suites pass | Done |
 
+## New focus (3 Nov): offline maps and tourism
+
+The algorithm that decides where and how much of a map to download is **built and tested** (44 tests, `ThatWayCore/.../MapPrefetch`), with a trip planner
+for multi-stop routes and a place scorer. Nothing downloads yet. The research changed the plan: Apple's terms forbid caching MapKit tiles and
+OpenStreetMap's tile servers forbid prefetching, so offline needs a self-hosted or offline-friendly map source, which is your decision.
+Everything is in `docs/map-prefetch-design.md`: the algorithm, what it plans for real trips, privacy, fun ideas for tourists, and the eight decisions needed.
+
 ## Blockers: must be resolved before the App Store
 
 | # | Problem | Why it matters | What it needs |

@@ -48,6 +48,7 @@ tags: [feature, area/navigation-core, status/shipped, risk/medium]
 - [[audio-cue-plan]] — Audio cue plan, panning, voice script
 - [[eta]] — ETA
 - [[location-profile]] — Location accuracy profile
+- [[map-prefetch]] — Map download planner and trip planner
 - [[mode-change-reroute]] — Mid-route mode change
 - [[off-route-reroute]] — Off-route detection and reroute
 - [[phone-watch-link]] — iPhone-to-watch link (travel mode)

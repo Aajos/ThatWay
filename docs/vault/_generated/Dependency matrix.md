@@ -46,12 +46,13 @@ tags: [generated]
 | [[destination-search]] | navigation-core | [[location-manager]] [[persistence-defaults]] | [[point-mode]] [[search-ui]] | 2 | 2 |
 | [[eta]] | navigation-core | [[route-progress]] [[travel-modes]] | - | 0 | 2 |
 | [[guidance-mode]] | navigation-core | [[route-progress]] [[routing-governor]] [[background-guidance]] [[audio-manager]] [[trip-log]] [[route-persistence]] [[location-issues]] [[compass-health]] | [[map-tab]] [[mode-change-reroute]] [[off-route-reroute]] | 3 | 8 |
+| [[map-prefetch]] | navigation-core | [[route-models]] [[travel-modes]] | - | 0 | 2 |
 | [[map-tab]] | navigation-core | [[route-progress]] [[guidance-mode]] | - | 0 | 2 |
 | [[mode-change-reroute]] | navigation-core | [[travel-modes]] [[routing-governor]] [[route-failure]] [[guidance-mode]] | - | 0 | 4 |
 | [[off-route-reroute]] | navigation-core | [[route-progress]] [[routing-governor]] [[travel-modes]] [[guidance-mode]] | - | 0 | 4 |
 | [[point-mode]] | navigation-core | [[location-manager]] [[heading]] [[dial-view]] [[bearing-math]] [[destination-search]] | - | 0 | 5 |
 | [[route-progress]] | navigation-core | [[route-models]] [[bearing-math]] [[travel-modes]] | [[arrival]] [[audio-cue-plan]] [[compass-tilt]] [[dead-reckoning]] [[eta]] [[guidance-cards]] [[guidance-mode]] [[map-tab]] [[off-route-reroute]] [[route-data-generator]] [[route-line]] | 11 | 3 |
-| [[travel-modes]] | navigation-core | [[persistence-defaults]] [[route-models]] | [[arrival]] [[audio-cue-plan]] [[eta]] [[location-profile]] [[mode-change-reroute]] [[off-route-reroute]] [[phone-watch-link]] [[route-data-generator]] [[route-line]] [[route-progress]] [[route-tracker]] [[travel-mode-carousel]] [[watch-travel-modes]] | 13 | 2 |
+| [[travel-modes]] | navigation-core | [[persistence-defaults]] [[route-models]] | [[arrival]] [[audio-cue-plan]] [[eta]] [[location-profile]] [[map-prefetch]] [[mode-change-reroute]] [[off-route-reroute]] [[phone-watch-link]] [[route-data-generator]] [[route-line]] [[route-progress]] [[route-tracker]] [[travel-mode-carousel]] [[watch-travel-modes]] | 14 | 2 |
 | [[perf-harness]] | power-performance | - | [[redraw-model]] | 1 | 0 |
 | [[redraw-model]] | power-performance | [[perf-harness]] | [[dial-view]] [[guidance-cards]] | 2 | 1 |
 | [[trip-log]] | power-performance | [[persistence-defaults]] | [[arrival]] [[compass-health]] [[guidance-mode]] [[settings-profile]] | 4 | 1 |
@@ -62,7 +63,7 @@ tags: [generated]
 | [[routing-provider-seam]] | routing | [[route-models]] [[backend-config]] [[core-package]] | [[route-failure]] [[routing-governor]] [[watch-voice-search]] | 3 | 3 |
 | [[bearing-math]] | shared-modules | [[core-package]] | [[point-mode]] [[route-progress]] [[route-tracker]] [[watch-voice-search]] | 4 | 1 |
 | [[core-package]] | shared-modules | - | [[bearing-math]] [[continuous-angle]] [[nearby-proximity]] [[phone-watch-link]] [[route-models]] [[routing-provider-seam]] [[theme-system]] [[trace-friends]] [[watch-app]] | 9 | 0 |
-| [[route-models]] | shared-modules | [[core-package]] | [[route-persistence]] [[route-progress]] [[route-tracker]] [[routing-provider-seam]] [[synthetic-route]] [[travel-modes]] | 6 | 1 |
+| [[route-models]] | shared-modules | [[core-package]] | [[map-prefetch]] [[route-persistence]] [[route-progress]] [[route-tracker]] [[routing-provider-seam]] [[synthetic-route]] [[travel-modes]] | 7 | 1 |
 | [[heading-blender]] | watch | [[continuous-angle]] | [[watch-app]] | 1 | 1 |
 | [[phone-watch-link]] | watch | [[travel-modes]] [[core-package]] | [[watch-driving-note]] | 1 | 2 |
 | [[route-tracker]] | watch | [[route-models]] [[bearing-math]] [[travel-modes]] | [[watch-app]] [[watch-travel-modes]] [[watch-voice-search]] | 3 | 3 |
@@ -80,14 +81,14 @@ tags: [generated]
 
 | Feature | Fan-in | Risk |
 |---|---|---|
-| [[travel-modes]] | 13 | medium |
+| [[travel-modes]] | 14 | medium |
 | [[route-progress]] | 11 | high |
 | [[theme-system]] | 9 | low |
 | [[core-package]] | 9 | high |
 | [[location-manager]] | 8 | high |
 | [[auth]] | 7 | high |
+| [[route-models]] | 7 | high |
 | [[persistence-defaults]] | 6 | low |
-| [[route-models]] | 6 | high |
 | [[friends]] | 5 | low |
 | [[audio-manager]] | 5 | high |
 | [[heading]] | 4 | medium |

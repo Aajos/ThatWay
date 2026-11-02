@@ -46,6 +46,10 @@ Hand-kept list of things that are known to be missing, unwired or unproven. The 
 - Background sharing lasts only while iOS keeps the app alive (a force-quit app stops sharing, which is the safe failure, and the consent says so).
 - Reports reach the owner by email (2026-11-02, topic `thatway-alerts`; the address must confirm the subscription) and are read and acted on with `backend/scripts/reports.sh`. Nobody else can review them yet.
 
+## Offline maps and tourism (new focus, 2026-11-02)
+- The decision algorithm is built and tested ([[map-prefetch]], design in `docs/map-prefetch-design.md`), but **nothing downloads**: the Map tab uses MapKit, which may not be cached or prefetched, and OpenStreetMap's own tile servers forbid it. An offline map needs a different source (self-hosted PMTiles, or a provider that allows offline use) and a renderer: both are the owner's decisions.
+- Place data for tourism (OpenStreetMap, Wikidata, Wikipedia) and the Wander / "I have 90 minutes" screens are not built.
+
 ## Proximity
 - UWB needs two UWB phones; the iPhone SE (the test phone) and the simulator cannot range. Logic and backend are tested; the radio is not. See [[nearby-proximity]].
 - There is no Bluetooth fallback, so the plan's "Bluetooth on the SE 2nd gen" is not met: the SE gets the GPS arrow and distance only.

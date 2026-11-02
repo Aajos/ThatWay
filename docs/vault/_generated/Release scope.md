@@ -12,7 +12,7 @@ What each planned release contains, from each feature's `release`, `tier` and `v
 | v1.0 | 47 | 177 | [[friends]] [[synthetic-route]] [[watch-driving-note]] |
 | v1.1 | 6 | 29 | [[nearby-proximity]] [[owner-authentication]] [[plans-and-billing]] [[safety-and-account]] [[trace-friends]] [[trace-grants]] |
 | v1.2 | 2 | 5 | - |
-| later | 13 | 30 | [[avatars-social-decor]] [[haptics-ios]] [[walkie-talkie]] [[heading-blender]] [[phone-watch-link]] [[route-tracker]] [[watch-app]] [[watch-gestures]] [[watch-haptics]] [[watch-session]] [[watch-spike-log]] [[watch-travel-modes]] [[watch-voice-search]] |
+| later | 14 | 35 | [[avatars-social-decor]] [[haptics-ios]] [[walkie-talkie]] [[map-prefetch]] [[heading-blender]] [[phone-watch-link]] [[route-tracker]] [[watch-app]] [[watch-gestures]] [[watch-haptics]] [[watch-session]] [[watch-spike-log]] [[watch-travel-modes]] [[watch-voice-search]] |
 | internal | 0 | 0 | - |
 
 ## v1.0
@@ -89,6 +89,7 @@ What each planned release contains, from each feature's `release`, `tier` and `v
 
 | Feature | Value | Tier | Status | Risk |
 |---|---|---|---|---|
+| [[map-prefetch]] | 5 | paid | spike | medium |
 | [[walkie-talkie]] | 4 | paid | planned | high |
 | [[watch-app]] | 3 | free | spike | medium |
 | [[watch-haptics]] | 3 | free | spike | low |

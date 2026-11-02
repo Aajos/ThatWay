@@ -47,6 +47,12 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | HD-1 | [[heading]] | medium | The phone's own compass flips 180 degrees or drifts (reproduced in Apple's Compass app, so a sensor/system fault) | compass-health detects it; no code fix possible | other |
 | HD-2 | [[heading]] | medium | Heading frozen on screen when nothing republishes | fixed: DialHost observes LocationManager | other |
 | LI-2 | [[location-issues]] | medium | Wait loop never ends if permission is denied | ends when guidance ends or destination changes; manual | other |
+| MP-1 | [[map-prefetch]] | medium | A tight budget is spent on coarse context and leaves no street detail near the person (a first version did exactly this) | ThatWayCore/Tests/ThatWayCoreTests/MapPrefetchTests.swift::whenBudgetRunsOutTheNearStretchKeepsItsDetail | other |
+| MP-2 | [[map-prefetch]] | medium | A tile is fetched without its parents, so the map cannot zoom out | ThatWayCore/Tests/ThatWayCoreTests/MapPrefetchTests.swift::theMapAlwaysZoomsOutCleanly | other |
+| MP-3 | [[map-prefetch]] | medium | The byte budget is exceeded | ThatWayCore/Tests/ThatWayCoreTests/MapPrefetchTests.swift::theBudgetIsNeverExceededAndTheOverviewSurvivesWhenDetailIsCut | other |
+| MP-4 | [[map-prefetch]] | medium | The map runs out in a dead zone because nothing was fetched before it | ThatWayCore/Tests/ThatWayCoreTests/MapPrefetchTests.swift::aDeadZoneAheadStretchesTheDownloadAndMovesTheDeadlines | other |
+| MP-5 | [[map-prefetch]] | medium | A phone on roaming or low battery downloads a lot | ThatWayCore/Tests/ThatWayCoreTests/MapPrefetchTests.swift::lowDataModeAndRoamingAndLowBatteryShrinkItToWhatIsNeededNow | other |
+| MP-6 | [[map-prefetch]] | medium | The trip planner returns a worse trip than exists, or one that overruns the time | ThatWayCore/Tests/ThatWayCoreTests/MapPrefetchTests.swift::itMatchesABruteForceSearchOnSmallProblems | other |
 | RD-1 | [[route-data-generator]] | medium | Bake runs for a route that is about to be replaced | guard: skipped when arrived/rerouting | other |
 | RL-1 | [[route-line]] | medium | Heavy canvas redraw cost near the destination | perf: last-450 m scenario measured 0.91 % CPU | other |
 | RL-2 | [[route-line]] | medium | Line drawn from a coarse position (poll cadence) | by design: reads the polled snapshot | other |
@@ -101,6 +107,9 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | HB-2 | [[heading-blender]] | medium | Magnetometer accuracy field misleading on the wrist | manual | manual |
 | LI-1 | [[location-issues]] | medium | Routes from the placeholder address when no fix exists (was a real bug) | manual: fixed for devices | manual |
 | LP-1 | [[location-profile]] | medium | Filter too wide for the mode and turns are announced late | manual: real walks; dead reckoning bounds depend on it | manual |
+| MP-7 | [[map-prefetch]] | medium | The placeholder tile sizes are wrong, so "about 7 MB" is wrong | manual: needs real tiles; LearnedCostModel corrects it from the first trip | manual |
+| MP-8 | [[map-prefetch]] | medium | Tile requests reveal where someone is to the tile host | manual: PrivacyBlocks measures the cost of hiding it; the policy and the host's logging need deciding | manual |
+| MP-9 | [[map-prefetch]] | medium | The map source's licence forbids what the planner does (prefetching) | manual: Apple and OpenStreetMap tile servers forbid it; a self-hosted or offline-friendly source is needed | manual |
 | MT-1 | [[map-tab]] | medium | Map view lingers after leaving the tab (memory) | manual: heap check done once in Phase 3 | manual |
 | PM-1 | [[point-mode]] | medium | No GPS fix yet: needle points from the placeholder position (simulator only; on a phone `locationIssue` shows 'Finding your location') | manual: first launch on a phone | manual |
 | PM-2 | [[point-mode]] | medium | Needle frozen while idle because nothing republished on a heading change (was a real bug) | manual: turn the phone in idle; guarded by DialHost observing LocationManager | manual |
