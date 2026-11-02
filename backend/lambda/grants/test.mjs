@@ -1,5 +1,5 @@
 // Run:  /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc -m test.mjs     (or: node test.mjs)
-import { FOLLOW_UP_WINDOW, NEAR_PUSH_INTERVAL, makeHandler, distanceBand, GRANT_MAX_SECONDS, GRANT_MIN_SECONDS, REQUEST_TTL_SECONDS, LOCATE_MIN_INTERVAL, NOTICE_MIN_INTERVAL, POSITION_TTL_SECONDS, MAX_OPEN_REQUESTS, MAX_ACTIVE_GRANTS, REPORT_RETENTION_SECONDS } from "./core.mjs";
+import { FOLLOW_UP_WINDOW, NEAR_PUSH_INTERVAL, makeHandler, distanceBand, GRANT_MAX_SECONDS, GRANT_MIN_SECONDS, REQUEST_TTL_SECONDS, LOCATE_MIN_INTERVAL, NOTICE_MIN_INTERVAL, POSITION_TTL_SECONDS, MAX_OPEN_REQUESTS, MAX_ACTIVE_GRANTS, REPORT_RETENTION_SECONDS, REPORT_ALERT_MIN_INTERVAL, formatReportAlert } from "./core.mjs";
 
 const out = typeof print === "function" ? print : console.log;
 if (typeof console === "undefined") globalThis.console = { log: out, error() {} };
@@ -32,7 +32,8 @@ const db = fakeDb();
 let ids = 0;
 const pushes = [];
 let pushFails = false;
-const h = makeHandler({ db, now: () => clock, planUntil: async (id) => plans.get(id) ?? null, newId: () => `r${++ids}`, notify: async (u, k, f) => { if (pushFails) throw new Error("apns down"); pushes.push([u, k, f]); } });
+const alerts = []; let alertFails = false;
+const h = makeHandler({ db, now: () => clock, planUntil: async (id) => plans.get(id) ?? null, newId: () => `r${++ids}`, reportAlert: async (rep) => { if (alertFails) throw new Error("sns down"); alerts.push(rep); }, notify: async (u, k, f) => { if (pushFails) throw new Error("apns down"); pushes.push([u, k, f]); } });
 for (const [a, b] of [["tracer", "tracee"], ["tracer2", "tracee"], ["tracer", "other"]]) befriend(db, a, b);
 const call = async (route, sub, body, pp) => h(ev(route, sub, body, pp));
 let nextKind = "window";
@@ -277,6 +278,23 @@ r = await call("POST /reports", "tracee", { userId: "tracee", category: "other" 
 for (let i = 0; i < 30; i++) r = await call("POST /reports", "tracee", { userId: "tracer", category: "threat" });
 check("reporting is never throttled", r.statusCode === 200 && db.t.Reports.size === 31);
 r = await call("POST /reports", "tracee", { userId: "tracer", category: "other" }); check("(still counting)", r.statusCode === 200);
+
+// ---------- a report is also emailed to the owner (best effort, one a minute per reporter)
+check("the first report alerted a person", alerts.length === 1 && alerts[0].category === "unwanted_tracing" && alerts[0].reporterId === "tracee");
+check("a flood from one reporter alerts once a minute, though every report is stored", alerts.length === 1 && db.t.Reports.size === 32);
+tick(REPORT_ALERT_MIN_INTERVAL + 1);
+r = await call("POST /reports", "tracee", { userId: "tracer", category: "harassment" });
+check("a minute later the next report alerts again", alerts.length === 2 && alerts[1].category === "harassment");
+alertFails = true; tick(REPORT_ALERT_MIN_INTERVAL + 1);
+const sizeBefore = db.t.Reports.size;
+r = await call("POST /reports", "tracee", { userId: "tracer", category: "threat" });
+check("a failing alert never fails or hides the report", r.statusCode === 200 && J(r).status === "RECEIVED" && db.t.Reports.size === sizeBefore + 1);
+alertFails = false;
+const mail = formatReportAlert({ reportId: "abc", reporterId: "u1", reportedId: "u2", category: "threat", details: "he followed me", createdAt: 1_800_000_000 }, { reporter: "sam", reported: "ellie" });
+check("the email marks a threat as urgent, in one ASCII line under 100 characters", mail.subject.startsWith("[ThatWay] URGENT") && mail.subject.length < 100 && /^[\x20-\x7e]+$/.test(mail.subject));
+check("it names both people, the details and the report id", ["sam", "ellie", "he followed me", "abc"].every((x) => mail.body.includes(x)));
+check("an ordinary report is not marked urgent", !formatReportAlert({ reportId: "a", reporterId: "u1", reportedId: "u2", category: "other", details: "", createdAt: 1_800_000_000 }).subject.includes("URGENT"));
+check("the email carries no position", !/\blat\b|\blon\b/i.test(mail.body));
 
 // ---------- push
 pushes.length = 0; db.t.Grants.clear(); db.t.Friends.clear(); befriend(db, "tracer", "tracee");

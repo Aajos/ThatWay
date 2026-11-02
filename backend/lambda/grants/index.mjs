@@ -1,6 +1,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, DeleteCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
-import { makeHandler } from "./core.mjs";
+import { makeHandler, formatReportAlert } from "./core.mjs";
+import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
 import { sendPush } from "./push.mjs";
 
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: "ap-southeast-2" }));
@@ -47,4 +48,17 @@ const notify = async (userId, kind, from) => {
   }
 };
 
-export const handler = makeHandler({ db, planUntil, notify });
+// A report is emailed to the owner through an SNS topic (REPORT_ALERT_TOPIC_ARN). With no topic set nothing is sent: the report is
+// still stored. Usernames are looked up here so the email says who, not just ids.
+const sns = new SNSClient({ region: "ap-southeast-2" });
+const reportAlert = async (report) => {
+  const topic = process.env.REPORT_ALERT_TOPIC_ARN;
+  if (!topic) return;
+  const reporter = (await db.get("Users", { id: report.reporterId }))?.username;
+  const reported = (await db.get("Users", { id: report.reportedId }))?.username;
+  const { subject, body } = formatReportAlert(report, { reporter, reported });
+  try { await sns.send(new PublishCommand({ TopicArn: topic, Subject: subject, Message: body })); }
+  catch (error) { console.error("report alert failed:", error?.name); }       // the name only; the report is already stored
+};
+
+export const handler = makeHandler({ db, planUntil, notify, reportAlert });

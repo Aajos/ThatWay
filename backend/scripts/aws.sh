@@ -13,6 +13,9 @@
 #   backend/scripts/aws.sh account [--apply]      DRY RUN / create the account Lambda (delete, deactivate, reactivate), its routes, permission to
 #                                                 delete a sign-in, and the daily sweep that finishes stopped deletes and old deactivations
 #   backend/scripts/aws.sh plan [--apply]         DRY RUN / create the plan Lambda (verifies Apple purchases) and its 2 routes
+#   backend/scripts/aws.sh ops [--apply]          DRY RUN / create the safety net: the thatway-alerts email topic (subscribe with ALERT_EMAIL=you@...),
+#                                                 report emails from grants, an alarm on every function's errors, and point-in-time backups
+#                                                 on the tables that cannot be rebuilt (Users, Friends, Blocks, Reports, Entitlements)
 #   backend/scripts/aws.sh url                    prints the invoke URL to paste into ThatWay/Config.swift
 #
 # Needs the AWS CLI signed in to the account (aws login, or aws sso login, or a profile): set AWS_PROFILE if you use one.
@@ -390,8 +393,61 @@ deploy_friends() {
   [ "$APPLY" = 1 ] && echo "Next: backend/scripts/friends_integration.sh"
 }
 
+provision_ops() {
+  [ "$APPLY" = 1 ] || echo "DRY RUN: nothing is created. Add --apply to do it."
+  local topic_name=thatway-alerts topic_arn="arn:aws:sns:${REGION}:${ACCT}:thatway-alerts"
+
+  echo; echo "== 1. The alerts topic and the email subscription (the address gets ONE confirmation email to click)"
+  if aws sns get-topic-attributes --region "$REGION" --topic-arn "$topic_arn" >/dev/null 2>&1; then ok "topic $topic_name exists"; else
+    run aws sns create-topic --region "$REGION" --name "$topic_name"
+  fi
+  if [ -z "${ALERT_EMAIL:-}" ]; then info "ALERT_EMAIL is not set: no email subscription is created (set ALERT_EMAIL=you@example.com)"; else
+    local subs; subs=$(aws sns list-subscriptions-by-topic --region "$REGION" --topic-arn "$topic_arn" --query 'Subscriptions[].Endpoint' --output text 2>/dev/null)
+    if echo "$subs" | tr '\t' '\n' | grep -Fxq "$ALERT_EMAIL"; then ok "an email subscription already exists for the alert address"; else
+      run aws sns subscribe --region "$REGION" --topic-arn "$topic_arn" --protocol email --notification-endpoint "$ALERT_EMAIL"
+      info "check that inbox and click Confirm subscription: nothing is delivered until you do"
+    fi
+  fi
+
+  echo; echo "== 2. IAM: the functions may publish to that topic only (inline policy on $ROLE_NAME; the rest is untouched)"
+  local pol; pol=$(mktemp)
+  cat > "$pol" <<JSON
+{"Version":"2012-10-17","Statement":[{"Sid":"ThatWayPublishAlerts","Effect":"Allow","Action":["sns:Publish"],"Resource":["${topic_arn}"]}]}
+JSON
+  run aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name thatway-alerts-publish --policy-document "file://$pol"
+
+  echo; echo "== 3. grants emails the topic when a report arrives (REPORT_ALERT_TOPIC_ARN; other settings kept)"
+  local env; env=$(aws lambda get-function-configuration --region "$REGION" --function-name grants --query 'Environment.Variables' --output json 2>/dev/null)
+  [ -z "$env" ] || [ "$env" = "null" ] && env='{}'
+  local merged; merged=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); d['REPORT_ALERT_TOPIC_ARN']=sys.argv[2]; print(json.dumps({'Variables':d}))" "$env" "$topic_arn")
+  if echo "$env" | grep -q "$topic_arn"; then ok "REPORT_ALERT_TOPIC_ARN already set"; else
+    run aws lambda update-function-configuration --region "$REGION" --function-name grants --environment "$merged"
+  fi
+
+  echo; echo "== 4. An alarm on each function's errors (any error in 5 minutes emails the topic)"
+  local fn
+  for fn in grants account plan nearby friendsSearch friendsRequest friendsRespond friendsList friendsRemove; do
+    local alarm="thatway-errors-$fn"
+    if aws cloudwatch describe-alarms --region "$REGION" --alarm-names "$alarm" --query 'MetricAlarms[0].AlarmName' --output text 2>/dev/null | grep -q "$alarm"; then ok "alarm $alarm"; else
+      run aws cloudwatch put-metric-alarm --region "$REGION" --alarm-name "$alarm" --namespace AWS/Lambda --metric-name Errors \
+        --dimensions "Name=FunctionName,Value=$fn" --statistic Sum --period 300 --evaluation-periods 1 --threshold 1 \
+        --comparison-operator GreaterThanOrEqualToThreshold --treat-missing-data notBreaching --alarm-actions "$topic_arn"
+    fi
+  done
+
+  echo; echo "== 5. Point-in-time backups (35 days) on the tables that cannot be rebuilt. Short-lived tables are left out."
+  local t
+  for t in Users Friends Blocks Reports Entitlements; do
+    local st; st=$(aws dynamodb describe-continuous-backups --region "$REGION" --table-name "$t" --query 'ContinuousBackupsDescription.PointInTimeRecoveryDescription.PointInTimeRecoveryStatus' --output text 2>/dev/null)
+    if [ "$st" = "ENABLED" ]; then ok "backups on $t"; else
+      run aws dynamodb update-continuous-backups --region "$REGION" --table-name "$t" --point-in-time-recovery-specification PointInTimeRecoveryEnabled=true
+    fi
+  done
+}
+
 case "$MODE" in
   audit) audit ;;
+  ops) provision_ops ;;
   nearby) provision_nearby ;;
   trace) provision_trace ;;
   friends) deploy_friends ;;
@@ -400,5 +456,5 @@ case "$MODE" in
   account) provision_account ;;
   plan) provision_plan ;;
   url) a=$(api_id); [ -n "$a" ] && echo "https://${a}.execute-api.${REGION}.amazonaws.com/${STAGE}" || { echo "no API named $API_NAME"; exit 1; } ;;
-  *) echo "usage: aws.sh audit | nearby [--apply] | trace [--apply] | friends [--apply] | usernames [--apply] | grants [--apply] | account [--apply] | plan [--apply] | url"; exit 2 ;;
+  *) echo "usage: aws.sh audit | ops [--apply] | nearby [--apply] | trace [--apply] | friends [--apply] | usernames [--apply] | grants [--apply] | account [--apply] | plan [--apply] | url"; exit 2 ;;
 esac

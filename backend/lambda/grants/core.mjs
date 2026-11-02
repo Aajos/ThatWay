@@ -31,6 +31,7 @@ export const CONSENT_VERSION_MAX_LENGTH = 32;
 export const REPORT_CATEGORIES = ["unwanted_tracing", "harassment", "threat", "impersonation", "other"];
 export const REPORT_DETAILS_MAX = 500;
 export const REPORT_RETENTION_SECONDS = 365 * 86400;
+export const REPORT_ALERT_MIN_INTERVAL = 60;       // at most one alert a minute per reporter (the reports themselves are never limited)
 
 const reply = (statusCode, body) => ({ statusCode, headers: { "Content-Type": "application/json" }, body: body === undefined ? "" : JSON.stringify(body) });
 const isId = (v) => typeof v === "string" && v.length > 0 && v.length <= 128;
@@ -48,6 +49,33 @@ export function distanceBand(metres) {
   return "over 20 km";
 }
 
+/**
+ * The email a person gets when a report arrives. `names` = { reporter, reported } (usernames, looked up by the caller).
+ * Subject is one ASCII line under 100 characters (SNS requires it). A threat or unwanted tracing is marked URGENT.
+ */
+export function formatReportAlert(report, names = {}) {
+  const urgent = report.category === "threat" || report.category === "unwanted_tracing";
+  const subject = `[ThatWay] ${urgent ? "URGENT report" : "Report"}: ${report.category}`.replace(/[^\x20-\x7e]/g, "").slice(0, 99);
+  const when = new Date(report.createdAt * 1000).toISOString();
+  const body = [
+    `A report was made on ThatWay (${report.category}).`,
+    "",
+    `Report id: ${report.reportId}`,
+    `Made by:   ${names.reporter ?? "(unknown)"} (${report.reporterId})`,
+    `About:     ${names.reported ?? "(unknown)"} (${report.reportedId})`,
+    `When:      ${when}`,
+    `Details:   ${report.details ? report.details : "(none written)"}`,
+    "",
+    "What to do:",
+    "  Read it:        backend/scripts/reports.sh show " + report.reportId,
+    "  Stop someone:   backend/scripts/reports.sh disable <username>   (reversible: reports.sh enable <username>)",
+    "",
+    urgent ? "This category can mean someone is at risk. Look at it today." : "Look at it within a day.",
+    "Reports are kept for 12 months and contain no locations.",
+  ].join("\n");
+  return { subject, body };
+}
+
 const randomId = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`);
 
 /**
@@ -56,10 +84,19 @@ const randomId = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toStr
  * `planUntil(userId)` says when that person's plan (trace3, trace24, trace+, lifetrace) ends, as epoch seconds: the server's
  * own record. null/0/undefined means no plan; Infinity means it never ends (or the check is switched off).
  */
-export function makeHandler({ db, now = () => Date.now(), planUntil = async () => Infinity, newId = randomId, notify = async () => {} }) {
+export function makeHandler({ db, now = () => Date.now(), planUntil = async () => Infinity, newId = randomId, notify = async () => {}, reportAlert = async () => {} }) {
   // notify(userId, "request" | "still", fromUserId): a push to that person's phones. Best effort: a failure never fails the request.
   const tell = async (userId, kind, from) => { try { await notify(userId, kind, from); } catch { /* push is a convenience, never a dependency */ } };
   const sec = () => Math.floor(now() / 1000);
+  // reportAlert(report): tells a person a report arrived (an email to the owner). Best effort and rate limited per reporter, so
+  // neither a failure nor a flood of reports can ever stop a report being stored, or reveal anything to the person reporting.
+  const alertedAt = new Map();
+  const alertReport = async (report) => {
+    const last = alertedAt.get(report.reporterId) ?? 0;
+    if (sec() - last < REPORT_ALERT_MIN_INTERVAL) return;
+    alertedAt.set(report.reporterId, sec());
+    try { await reportAlert(report); } catch { /* an alert is a convenience; the stored report is the record */ }
+  };
 
   const blockedEitherWay = async (a, b) =>
     Boolean(await db.get("Blocks", { blockerId: a, blockedId: b }) || await db.get("Blocks", { blockerId: b, blockedId: a }));
@@ -286,7 +323,9 @@ export function makeHandler({ db, now = () => Date.now(), planUntil = async () =
         if (!REPORT_CATEGORIES.includes(category)) return reply(400, { error: "category not recognised" });
         const details = typeof body.details === "string" ? body.details.slice(0, REPORT_DETAILS_MAX) : "";
         const at = sec();
-        await db.put("Reports", { reportId: newId(), reporterId: me, reportedId: userId, category, details, createdAt: at, expiresAt: at + REPORT_RETENTION_SECONDS });
+        const report = { reportId: newId(), reporterId: me, reportedId: userId, category, details, createdAt: at, expiresAt: at + REPORT_RETENTION_SECONDS };
+        await db.put("Reports", report);
+        await alertReport(report);
         return reply(200, { status: "RECEIVED" });
       }
 
