@@ -114,11 +114,8 @@ public struct ModeTuning {
 // MARK: - Apple Watch
 
 public extension TravelMode {
-    /// The modes the watch offers. Driving is deliberately absent: glancing at a wrist while driving is unsafe.
+    /// The modes the watch offers. Driving is absent, and the watch says on its main screen that it is not safe to use while driving.
     static let watchModes: [TravelMode] = [.walk, .run, .cycle]
-
-    /// False for driving: the watch refuses to guide and closes.
-    var isSafeOnWatch: Bool { self != .drive }
 
     /// The next (`steps` > 0) or previous (`steps` < 0) watch mode, wrapping around. Driving, which the watch never
     /// offers, steps to walk.

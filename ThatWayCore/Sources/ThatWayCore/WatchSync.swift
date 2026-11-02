@@ -3,8 +3,8 @@
 //  ThatWayCore
 //
 //  What the iPhone tells the watch, as plain dictionaries (the WatchConnectivity transport itself lives in each app).
-//  Only the travel mode travels: no places, routes or coordinates. The watch uses it for one safety rule — if the
-//  phone is in Drive mode the watch refuses to guide.
+//  Only the travel mode travels: no places, routes or coordinates. The watch follows walk, run and cycle; a Drive mode is
+//  ignored and the watch keeps its own.
 //
 
 import Foundation

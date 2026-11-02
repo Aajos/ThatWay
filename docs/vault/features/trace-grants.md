@@ -83,7 +83,7 @@ tags: [feature, area/accounts-backend, status/spike, risk/high]
 3. Auto accept plus tracing was a harassment path: closed by "auto accept is for adding only" and the per-friend ask/never control.
 4. Waking a phone in a pocket is limited by iOS: silent pushes are throttled (a few an hour), not delivered if the app was force-quit, and a one-shot fix from the background needs **Always** location. Honest design: last known position with its age, a best-effort "request new location", live only while the traced phone's app is active.
 5. Apple requires a report and block mechanism and a complaints contact for apps with user-to-user content (Guideline 1.2) and real in-app account deletion (5.1.1(v)).
-6. Privacy: App Store privacy label (precise location shared with other users), a matching privacy policy, a minimum age (17+ or an age gate), and a record of consent (when, which wording). Have a lawyer review the terms and policy; "legal proof" is not something to settle by design alone.
+6. Privacy: App Store privacy label (precise location shared with other users), a matching privacy policy, a minimum age (18+, decided 2026-11-02, with a sign-up tick), and a record of consent (when, which wording). Have a lawyer review the terms and policy; "legal proof" is not something to settle by design alone.
 7. "Paid" must be checked on the server, not only in the app.
 8. Time: server clock only; a plan starts when activated and stacks when bought again.
 9. Offline traced phone: the grant simply runs out on the server; they can revoke later and the server refuses at once.
@@ -140,7 +140,7 @@ Starts automatically inside about 40 m of GPS distance when both phones have the
 - **Remote push** is built (2026-10-17): the server sends a request or "still tracing you" through APNs using the team key in Parameter Store (`/thatway/apns/*`), to phones registered with `PUT /devices`. Apple accepted our credentials in the real-AWS test; **delivery to a real phone is not yet seen**. A push says only who is asking. Debug builds use the sandbox server, TestFlight and App Store builds production.
 - **Who reads reports** and how fast: reports are stored for a year in the `Reports` table; nobody is told when one arrives. Decide this before launch; the app promises no reply time.
 - **Terms and a privacy policy** (App Store requires them for the subscription and for user-to-user content) and a lawyer's review of the consent and deletion wording.
-- UWB on real hardware; a two-phone test; the age gate (17+ or similar).
+- UWB on real hardware; a two-phone test; the age gate (18+: built, sign-up tick).
 - Claim rows for purchases (`tx:` and `orig:` in `Entitlements`) survive an account deletion on purpose (to stop a refund-and-recreate loop); they hold an opaque id only.
 
 ## Open items

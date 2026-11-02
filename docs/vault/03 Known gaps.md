@@ -24,8 +24,7 @@ Hand-kept list of things that are known to be missing, unwired or unproven. The 
 - Compass-health tolerance and cadence: see [[compass-health]].
 
 ## Watch (new)
-- Drive guard needs the paired phone: an unpaired watch is not blocked, and a cold launch learns about Drive about 3 s late. See [[watch-drive-guard]], [[phone-watch-link]].
-- The guard closes the app with `exit(0)` (watchOS has no quit): fine for the spike, risky for App Review.
+- Fixed 2026-11-02: the watch's drive guard (and its `exit(0)`) was removed on purpose. The watch only shows a note, "Not safe to use while driving", and does not detect driving. See [[watch-driving-note]].
 - Embedding the watch app means every iPhone device build needs a signed watch profile: Xcode must have the account signed in. See [[phone-watch-link]].
 - Voice search needs one tap after the swipe (watchOS cannot start dictation by itself). See [[watch-voice-search]].
 

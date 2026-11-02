@@ -28,15 +28,13 @@ final class WatchModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     var theme: AppTheme { AppTheme.byId(themeID) }
 
-    /// Walk / Run / Cycle only (swipe up/down). Driving is never offered on the watch.
+    /// Walk / Run / Cycle only (swipe up/down).
     @Published private(set) var mode: TravelMode = {
         let saved = TravelMode(rawValue: UserDefaults.standard.string(forKey: "watchMode") ?? "") ?? .walk
-        return saved.isSafeOnWatch ? saved : .walk
+        return TravelMode.watchModes.contains(saved) ? saved : .walk
     }()
     /// Set briefly after a mode change so the screen can show its name.
     @Published private(set) var modeFlash: TravelMode?
-    /// True once the iPhone says it is in Drive mode: the watch then stops everything and closes.
-    @Published private(set) var blockedByDriving = false
     /// Kept in memory for the screen only. Never stored, never logged.
     @Published private(set) var destinationName: String?
     private var routeToken = 0
@@ -105,7 +103,6 @@ final class WatchModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     func start() {
-        guard !blockedByDriving else { return }
         if manager.authorizationStatus == .notDetermined { manager.requestWhenInUseAuthorization() }
         manager.startUpdatingLocation()
         if CLLocationManager.headingAvailable() { manager.startUpdatingHeading() }
@@ -119,7 +116,7 @@ final class WatchModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     func changeMode(steps: Int) { setMode(mode.onWatch(steps: steps)) }
 
     private func setMode(_ new: TravelMode) {
-        guard new.isSafeOnWatch, new != mode else { return }
+        guard TravelMode.watchModes.contains(new), new != mode else { return }
         let profileChanged = new.profile != mode.profile
         mode = new
         UserDefaults.standard.set(new.rawValue, forKey: "watchMode")
@@ -137,17 +134,11 @@ final class WatchModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         if profileChanged, destination != nil { Task { await fetchRoute() } }
     }
 
-    /// The iPhone's travel mode arrived. Drive means the watch must not guide.
+    /// The iPhone's travel mode arrived. The watch offers walk, run and cycle only, so a mode it does not offer (drive) is
+    /// ignored and the watch keeps its own. It never tries to tell whether someone is driving.
     func applyPhoneMode(_ phone: TravelMode) {
-        if !phone.isSafeOnWatch {
-            guard !blockedByDriving else { return }
-            blockedByDriving = true
-            shutdown()
-            WKInterfaceDevice.current().play(.notification)
-            SpikeLog.shared.write(["type": "blockedByDriving"])
-        } else {
-            setMode(phone)
-        }
+        guard TravelMode.watchModes.contains(phone) else { return }
+        setMode(phone)
     }
 
     /// How close the friend the phone is finding is (nil when no Find session is running). The phone does the ranging;
@@ -157,7 +148,7 @@ final class WatchModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     func applyProximity(_ new: ProximityWatchState?) {
         let old = proximity
         proximity = new
-        guard let new, !blockedByDriving else { return }
+        guard let new else { return }
         if new.band == .here, old?.band != .here {
             WKInterfaceDevice.current().play(.success)
         } else if let old, new.band < old.band {
@@ -165,18 +156,9 @@ final class WatchModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
-    /// Stops location, heading and any route: nothing keeps running once the watch has refused to guide.
-    func shutdown() {
-        manager.stopUpdatingLocation()
-        manager.stopUpdatingHeading()
-        manager.allowsBackgroundLocationUpdates = false
-        clearRoute()
-    }
-
     // MARK: Destination (voice search) and real route
 
     func setDestination(name: String, coordinate: CLLocationCoordinate2D) {
-        guard !blockedByDriving else { return }
         destination = coordinate
         destinationName = name
         hasDestination = true
@@ -194,7 +176,7 @@ final class WatchModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         let token = routeToken
         do {
             let route = try await provider.route(from: fix.coordinate, to: destination, profile: mode.profile)
-            guard token == routeToken, !blockedByDriving else { return }
+            guard token == routeToken else { return }
             var t = RouteTracker(route: route, mode: mode)
             progress = t.update(position: fix.coordinate)
             tracker = t

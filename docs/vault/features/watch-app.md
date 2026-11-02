@@ -21,7 +21,7 @@ files:
 tests:
 manual_checks:
   - Run on a real watch (signing in Xcode needed once)
-depends_on: [theme-system, heading-blender, route-tracker, synthetic-route, watch-haptics, watch-session, core-package, watch-gestures, watch-drive-guard]
+depends_on: [theme-system, heading-blender, route-tracker, synthetic-route, watch-haptics, watch-session, core-package, watch-gestures, watch-driving-note]
 tags: [feature, area/watch, status/spike, risk/medium]
 ---
 

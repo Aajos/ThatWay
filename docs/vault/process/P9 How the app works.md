@@ -53,7 +53,7 @@ flowchart TD
 | 14 | Goes offline or locks the phone | Keeps the old route and shows a diagnosis, recovers by itself; background modes keep location and audio alive | [[flow-offline-midroute]], [[flow-phone-locked]] |
 | 15 | Arrives | Fires within the mode's arrival radius; **DONE** ends the trip and clears the destination (back to idle); **END** mid-trip keeps the destination and returns to Point mode | [[arrival]], [[flow-arrival]] |
 | 16 | Taps a friend's picture | Opens Find: two UWB phones measure the distance; the backend only relays one-off tokens between accepted friends | [[friends]], [[nearby-proximity]] |
-| 17 | Wears a watch | The watch mirrors guidance with its own heading and haptics, refuses to guide if the phone is in Drive mode, and shows the friend's distance during Find | [[watch-app]], [[watch-drive-guard]], [[phone-watch-link]], [[watch-haptics]] |
+| 17 | Wears a watch | The watch mirrors guidance with its own heading and haptics, ignores a Drive mode from the phone, says on its main screen that it is not safe to use while driving, and shows the friend's distance during Find | [[watch-app]], [[watch-driving-note]], [[phone-watch-link]], [[watch-haptics]] |
 
 ## The ideas that make it work
 - **AppModel is the hub.** Almost everything reaches the screen or the speaker through it, which is why [[guidance-mode]] and [[redraw-model]] are high risk. The cost of a published value is a redraw: the dial, the cards and the ETA are separate `Equatable` views fed plain values so only the piece that changed redraws.

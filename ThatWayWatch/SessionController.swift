@@ -46,7 +46,6 @@ final class SessionController: NSObject, ObservableObject, HKWorkoutSessionDeleg
 
     func start(model: WatchModel) async {
         guard !isRunning else { return }
-        guard !model.blockedByDriving else { status = "Not while driving"; return }
         self.model = model
         model.resetCounters()
         lastLoc = 0; lastHead = 0; tickCount = 0

@@ -24,7 +24,7 @@ tests:
   - backend/lambda/usernameCheck/test.mjs
 manual_checks:
   - Sign up and receive the confirmation email (it did not arrive during Phase 0)
-  - Sign in: the app appears at once, with no wait or restart; sign-up needs the "I am 17 or older" tick
+  - Sign in: the app appears at once, with no wait or restart; sign-up needs the "I am 18 or older" tick
   - Quit and reopen after a few days, or with no connection: still signed in
 depends_on: [backend-config, backend-lambda]
 tags: [feature, area/accounts-backend, status/shipped, risk/high]

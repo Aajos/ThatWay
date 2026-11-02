@@ -6,7 +6,7 @@
 //  how to blend GPS course with the magnetometer while moving, and which haptic patterns can be told
 //  apart on a run. No maps, polylines, audio or third-party packages.
 //
-//  Safety rule: if the paired iPhone is in Drive mode the watch refuses to guide and closes (see `DriveNoticeView`).
+//  Safety note: the main screen says it is not safe to use while driving. The watch does not try to detect driving.
 //
 //  Simulator launch flags (testing aids only): `-spike-autoroute`, `-spike-autostart`, `-spike-kind <label>`,
 //  `-spike-phone-mode <mode>`, `-spike-searchtext <words>` (searches and picks the first result), `-spike-open search|tools`,
@@ -41,11 +41,7 @@ struct ThatWayWatchApp: App {
                     .ignoresSafeArea()
                 // The compass lays itself out on the whole display (below the system clock, inside the corners).
                 MainView().ignoresSafeArea()
-                if model.blockedByDriving {
-                    DriveNoticeView(theme: model.theme).transition(.opacity)
-                }
             }
-            .animation(.easeInOut(duration: 0.3), value: model.blockedByDriving)
             .foregroundStyle(model.theme.ink)
             .tint(model.theme.accent)
             .environmentObject(model)
@@ -53,7 +49,6 @@ struct ThatWayWatchApp: App {
             .environmentObject(tester)
             .onAppear { launch() }
             .onChange(of: phase) { _, new in session.notePhase(new) }
-            .onChange(of: model.blockedByDriving) { _, blocked in if blocked { session.stop() } }
         }
     }
 

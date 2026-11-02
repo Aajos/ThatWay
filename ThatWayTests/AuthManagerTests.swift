@@ -369,9 +369,9 @@ struct AuthManagerTests {
         #expect(stub.targets.filter { $0 == "InitiateAuth" }.count == 1)
     }
 
-    @Test func theMinimumAgeIsSeventeenAndTheConfirmationSaysSo() {
-        #expect(AgeRule.minimum == 17)
-        #expect(AgeRule.confirmation == "I am 17 or older.")
+    @Test func theMinimumAgeIsEighteenAndTheConfirmationSaysSo() {
+        #expect(AgeRule.minimum == 18)
+        #expect(AgeRule.confirmation == "I am 18 or older.")
     }
 
     @Test func namespacedExceptionTypesAreRecognised() {

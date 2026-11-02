@@ -63,7 +63,7 @@ Internal dev builds (see `scripts/vault/versions.json`). These are not App Store
 
 ## Build 0.10 (2026-10-05): Apple Watch app, shared packages, feature map, compass fixes
 
-[[core-package]], [[heading-blender]], [[phone-watch-link]], [[route-tracker]], [[synthetic-route]], [[watch-app]], [[watch-drive-guard]], [[watch-gestures]], [[watch-haptics]], [[watch-session]], [[watch-spike-log]], [[watch-travel-modes]], [[watch-voice-search]]
+[[core-package]], [[heading-blender]], [[phone-watch-link]], [[route-tracker]], [[synthetic-route]], [[watch-app]], [[watch-driving-note]], [[watch-gestures]], [[watch-haptics]], [[watch-session]], [[watch-spike-log]], [[watch-travel-modes]], [[watch-voice-search]]
 
 13 feature(s).
 

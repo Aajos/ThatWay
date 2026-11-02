@@ -46,7 +46,7 @@ tags: [feature, area/watch, status/spike, risk/medium]
 - [[core-package]]
 
 ## Used by
-- [[watch-drive-guard]] — Watch drive guard
+- [[watch-driving-note]] — Watch driving note
 
 ## Failure points
 

@@ -36,14 +36,12 @@ tags: [feature, area/watch, status/spike, risk/high]
 - Both `UIBackgroundModes` and `WKBackgroundModes` declared
 - Guard against CoreLocation's assertion
 - 30 s ticks, scene-phase log, optional minute heartbeat
-- Refuses to start while the drive guard is active
 
 ## Depends on
 - [[watch-spike-log]] — Watch spike log and analysis
 
 ## Used by
 - [[watch-app]] — Watch app UI
-- [[watch-drive-guard]] — Watch drive guard
 
 ## Failure points
 

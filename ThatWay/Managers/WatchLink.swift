@@ -2,8 +2,9 @@
 //  WatchLink.swift
 //  ThatWay
 //
-//  Tells the paired Apple Watch which travel mode the iPhone is in. The watch uses it for one safety rule: while
-//  the phone is in Drive mode the watch refuses to guide and closes (looking at a wrist while driving is unsafe).
+//  Tells the paired Apple Watch which travel mode the iPhone is in, so the watch follows walk, run and cycle. A Drive mode is
+//  ignored: the watch keeps its own mode, offers walk, run and cycle only, and says on its main screen that it is not safe to
+//  use while driving. It does not try to detect driving.
 //  Only the mode is sent (see `WatchSync`): never places, routes or coordinates. The latest mode is kept as the
 //  WatchConnectivity application context, so a watch that wakes later still reads the current one.
 //

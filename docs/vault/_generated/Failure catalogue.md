@@ -15,7 +15,6 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | RS-1 | [[routing-provider-seam]] | high | The public OSRM demo hosts are not production-grade (rate limits, no uptime promise) | none: replace before release | none |
 | TR-12 | [[trace-friends]] | high | Remote battery cost of 3 s polling and uploads | none: not measured; see [[P7 Optimisation checks]] | none |
 | TR-18 | [[trace-friends]] | high | The friend's position goes stale (no upload for 90 s) while following, so the destination is an old spot and "arrived" can fire there | none: known; the destination should be marked stale and arrival paused | none |
-| WDG-3 | [[watch-drive-guard]] | high | Self-termination via exit() may be rejected in App Review | none: revisit before shipping | none |
 | RF-11 | [[route-failure]] | medium | A far but in-range route times out and the app retries for ever | none: known; a retry ceiling is the fix | none |
 | RP-B | [[route-persistence]] | medium | Schema change breaks old saved trips | none | none |
 | RT-1 | [[route-tracker]] | medium | Diverges from `RoutingManager`'s copy | none: known duplicate | none |
@@ -39,7 +38,6 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | RM-1 | [[route-models]] | high | A field added without updating the public init, the OSRM parser, persistence and fixtures | build fails (good) or decoding of an old saved trip fails silently | other |
 | RM-A | [[redraw-model]] | high | A new @Published write or a view reading the whole model undoes the savings silently | perf harness only (no unit test) | other |
 | RP-1 | [[route-progress]] | high | Progress jumps to a different stretch of a road that loops near itself | partly: windowing; no loop-route test | other |
-| WDG-1 | [[watch-drive-guard]] | high | The guard depends on a connection to the phone: an unpaired or out-of-range watch is not blocked | by design: documented | other |
 | WS-1 | [[watch-session]] | high | CoreLocation asserts if `location` is missing from `UIBackgroundModes` (found and guarded) | found in the simulator | other |
 | BM-1 | [[bearing-math]] | medium | Flat-earth projection is wrong over very long segments | partly: routes are finely sampled | other |
 | CH-3 | [[compass-health]] | medium | Restarting the heading service cannot fix a system-level fault | by design: GPS-direction is the real fallback | other |
@@ -63,6 +61,7 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | SP-2 | [[settings-profile]] | low | Tilt or units reset on every launch | ThatWayTests/SavedPreferencesTests.swift::choicesSurviveARelaunch | other |
 | SR-1 | [[synthetic-route]] | low | Flat-earth offsets drift for legs over a few kilometres | by design: test aid | other |
 | TL-2 | [[trip-log]] | low | Device-wide network bytes misread as the app's own | documented caveat | other |
+| WDG-1 | [[watch-driving-note]] | low | Someone uses the watch while driving: nothing stops them, only the note | by design: the note is the whole rule (decided 2026-11-02) | other |
 | AM-2 | [[audio-manager]] | high | Session left active after the trip (blocks other apps' audio) | manual: END and arrival call `finishGuidance` | manual |
 | AU-1 | [[auth]] | high | Confirmation email never arrives, so no one can get past the gate | manual: still open on the AWS side (SETUP.md section 13); the app now offers Send a new code, and sign-in with an unconfirmed account goes back to the code step | manual |
 | AU-11 | [[auth]] | high | Refresh tokens last 5 days, so everyone signs in again weekly | manual: app client set to 90 days (`aws.sh ops`, step 7); only sign-ins after 2026-11-02 get the longer life | manual |
@@ -84,7 +83,6 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | RM-B | [[redraw-model]] | high | An equatable view skips a needed redraw because a shown value was left out of its state | manual | manual |
 | TR-10 | [[trace-friends]] | high | The arrow points the wrong way when the compass is wrong | manual: depends on [[compass-health]]; the arrow is dimmed when the heading is not reliable | manual |
 | TR-11 | [[trace-friends]] | high | An incoming request is never seen because the app is suspended (no push) | manual: known gap until the Apple Developer Program is enrolled | manual |
-| WDG-2 | [[watch-drive-guard]] | high | About 3 s between launching the watch app and learning the phone is driving | manual: seen in the simulator | manual |
 | WS-2 | [[watch-session]] | high | HealthKit capability refused on a free team | manual: Xcode signing | manual |
 | WS-3 | [[watch-session]] | high | Workout without a builder may not keep the app alive | manual: first thing to check | manual |
 | AC-1 | [[audio-cue-plan]] | medium | Cue fires late because progress lags a fix (dead reckoning bounds this) | manual | manual |
@@ -127,6 +125,7 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | TC-1 | [[travel-mode-carousel]] | low | Tap swallowed by a child gesture | manual: fixed once | manual |
 | TS-1 | [[theme-system]] | low | Font not registered before first use falls back silently to the system font | manual: visual; `ThatWayFonts.register()` runs in App.init | manual |
 | TS-2 | [[theme-system]] | low | Dark-glow regressions on light themes | manual: Paper | manual |
+| WDG-2 | [[watch-driving-note]] | low | The note crowds the compass on a small watch | manual: check the 40 mm and 42 mm sizes | manual |
 | WH-1 | [[watch-haptics]] | low | Patterns feel identical on a moving wrist | manual: the point of the test | manual |
 | WTM-1 | [[watch-travel-modes]] | low | A mode change mid-route for cycling leaves the old walking route on screen if the refetch fails | manual: change mode with Airplane Mode on | manual |
 | WTM-2 | [[watch-travel-modes]] | low | Swipe ambiguity: a vertical swipe read as horizontal | manual on a real wrist | manual |

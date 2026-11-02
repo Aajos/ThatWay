@@ -82,7 +82,7 @@ enum UsernameRules {
 
 /// Who may use ThatWay. The sign-up screen asks for this to be confirmed, and the terms and privacy policy say the same number.
 enum AgeRule {
-    static let minimum = 17
+    static let minimum = 18
     static let confirmation = "I am \(minimum) or older."
 }
 

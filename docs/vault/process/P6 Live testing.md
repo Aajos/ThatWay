@@ -42,7 +42,7 @@ Each maps to a flow in the vault; a failure is a new failure point. Do these on 
 | Phone call or notification | Receive one | Audio ducks and resumes | [[audio-manager]] |
 | Headphones | Wired or Bluetooth | Cues route to them; the stereo panning cue makes sense | [[audio-cue-plan]] |
 | Finish | Arrive | One arrival card; DONE returns to idle (not to the last destination) | [[flow-arrival]] |
-| Watch | Drive mode on the phone | The watch refuses and closes | [[flow-watch-drive-guard]] |
+| Watch | Drive mode on the phone | The watch ignores it and keeps its own mode; its main screen says not safe to use while driving | [[flow-watch-driving-note]] |
 
 ## 3. Collecting the evidence
 The app writes numbers only (never coordinates, place names or routes; this is enforced by a test).

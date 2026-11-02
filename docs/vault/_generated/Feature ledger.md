@@ -63,7 +63,7 @@ Every feature: when it was first committed, in which internal dev build, what re
 | [[travel-modes]] | navigation-core | shipped | 2026-10-05 | 0.7 | v1.0 | free | 5 | not measured | not measured | not measured |
 | [[trip-log]] | power-performance | shipped | 2026-10-05 | 0.9 | v1.0 | internal | 3 | not measured | not measured | not measured |
 | [[watch-app]] | watch | spike | 2026-10-05 | 0.10 | later | free | 3 | not measured | not measured | not measured |
-| [[watch-drive-guard]] | watch | spike | 2026-10-05 | 0.10 | later | free | 4 | not measured | not measured | not measured |
+| [[watch-driving-note]] | watch | spike | 2026-10-05 | 0.10 | v1.0 | free | 3 | n/a | n/a | n/a |
 | [[watch-gestures]] | watch | spike | 2026-10-05 | 0.10 | later | free | 2 | not measured | not measured | not measured |
 | [[watch-haptics]] | watch | spike | 2026-10-05 | 0.10 | later | free | 3 | not measured | not measured | not measured |
 | [[watch-session]] | watch | spike | 2026-10-05 | 0.10 | later | free | 3 | not measured | not measured | not measured |

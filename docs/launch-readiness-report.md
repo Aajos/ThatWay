@@ -26,7 +26,7 @@ of it is waiting on a decision or a login from you.
 | **CI gate.** Every backend suite and the friends-copies check now run on every push and pull request. | Done |
 | Privacy policy, terms, App Store product sheet (earlier today) | Drafted; need your input below |
 | **Sign-in fixes** (second pass, from your report that the app forgets you and takes a minute to respond). Four causes, all fixed: the screen did not redraw when sign-in succeeded (it waited for something unrelated, which is the "minute or a restart"; reproduced and fixed, see below); a throttled or failing server signed people out; two refreshes at once could race and sign you out; and sign-ins only lasted 5 days on the server (now 90). | Done. Needs a sign-in on your phone: **anyone signed in before today still has the old 5-day token** |
-| **Minimum age 17.** Sign-up needs a tick for "I am 17 or older"; the terms and privacy policy say 17; `AgeRule` keeps the app and the pages agreeing (and `release_check.sh` checks they match). | Done |
+| **Minimum age 18** (first set to 17, then changed to 18). Sign-up needs a tick for "I am 18 or older"; the terms and privacy policy say 18; `AgeRule` keeps the app and the pages agreeing (and `release_check.sh` checks they match). | Done |
 | **Public username route deployed** and tested (fresh, taken, reserved and invalid names). It answers only available or not, rate limited to 5 a second. Sign-up no longer says "Couldn't check right now". | Done |
 | **API cap**: 10 requests a second, bursts of 20, for the whole API. Sized for ten daily users (about 2 a second at the busiest, so five times headroom). It bounds the worst case an abusive account or a runaway loop can cost to roughly US$30 a month; normal use stays inside the free tier. Raise it in `aws.sh ops` when real users arrive. | Done |
 | **Pre-submission gate**, `scripts/release_check.sh`: lists everything that is fine for testing and wrong for the public (test logs and file sharing, demo routing, test unlock, placeholders, sandbox purchases, email sender, unconfirmed alerts) and exits non-zero until fixed. Test logs stay for now and the gate will keep failing on them until they are removed. | Done. Run it before every archive |
@@ -40,7 +40,7 @@ of it is waiting on a decision or a login from you.
 |---|---|---|---|
 | 1 | **Sign-up emails use Cognito's default sender** (50 a day, often spam-filtered) and **SES is in sandbox** | Past 50 sign-ups a day, people never receive their verification code and cannot create an account | A domain you own (or a verified sender address), then an SES production-access request. I can prepare it once there is a website URL to give AWS |
 | 2 | **Routing uses the public OSRM demo servers** (`Config.swift`), which allow only "reasonable, non-commercial use" with no uptime promise | A paid app can be cut off at any time, and this is the core feature. The privacy policy also names this provider | Your choice of provider: self-hosted (plan estimates about A$45/month) or a paid one. The code change is one table in ThatWayCore |
-| 3 | **Privacy and terms pages are not hosted**, and the placeholders are not filled | The App Store requires a live privacy policy URL, and the consent screens should link to them | Your name or business name, contact email, governing law, and a place to host (needs the domain from #1). The minimum age is settled at 17 |
+| 3 | **Privacy and terms pages are not hosted**, and the placeholders are not filled | The App Store requires a live privacy policy URL, and the consent screens should link to them | Your name or business name, contact email, governing law, and a place to host (needs the domain from #1). The minimum age is settled at 18 |
 | 4 | **App Store Connect is not set up**: no products, no Paid Apps agreement confirmed, no app record or screenshots known | Nothing can be sold or uploaded for TestFlight | You, following `docs/app-store/products.md` (about ten minutes for the products) |
 | 5 | **Export compliance is unanswered** (`ITSAppUsesNonExemptEncryption` is not set) | Apple asks on every upload until it is | Your attestation. The app uses only standard encryption (HTTPS), which normally qualifies for the exemption, but it is a legal declaration, so it is yours to make. Then I add one line |
 | 6 | **UWB and the camera arrow have never run on real radios** | This is the headline paid feature | The field test on the 16 and 16 Pro with the debug readout |
@@ -60,7 +60,7 @@ of it is waiting on a decision or a login from you.
 
 | Decision | Outcome |
 |---|---|
-| Minimum age | **17.** In the app (sign-up tick), terms and privacy policy. Apple's ratings have no 17+ (they are 4+, 9+, 13+, 16+, 18+): see the age note in `docs/app-store/products.md` |
+| Minimum age | **18.** In the app (sign-up tick), terms and privacy policy. It matches Apple's 18+ rating: see the age note in `docs/app-store/products.md` |
 | Public username route | **Deployed** |
 | Watch app in v1.0 | **Ships.** Still open risk: it quits itself with `exit(0)` when it detects driving, which App Review can reject. Worth replacing with a blocking notice before submission. Every device build also needs a signed watch profile |
 | API cap | **10 requests a second, bursts of 20** (chosen for a free tier and ten daily users; see above) |

@@ -35,6 +35,8 @@ if grep -q 'static let serverIsAuthoritative = false' ThatWay/Managers/Entitleme
   fail "Entitlements.serverIsAuthoritative is false (the app still trusts a test unlock): flip it together with PLAN_CHECK=on"
 else ok "the server decides plans"; fi
 if grep -q "ITSAppUsesNonExemptEncryption" ThatWay/Info.plist ThatWay.xcodeproj/project.pbxproj; then ok "export compliance is answered"; else fail "ITSAppUsesNonExemptEncryption is not set (export compliance): your attestation, then add one line"; fi
+if grep -q "<key>UIFileSharingEnabled</key>" ThatWayWatch/Info.plist; then fail "the watch Info.plist has UIFileSharingEnabled (spike logging): remove it before launch"; else ok "no file sharing on the watch"; fi
+if grep -qi "spike" ThatWay.xcodeproj/project.pbxproj; then fail "the project still has spike wording in user-facing strings (the watch name or its permission text): $(grep -ci spike ThatWay.xcodeproj/project.pbxproj) line(s) in project.pbxproj"; else ok "no spike wording in the watch name or permission text"; fi
 [ -f ThatWay/PrivacyInfo.xcprivacy ] && [ -f ThatWayWatch/PrivacyInfo.xcprivacy ] && ok "privacy manifests present" || fail "a privacy manifest is missing"
 if grep -q 'apiBaseURL = ".*/Dev"' ThatWay/Config.swift; then warn "the app talks to the API stage named Dev (decide whether to add a Prod stage before launch)"; else ok "the API stage is not Dev"; fi
 target=$(grep -m1 "IPHONEOS_DEPLOYMENT_TARGET" ThatWay.xcodeproj/project.pbxproj | sed 's/[^0-9.]//g')

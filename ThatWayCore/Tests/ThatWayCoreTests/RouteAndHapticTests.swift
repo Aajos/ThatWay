@@ -91,8 +91,7 @@ struct HapticPatternTests {
 struct WatchModeTests {
     @Test func watchOffersWalkRunCycleOnly() {
         #expect(TravelMode.watchModes == [.walk, .run, .cycle])
-        #expect(TravelMode.drive.isSafeOnWatch == false)
-        #expect(TravelMode.walk.isSafeOnWatch && TravelMode.run.isSafeOnWatch && TravelMode.cycle.isSafeOnWatch)
+        #expect(!TravelMode.watchModes.contains(.drive))
     }
 
     @Test func swipingStepsThroughTheModesAndWraps() {

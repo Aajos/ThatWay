@@ -43,7 +43,7 @@ Answer from `docs/legal/privacy.html`. Data used to track you across other compa
 No advertising data, no analytics, no tracking.
 
 ## Age
-ThatWay's own minimum age is **17**: the terms and privacy policy say so, and sign-up needs a tick for "I am 17 or older" (`AgeRule` in the app). Apple's rating is set by its questionnaire (the categories are 4+, 9+, 13+, 16+ and 18+, so there is no 17+). Answer the questionnaire honestly (the app has user-to-user location sharing and reporting, and no mature content), see what rating it gives, and check it is not lower than 17 in effect: if it comes out below 17, choose the 18+ override so the store listing does not invite younger users than the terms allow.
+ThatWay's minimum age is **18**: the terms and privacy policy say so, and sign-up needs a tick for "I am 18 or older" (`AgeRule` in the app). Apple's highest rating is 18+, so choose **18+** in the age rating questionnaire (answer it honestly: user-to-user location sharing and reporting, no mature content). If the questionnaire computes a lower rating, use App Store Connect's option to set a higher one, so the store listing never invites younger users than the terms allow.
 
 ## URLs to fill in
 - **Privacy Policy URL** (required): where `docs/legal/privacy.html` is hosted.

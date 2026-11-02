@@ -9,9 +9,9 @@ How much of the cost of each feature has actually been measured. The goal before
 
 | Metric | measured | predicted | not measured | n/a |
 |---|---|---|---|---|
-| CPU | 5 | 5 | 52 | 6 |
-| Memory | 0 | 4 | 58 | 6 |
-| Battery | 0 | 8 | 54 | 6 |
+| CPU | 5 | 5 | 51 | 7 |
+| Memory | 0 | 4 | 57 | 7 |
+| Battery | 0 | 8 | 53 | 7 |
 
 ## High-risk shipped features with no measured battery figure
 - [[auth]]: not measured

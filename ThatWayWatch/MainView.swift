@@ -6,7 +6,7 @@
 //  face with its glass rim and tick ring, and the real needle skins. Point/Guide toggle on top, the compass,
 //  guidance arrow + distance to the next waypoint bottom left, speed bottom right.
 //  Gestures: swipe left = next theme · swipe right = voice destination search · swipe up/down = next/previous travel
-//  mode (walk, run, cycle: never drive) · long-press the compass = next needle skin · ⋯ = test tools.
+//  mode (walk, run, cycle) · long-press the compass = next needle skin · ⋯ = test tools.
 //
 
 import SwiftUI
@@ -59,6 +59,11 @@ struct MainView: View {
                             .position(x: geo.size.width / 2, y: geo.size.height / 2)
                             .onLongPressGesture { model.cycleSkin() }
                     }
+
+                    // The only driving rule: a plain note. The watch does not detect driving, block anything or close itself.
+                    Text("Not safe to use while driving")
+                        .font(.nunito(9, .extraBold)).foregroundStyle(theme.ink.opacity(0.6))
+                        .lineLimit(1).minimumScaleFactor(0.7)
                 }
                 .padding(.top, top).padding(.horizontal, side).padding(.bottom, bottom)
 

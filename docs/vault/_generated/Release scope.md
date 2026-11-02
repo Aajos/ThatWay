@@ -9,10 +9,10 @@ What each planned release contains, from each feature's `release`, `tier` and `v
 
 | Release | Features | Total value | Not yet shipped (spike, dormant, setting-only, planned) |
 |---|---|---|---|
-| v1.0 | 46 | 174 | [[friends]] [[synthetic-route]] |
+| v1.0 | 47 | 177 | [[friends]] [[synthetic-route]] [[watch-driving-note]] |
 | v1.1 | 6 | 29 | [[nearby-proximity]] [[owner-authentication]] [[plans-and-billing]] [[safety-and-account]] [[trace-friends]] [[trace-grants]] |
 | v1.2 | 2 | 5 | - |
-| later | 14 | 34 | [[avatars-social-decor]] [[haptics-ios]] [[walkie-talkie]] [[heading-blender]] [[phone-watch-link]] [[route-tracker]] [[watch-app]] [[watch-drive-guard]] [[watch-gestures]] [[watch-haptics]] [[watch-session]] [[watch-spike-log]] [[watch-travel-modes]] [[watch-voice-search]] |
+| later | 13 | 30 | [[avatars-social-decor]] [[haptics-ios]] [[walkie-talkie]] [[heading-blender]] [[phone-watch-link]] [[route-tracker]] [[watch-app]] [[watch-gestures]] [[watch-haptics]] [[watch-session]] [[watch-spike-log]] [[watch-travel-modes]] [[watch-voice-search]] |
 | internal | 0 | 0 | - |
 
 ## v1.0
@@ -63,6 +63,7 @@ What each planned release contains, from each feature's `release`, `tier` and `v
 | [[route-persistence]] | 3 | free | shipped | medium |
 | [[tab-bar]] | 3 | free | shipped | low |
 | [[trip-log]] | 3 | internal | shipped | low |
+| [[watch-driving-note]] | 3 | free | spike | low |
 | [[settings-profile]] | 2 | free | shipped | low |
 | [[synthetic-route]] | 2 | internal | spike | low |
 
@@ -89,7 +90,6 @@ What each planned release contains, from each feature's `release`, `tier` and `v
 | Feature | Value | Tier | Status | Risk |
 |---|---|---|---|---|
 | [[walkie-talkie]] | 4 | paid | planned | high |
-| [[watch-drive-guard]] | 4 | free | spike | high |
 | [[watch-app]] | 3 | free | spike | medium |
 | [[watch-haptics]] | 3 | free | spike | low |
 | [[watch-session]] | 3 | free | spike | high |

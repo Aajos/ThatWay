@@ -37,7 +37,7 @@ tags: [feature, area/navigation-core, status/shipped, risk/medium]
 - ModeTuning table (11 values per mode)
 - Activity type for CoreLocation
 - Colour family (on foot green, drive blue)
-- Watch subset: `watchModes` (walk, run, cycle) and `isSafeOnWatch` (false for drive)
+- Watch subset: `watchModes` (walk, run, cycle)
 
 ## Depends on
 - [[persistence-defaults]] — Persisted preferences

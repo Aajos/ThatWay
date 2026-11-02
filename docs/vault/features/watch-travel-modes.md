@@ -32,7 +32,7 @@ tags: [feature, area/watch, status/spike, risk/low]
 **Area:** [[area-watch]] · **Status:** spike · **Risk:** low
 
 ## What it covers
-- `TravelMode.watchModes`, `isSafeOnWatch`, `onWatch(steps:)` in the shared package
+- `TravelMode.watchModes` and `onWatch(steps:)` in the shared package
 - Persisted as `watchMode`; adopts the phone’s mode when it changes (never Drive)
 - Walk and run share the walking route; cycle refetches
 - Corridor and arrival radius follow the mode
@@ -44,7 +44,7 @@ tags: [feature, area/watch, status/spike, risk/low]
 - [[persistence-defaults]]
 
 ## Used by
-- [[watch-drive-guard]] — Watch drive guard
+- [[watch-driving-note]] — Watch driving note
 - [[watch-gestures]] — Watch gestures and controls
 - [[watch-voice-search]] — Watch voice destination search
 

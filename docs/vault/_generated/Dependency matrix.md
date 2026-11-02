@@ -64,16 +64,16 @@ tags: [generated]
 | [[core-package]] | shared-modules | - | [[bearing-math]] [[continuous-angle]] [[nearby-proximity]] [[phone-watch-link]] [[route-models]] [[routing-provider-seam]] [[theme-system]] [[trace-friends]] [[watch-app]] | 9 | 0 |
 | [[route-models]] | shared-modules | [[core-package]] | [[route-persistence]] [[route-progress]] [[route-tracker]] [[routing-provider-seam]] [[synthetic-route]] [[travel-modes]] | 6 | 1 |
 | [[heading-blender]] | watch | [[continuous-angle]] | [[watch-app]] | 1 | 1 |
-| [[phone-watch-link]] | watch | [[travel-modes]] [[core-package]] | [[watch-drive-guard]] | 1 | 2 |
+| [[phone-watch-link]] | watch | [[travel-modes]] [[core-package]] | [[watch-driving-note]] | 1 | 2 |
 | [[route-tracker]] | watch | [[route-models]] [[bearing-math]] [[travel-modes]] | [[watch-app]] [[watch-travel-modes]] [[watch-voice-search]] | 3 | 3 |
 | [[synthetic-route]] | watch | [[route-models]] | [[watch-app]] | 1 | 1 |
-| [[watch-app]] | watch | [[theme-system]] [[heading-blender]] [[route-tracker]] [[synthetic-route]] [[watch-haptics]] [[watch-session]] [[core-package]] [[watch-gestures]] [[watch-drive-guard]] | - | 0 | 9 |
-| [[watch-drive-guard]] | watch | [[phone-watch-link]] [[watch-session]] [[watch-travel-modes]] | [[watch-app]] | 1 | 3 |
+| [[watch-app]] | watch | [[theme-system]] [[heading-blender]] [[route-tracker]] [[synthetic-route]] [[watch-haptics]] [[watch-session]] [[core-package]] [[watch-gestures]] [[watch-driving-note]] | - | 0 | 9 |
+| [[watch-driving-note]] | watch | [[phone-watch-link]] [[watch-travel-modes]] | [[watch-app]] | 1 | 2 |
 | [[watch-gestures]] | watch | [[watch-travel-modes]] [[watch-voice-search]] [[theme-system]] | [[watch-app]] | 1 | 3 |
 | [[watch-haptics]] | watch | [[watch-spike-log]] | [[watch-app]] | 1 | 1 |
-| [[watch-session]] | watch | [[watch-spike-log]] | [[watch-app]] [[watch-drive-guard]] | 2 | 1 |
+| [[watch-session]] | watch | [[watch-spike-log]] | [[watch-app]] | 1 | 1 |
 | [[watch-spike-log]] | watch | - | [[watch-haptics]] [[watch-session]] | 2 | 0 |
-| [[watch-travel-modes]] | watch | [[travel-modes]] [[route-tracker]] [[persistence-defaults]] | [[watch-drive-guard]] [[watch-gestures]] [[watch-voice-search]] | 3 | 3 |
+| [[watch-travel-modes]] | watch | [[travel-modes]] [[route-tracker]] [[persistence-defaults]] | [[watch-driving-note]] [[watch-gestures]] [[watch-voice-search]] | 3 | 3 |
 | [[watch-voice-search]] | watch | [[routing-provider-seam]] [[route-tracker]] [[watch-travel-modes]] [[bearing-math]] | [[watch-gestures]] | 1 | 4 |
 
 ## Hotspots (most depended on)

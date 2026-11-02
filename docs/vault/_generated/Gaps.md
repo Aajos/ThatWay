@@ -48,7 +48,6 @@ tags: [generated]
 - RP-B [[route-persistence]]: Schema change breaks old saved trips
 - HI-1 [[haptics-ios]]: A setting that does nothing erodes trust
 - BC-2 [[backend-config]]: Demo OSRM hosts used in production
-- WDG-3 [[watch-drive-guard]]: Self-termination via exit() may be rejected in App Review
 - RP-3 [[route-progress]]: Two copies of the progress maths (`RoutingManager`, `RouteTracker`) drift apart
 - RS-1 [[routing-provider-seam]]: The public OSRM demo hosts are not production-grade (rate limits, no uptime promise)
 - AV-1 [[avatars-social-decor]]: Avatar photo options do nothing
@@ -74,7 +73,7 @@ tags: [generated]
 - [[route-tracker]]: spike
 - [[synthetic-route]]: spike
 - [[watch-app]]: spike
-- [[watch-drive-guard]]: spike
+- [[watch-driving-note]]: spike
 - [[watch-gestures]]: spike
 - [[watch-haptics]]: spike
 - [[watch-session]]: spike
