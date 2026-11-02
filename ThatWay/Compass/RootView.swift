@@ -9,6 +9,15 @@
 import SwiftUI
 import ThatWayUI
 
+/// Shows whatever the sign-in state says, the moment it changes.
+struct AuthGate<Content: View>: View {
+    @ObservedObject var auth: AuthManager
+    @ObservedObject var safety: SafetyManager
+    @ViewBuilder var content: (AuthState, Bool) -> Content
+
+    var body: some View { content(auth.authState, safety.needsReactivation) }
+}
+
 struct RootView: View {
     @StateObject private var app = AppModel()
     @Environment(\.scenePhase) private var scenePhase
@@ -24,19 +33,23 @@ struct RootView: View {
                 // the sign-in gate entirely rather than block the rest of the app on it.
                 signedInContent
             } else {
-                switch app.authManager.authState {
-                case .restoring:
-                    EmptyView()
-                case .signedOut, .needsConfirmation, .needsAppleUsername, .resettingPassword:
-                    AuthScreen()
-                case .signedIn:
-                    if app.safetyManager.needsReactivation {
-                        // A deactivated account that signs in must choose before anything else.
-                        ReactivationScreen(safety: app.safetyManager, theme: app.currentTheme,
-                                           deleteInstead: { closingAccount = true }, signOut: { app.signOutEverywhere() })
-                            .sheet(isPresented: $closingAccount) { closeAccountSheet }
-                    } else {
-                        signedInContent
+                // The gate watches the sign-in state itself. RootView only observes the app model, so a switch written directly here
+                // was never told when someone signed in or out, and the screen waited for something unrelated to redraw it.
+                AuthGate(auth: app.authManager, safety: app.safetyManager) { state, needsReactivation in
+                    switch state {
+                    case .restoring:
+                        ProgressView().tint(app.currentTheme.accent)
+                    case .signedOut, .needsConfirmation, .needsAppleUsername, .resettingPassword:
+                        AuthScreen()
+                    case .signedIn:
+                        if needsReactivation {
+                            // A deactivated account that signs in must choose before anything else.
+                            ReactivationScreen(safety: app.safetyManager, theme: app.currentTheme,
+                                               deleteInstead: { closingAccount = true }, signOut: { app.signOutEverywhere() })
+                                .sheet(isPresented: $closingAccount) { closeAccountSheet }
+                        } else {
+                            signedInContent
+                        }
                     }
                 }
             }

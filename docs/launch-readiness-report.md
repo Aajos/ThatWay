@@ -1,6 +1,6 @@
 # ThatWay launch readiness report
 
-Written 2026-11-02 from the code, the AWS account and the plan (`docs/thatway_execution_plan.html`), each item checked directly rather
+Written 2026-11-02 (updated the same day after your decisions) from the code, the AWS account and the plan (`docs/thatway_execution_plan.html`), each item checked directly rather
 than taken from older notes. "Done" means I saw it work; "built" means it exists and is tested but has not run in real conditions.
 The plan page keeps your ticks in your browser only, so I could not read them: where a milestone's status depends on a tick, it says so.
 
@@ -25,6 +25,11 @@ of it is waiting on a decision or a login from you.
 | **Search errors.** A failed search said "No matches"; it now says it could not search. | Done |
 | **CI gate.** Every backend suite and the friends-copies check now run on every push and pull request. | Done |
 | Privacy policy, terms, App Store product sheet (earlier today) | Drafted; need your input below |
+| **Sign-in fixes** (second pass, from your report that the app forgets you and takes a minute to respond). Four causes, all fixed: the screen did not redraw when sign-in succeeded (it waited for something unrelated, which is the "minute or a restart"; reproduced and fixed, see below); a throttled or failing server signed people out; two refreshes at once could race and sign you out; and sign-ins only lasted 5 days on the server (now 90). | Done. Needs a sign-in on your phone: **anyone signed in before today still has the old 5-day token** |
+| **Minimum age 17.** Sign-up needs a tick for "I am 17 or older"; the terms and privacy policy say 17; `AgeRule` keeps the app and the pages agreeing (and `release_check.sh` checks they match). | Done |
+| **Public username route deployed** and tested (fresh, taken, reserved and invalid names). It answers only available or not, rate limited to 5 a second. Sign-up no longer says "Couldn't check right now". | Done |
+| **API cap**: 10 requests a second, bursts of 20, for the whole API. Sized for ten daily users (about 2 a second at the busiest, so five times headroom). It bounds the worst case an abusive account or a runaway loop can cost to roughly US$30 a month; normal use stays inside the free tier. Raise it in `aws.sh ops` when real users arrive. | Done |
+| **Pre-submission gate**, `scripts/release_check.sh`: lists everything that is fine for testing and wrong for the public (test logs and file sharing, demo routing, test unlock, placeholders, sandbox purchases, email sender, unconfirmed alerts) and exits non-zero until fixed. Test logs stay for now and the gate will keep failing on them until they are removed. | Done. Run it before every archive |
 | Test account `zz_itest_push` and the orphan duplicate `aadit` row | Deleted |
 | Location-settings check before saying yes to a trace; "Sharing paused" banner | Done (needs a phone test) |
 | Release build compiles; 291 app tests, all backend suites pass | Done |
@@ -35,25 +40,32 @@ of it is waiting on a decision or a login from you.
 |---|---|---|---|
 | 1 | **Sign-up emails use Cognito's default sender** (50 a day, often spam-filtered) and **SES is in sandbox** | Past 50 sign-ups a day, people never receive their verification code and cannot create an account | A domain you own (or a verified sender address), then an SES production-access request. I can prepare it once there is a website URL to give AWS |
 | 2 | **Routing uses the public OSRM demo servers** (`Config.swift`), which allow only "reasonable, non-commercial use" with no uptime promise | A paid app can be cut off at any time, and this is the core feature. The privacy policy also names this provider | Your choice of provider: self-hosted (plan estimates about A$45/month) or a paid one. The code change is one table in ThatWayCore |
-| 3 | **Privacy and terms pages are not hosted**, and the placeholders are not filled | The App Store requires a live privacy policy URL, and the consent screens should link to them | Your name or business name, contact email, minimum age, governing law, and a place to host (needs the domain from #1) |
+| 3 | **Privacy and terms pages are not hosted**, and the placeholders are not filled | The App Store requires a live privacy policy URL, and the consent screens should link to them | Your name or business name, contact email, governing law, and a place to host (needs the domain from #1). The minimum age is settled at 17 |
 | 4 | **App Store Connect is not set up**: no products, no Paid Apps agreement confirmed, no app record or screenshots known | Nothing can be sold or uploaded for TestFlight | You, following `docs/app-store/products.md` (about ten minutes for the products) |
 | 5 | **Export compliance is unanswered** (`ITSAppUsesNonExemptEncryption` is not set) | Apple asks on every upload until it is | Your attestation. The app uses only standard encryption (HTTPS), which normally qualifies for the exemption, but it is a legal declaration, so it is yours to make. Then I add one line |
 | 6 | **UWB and the camera arrow have never run on real radios** | This is the headline paid feature | The field test on the 16 and 16 Pro with the debug readout |
 | 7 | **Nobody has confirmed a real purchase end to end** (sandbox buy, server verification, plan ends, then `PLAN_CHECK=on`) | Until then the paywall cannot be turned on for real | Products from #4, then a sandbox tester |
-| 8 | **Deployment target is iOS 26.5** | Only phones already on 26.5 or later can install the app, which may cut off a large share of the audience | A decision. Lowering it to 18 or 17 needs a check that nothing in the app requires 26 |
+| 8 | **Deployment target is iOS 26.5** (unchanged for now) | Only phones already on 26.5 or later can install the app, which may cut off a large share of the audience | Revisit before submission. Lowering it to 18 or 17 needs a check that nothing in the app requires 26 |
 
 ## Needs your decision (I did not make these)
 
 | Decision | My lean, if you want one |
 |---|---|
-| Minimum age (privacy and terms say [16]); also sets the App Store age rating | 16 or higher, given the safety nature |
 | Who reviews reports, and how fast (Apple expects timely action on user-to-user abuse) | You, same day for URGENT, via the email and `reports.sh` |
 | What happens to **lifetrace** if ThatWay is ever shut down | A written notice period; the terms have a bracket for it |
 | **Public username-availability route** (`aws.sh usernames --apply`). The app already calls it, and it does not exist, so every sign-up shows "Couldn't check right now". It creates a public, unauthenticated, rate-limited route that answers only available or not | Worth doing; dry-run reviewed. I will deploy it on your word |
-| Ship the **watch app** in v1.0? It is built and embedded, but the plan lists it as later, it quits itself with `exit(0)` (an App Review risk), and every device build needs a signed watch profile | Leave it out of v1.0 |
-| Overall API rate cap (nothing limits request volume now, except the budget alert at US$20 a month) | A modest cap, for example 50 requests a second with bursts of 100. Easy to add |
-| Keep the **"Test logs" section and Files-app sharing** (`UIFileSharingEnabled`) in released builds? Today they are on in every build | Fine for TestFlight testers (it is how we get field logs); remove for the public release |
-| Production stage: the app talks to the stage named `Dev` | Make a `Prod` stage before launch so test changes never touch real users |
+| Production stage: the app talks to the stage named `Dev` (you said deployment stays as it is for now; `release_check.sh` keeps it as a warning) | Make a `Prod` stage before launch so test changes never touch real users |
+
+### Decided on 2 Nov
+
+| Decision | Outcome |
+|---|---|
+| Minimum age | **17.** In the app (sign-up tick), terms and privacy policy. Apple's ratings have no 17+ (they are 4+, 9+, 13+, 16+, 18+): see the age note in `docs/app-store/products.md` |
+| Public username route | **Deployed** |
+| Watch app in v1.0 | **Ships.** Still open risk: it quits itself with `exit(0)` when it detects driving, which App Review can reject. Worth replacing with a blocking notice before submission. Every device build also needs a signed watch profile |
+| API cap | **10 requests a second, bursts of 20** (chosen for a free tier and ten daily users; see above) |
+| Test logs | **Kept** for TestFlight. `scripts/release_check.sh` fails until they are removed (Files-app sharing, the TEST LOGS section) |
+| Routing provider, deployment target | **Unchanged for now.** Both stay on the gate script's list |
 
 ## Should be done before launch, not blocking
 
@@ -95,8 +107,9 @@ Plan dates are from `thatway_execution_plan.html`.
 ## What I need from you, in order
 
 1. Click the confirmation email from AWS Notifications (sent to aadit2416@gmail.com) so report and error alerts are delivered.
-2. Decide the domain and hosting, then fill in the brackets in `docs/legal/*.html` (name, email, age, law, lifetrace, report reviewer).
+2. Decide the domain and hosting, then fill in the brackets in `docs/legal/*.html` (name, email, law, lifetrace, report reviewer).
 3. Create the App Store Connect app record, agreement and products from `docs/app-store/products.md`.
 4. Choose a routing provider.
-5. Say go on the username route, and decide the deployment target, the watch, and the API cap.
+5. Sign in once on each phone after the new build is installed (older sign-ins still expire after 5 days).
 6. Connect and unlock the 16 and 16 Pro for the field test.
+7. Before every archive, run `scripts/release_check.sh` and clear what it fails on.

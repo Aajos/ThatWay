@@ -23,6 +23,7 @@ struct AuthScreen: View {
     @State private var appleUsername = ""
     @State private var newPassword = ""
     @State private var usernameStatus: UsernameStatus = .unchecked
+    @State private var ageConfirmed = false
 
     var body: some View {
         let theme = app.currentTheme
@@ -123,7 +124,24 @@ struct AuthScreen: View {
                 field("Email", text: $email, theme: theme, keyboard: .emailAddress, autocapitalization: .never, content: .emailAddress)
             }
             field("Password", text: $password, theme: theme, isSecure: true, content: mode == .signUp ? .newPassword : .password)
+            if mode == .signUp { ageRow(theme: theme) }
         }
+    }
+
+    /// Signing up needs a tick for the minimum age: the same number the terms and privacy policy give.
+    @ViewBuilder
+    private func ageRow(theme: AppTheme) -> some View {
+        Button { ageConfirmed.toggle() } label: {
+            HStack(spacing: 10) {
+                Image(systemName: ageConfirmed ? "checkmark.square.fill" : "square").font(.system(size: 22))
+                    .foregroundStyle(ageConfirmed ? theme.accent : theme.ink.opacity(0.5))
+                Text(AgeRule.confirmation).font(.nunito(13, .extraBold)).foregroundStyle(theme.ink)
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(ageConfirmed ? .isSelected : [])
     }
 
     /// Under the username while signing up: the rules, then whether the name is free (checked once typing pauses).
@@ -212,7 +230,7 @@ struct AuthScreen: View {
         guard !trimmedUsername.isEmpty, !password.isEmpty else { return false }
         if mode == .signUp {
             let nameOK = UsernameRules.isValid(trimmedUsername) && usernameStatus != .taken && usernameStatus != .reserved
-            return nameOK && email.contains("@") && password.count >= 8
+            return nameOK && email.contains("@") && password.count >= 8 && ageConfirmed
         }
         return true
     }

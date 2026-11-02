@@ -65,9 +65,11 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | TL-2 | [[trip-log]] | low | Device-wide network bytes misread as the app's own | documented caveat | other |
 | AM-2 | [[audio-manager]] | high | Session left active after the trip (blocks other apps' audio) | manual: END and arrival call `finishGuidance` | manual |
 | AU-1 | [[auth]] | high | Confirmation email never arrives, so no one can get past the gate | manual: still open on the AWS side (SETUP.md section 13); the app now offers Send a new code, and sign-in with an unconfirmed account goes back to the code step | manual |
+| AU-11 | [[auth]] | high | Refresh tokens last 5 days, so everyone signs in again weekly | manual: app client set to 90 days (`aws.sh ops`, step 7); only sign-ins after 2026-11-02 get the longer life | manual |
 | AU-2 | [[auth]] | high | Gate on while the API URL is a placeholder | manual: see backend-config | manual |
 | AU-3 | [[auth]] | high | Launching with no network signed the user out or showed a blank screen (was a real bug) | manual: gate-on build in airplane mode; fixed | manual |
 | AU-7 | [[auth]] | high | The public availability route is abused to harvest names | manual: route throttled to 5 a second; it returns no id or email (test: usernameCheck) | manual |
+| AU-8 | [[auth]] | high | The screen does not follow a sign-in or sign-out: RootView observed only the app model, so a successful login waited for something unrelated to redraw it ("a minute or a restart") | manual: `-tw-preview-auth-flip` (signs in after 3 s; reproduced stuck on the login screen, then fixed by AuthGate, which observes the auth and safety managers) | manual |
 | BG-1 | [[background-guidance]] | high | App suspended on lock and guidance silently stops | manual: long locked walk (trip log samples show it) | manual |
 | BG-2 | [[background-guidance]] | high | Screen-awake drains battery over a long walk (default chosen, not agreed) | manual: weekly battery test | manual |
 | BG-3 | [[background-guidance]] | high | iOS shows the blue location indicator after the trip ends | manual | manual |
@@ -128,9 +130,11 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | WH-1 | [[watch-haptics]] | low | Patterns feel identical on a moving wrist | manual: the point of the test | manual |
 | WTM-1 | [[watch-travel-modes]] | low | A mode change mid-route for cycling leaves the old walking route on screen if the refetch fails | manual: change mode with Airplane Mode on | manual |
 | WTM-2 | [[watch-travel-modes]] | low | Swipe ambiguity: a vertical swipe read as horizontal | manual on a real wrist | manual |
+| AU-10 | [[auth]] | high | Signing out while a refresh is on its way signs the person back in | test: AuthManagerTests::signingOutWhileARefreshIsOnItsWayDoesNotSignThemBackIn | test |
 | AU-4 | [[auth]] | high | A sign-up left unconfirmed becomes a dead end (sign-in error, username taken) | test: AuthManagerTests::signingInBeforeConfirmingSendsANewCodeInsteadOfDeadEnding | test |
 | AU-5 | [[auth]] | high | A forgotten password is a dead end (no way back in without an admin) | test: AuthManagerTests::resetWithTheRightCodeReturnsToSignIn; AuthManagerTests::aWrongResetCodeKeepsTheStepOpen | test |
 | AU-6 | [[auth]] | high | Two accounts with the same name in different capitals, or a name taken a second ago | test: backend/lambda/usernameCheck/test.mjs (case does not matter); AuthManagerTests::signUpUsesTheLowercaseName; Cognito refuses the rest (UsernameExistsException) | test |
+| AU-9 | [[auth]] | high | Someone is signed out by a throttled or failing server, or by two refreshes racing | test: AuthManagerTests::aBusyOrBrokenServerNeverSignsSomeoneOut; AuthManagerTests::noConnectionNeverSignsSomeoneOut; AuthManagerTests::refreshesThatOverlapAreSentOnce; AuthManagerTests::onlyADefiniteRefusalSignsSomeoneOut | test |
 | GM-4 | [[guidance-mode]] | high | Clearing the destination while a trip is running left guidance running with no place, or left the compass pointing at the old place | test: ClearDestinationTests | test |
 | GM-5 | [[guidance-mode]] | high | DONE on the arrival screen left the compass pointing at the place just reached instead of idle | test: ClearDestinationTests.doneOnTheArrivalScreenReturnsToIdleNotToPointingAtTheOldPlace | test |
 | NB-1 | [[nearby-proximity]] | high | A phone without UWB tries to start a session | test: NearbyManagerTests::aPhoneWithoutUWBNeverTouchesTheBackend | test |

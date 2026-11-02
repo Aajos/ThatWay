@@ -276,6 +276,11 @@ final class AppModel: ObservableObject {
             }
         }
         #endif
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-tw-preview-auth-flip") {          // signs in after 3 s, to check the screen follows
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.authManager.previewFlipToSignedIn() }
+        }
+        #endif
         wireTrace()
         // Tracing only runs for a signed-in person, and ends the moment they sign out.
         authManager.$authState
@@ -369,6 +374,7 @@ final class AppModel: ObservableObject {
     func setSceneActive(_ active: Bool) {
         guard active != sceneActive else { return }
         sceneActive = active
+        if active { authManager.retryRestoreIfNeeded() }
         traceManager.setSceneActive(active && authManager.authState == .signedIn)
         if active { screenLock.refresh(); if authManager.authState == .signedIn { Task { await planStore.refresh() } } }
         tripLog.count(active ? "screenOn" : "screenOff")

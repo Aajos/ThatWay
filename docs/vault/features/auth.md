@@ -24,6 +24,8 @@ tests:
   - backend/lambda/usernameCheck/test.mjs
 manual_checks:
   - Sign up and receive the confirmation email (it did not arrive during Phase 0)
+  - Sign in: the app appears at once, with no wait or restart; sign-up needs the "I am 17 or older" tick
+  - Quit and reopen after a few days, or with no connection: still signed in
 depends_on: [backend-config, backend-lambda]
 tags: [feature, area/accounts-backend, status/shipped, risk/high]
 ---
@@ -65,6 +67,10 @@ tags: [feature, area/accounts-backend, status/shipped, risk/high]
 | AU-7 | The public availability route is abused to harvest names | manual: route throttled to 5 a second; it returns no id or email (test: usernameCheck) |
 | AU-5 | A forgotten password is a dead end (no way back in without an admin) | test: AuthManagerTests::resetWithTheRightCodeReturnsToSignIn; AuthManagerTests::aWrongResetCodeKeepsTheStepOpen |
 | AU-4 | A sign-up left unconfirmed becomes a dead end (sign-in error, username taken) | test: AuthManagerTests::signingInBeforeConfirmingSendsANewCodeInsteadOfDeadEnding |
+| AU-8 | The screen does not follow a sign-in or sign-out: RootView observed only the app model, so a successful login waited for something unrelated to redraw it ("a minute or a restart") | manual: `-tw-preview-auth-flip` (signs in after 3 s; reproduced stuck on the login screen, then fixed by AuthGate, which observes the auth and safety managers) |
+| AU-9 | Someone is signed out by a throttled or failing server, or by two refreshes racing | test: AuthManagerTests::aBusyOrBrokenServerNeverSignsSomeoneOut; AuthManagerTests::noConnectionNeverSignsSomeoneOut; AuthManagerTests::refreshesThatOverlapAreSentOnce; AuthManagerTests::onlyADefiniteRefusalSignsSomeoneOut |
+| AU-10 | Signing out while a refresh is on its way signs the person back in | test: AuthManagerTests::signingOutWhileARefreshIsOnItsWayDoesNotSignThemBackIn |
+| AU-11 | Refresh tokens last 5 days, so everyone signs in again weekly | manual: app client set to 90 days (`aws.sh ops`, step 7); only sign-ins after 2026-11-02 get the longer life |
 | AU-3 | Launching with no network signed the user out or showed a blank screen (was a real bug) | manual: gate-on build in airplane mode; fixed |
 | AU-2 | Gate on while the API URL is a placeholder | manual: see backend-config |
 

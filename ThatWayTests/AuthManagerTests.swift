@@ -276,6 +276,104 @@ struct AuthManagerTests {
         #expect(destination == "j***@g***" && calls == 2)
     }
 
+    // MARK: Staying signed in
+
+    private let refreshed: [String: Any] = ["AuthenticationResult": ["IdToken": AuthManagerTests.jwt(["sub": "user-1", "cognito:username": "sam"]), "AccessToken": "access-2"]]
+
+    @Test func aBusyOrBrokenServerNeverSignsSomeoneOut() async {
+        for busy in ["TooManyRequestsException", "InternalErrorException", "LimitExceededException", "ServiceUnavailable"] {
+            let stub = CognitoStub()
+            let auth = await signedIn(stub)
+            stub.fail("InitiateAuth", type: busy)
+            #expect(await auth.refreshAccessToken() == false)
+            #expect(auth.authState == .signedIn, "\(busy) must not sign anyone out")
+            #expect(auth.bearerToken == "access-1")
+        }
+    }
+
+    @Test func noConnectionNeverSignsSomeoneOut() async {
+        let stub = CognitoStub()
+        let inner = stub.transport
+        var offline = false
+        let auth = AuthManager(transport: { request in
+            if offline { throw URLError(.notConnectedToInternet) }
+            return try await inner(request)
+        }, restoreSession: false)
+        stub.ok("InitiateAuth", ["AuthenticationResult": ["IdToken": Self.jwt(["sub": "user-1", "cognito:username": "sam"]), "AccessToken": "access-1", "RefreshToken": "refresh-1"]])
+        await auth.signIn(username: "sam", password: "Passw0rd!23")
+        offline = true
+        #expect(await auth.refreshAccessToken() == false)
+        #expect(auth.authState == .signedIn)
+        #expect(auth.bearerToken == "access-1")
+    }
+
+    @Test func onlyADefiniteRefusalSignsSomeoneOut() async {
+        for refusal in ["NotAuthorizedException", "UserNotFoundException", "PasswordResetRequiredException"] {
+            let stub = CognitoStub()
+            let auth = await signedIn(stub)
+            stub.fail("InitiateAuth", type: refusal)
+            #expect(await auth.refreshAccessToken() == false)
+            #expect(auth.authState == .signedOut, "\(refusal) means the saved login is finished")
+            #expect(auth.bearerToken == nil)
+        }
+    }
+
+    @Test func aGoodRefreshReplacesTheAccessTokenAndKeepsTheRefreshToken() async {
+        let stub = CognitoStub()
+        let auth = await signedIn(stub)
+        stub.ok("InitiateAuth", refreshed)
+        #expect(await auth.refreshAccessToken())
+        #expect(auth.bearerToken == "access-2")
+        #expect(auth.authState == .signedIn)
+    }
+
+    @Test func refreshesThatOverlapAreSentOnce() async {
+        let stub = CognitoStub()
+        let auth = await signedIn(stub)
+        stub.ok("InitiateAuth", refreshed)
+        let before = stub.targets.filter { $0 == "InitiateAuth" }.count
+        async let first = auth.refreshAccessToken()
+        async let second = auth.refreshAccessToken()
+        async let third = auth.refreshAccessToken()
+        let results = await [first, second, third]
+        #expect(results == [true, true, true])
+        #expect(stub.targets.filter { $0 == "InitiateAuth" }.count - before == 1, "three callers, one request")
+    }
+
+    @Test func signingOutWhileARefreshIsOnItsWayDoesNotSignThemBackIn() async {
+        let stub = CognitoStub()
+        stub.ok("InitiateAuth", ["AuthenticationResult": ["IdToken": Self.jwt(["sub": "user-1", "cognito:username": "sam"]), "AccessToken": "access-1", "RefreshToken": "refresh-1"]])
+        var authRef: AuthManager?
+        let inner = stub.transport
+        var signInDone = false
+        let transport: AuthManager.Transport = { request in
+            if signInDone { await MainActor.run { authRef?.signOut() } }          // the person taps Sign out mid-refresh
+            return try await inner(request)
+        }
+        let auth = AuthManager(transport: transport, restoreSession: false)
+        authRef = auth
+        await auth.signIn(username: "sam", password: "Passw0rd!23")
+        signInDone = true
+        stub.ok("InitiateAuth", refreshed)
+        _ = await auth.refreshAccessToken()
+        #expect(auth.authState == .signedOut)
+        #expect(auth.bearerToken == nil)
+    }
+
+    @Test func aFailedRestoreIsRetriedWhenTheAppComesBack() async {
+        let stub = CognitoStub()
+        let auth = await signedIn(stub)
+        auth.signOut()                                           // leaves no saved login: nothing to retry
+        auth.retryRestoreIfNeeded()
+        #expect(auth.authState == .signedOut)
+        #expect(stub.targets.filter { $0 == "InitiateAuth" }.count == 1)
+    }
+
+    @Test func theMinimumAgeIsSeventeenAndTheConfirmationSaysSo() {
+        #expect(AgeRule.minimum == 17)
+        #expect(AgeRule.confirmation == "I am 17 or older.")
+    }
+
     @Test func namespacedExceptionTypesAreRecognised() {
         let error = AuthError.cognito(type: "com.amazonaws.cognito.identity.idp.model#UserNotConfirmedException", message: "x")
         #expect(error.cognitoName == "UserNotConfirmedException")

@@ -15,7 +15,8 @@
 #   backend/scripts/aws.sh plan [--apply]         DRY RUN / create the plan Lambda (verifies Apple purchases) and its 2 routes
 #   backend/scripts/aws.sh ops [--apply]          DRY RUN / create the safety net: the thatway-alerts email topic (subscribe with ALERT_EMAIL=you@...),
 #                                                 report emails from grants, an alarm on every function's errors, and point-in-time backups
-#                                                 on the tables that cannot be rebuilt (Users, Friends, Blocks, Reports, Entitlements)
+#                                                 on the tables that cannot be rebuilt (Users, Friends, Blocks, Reports, Entitlements), a cap on
+#                                                 request volume (10 a second, bursts of 20), and 90-day sign-ins
 #   backend/scripts/aws.sh url                    prints the invoke URL to paste into ThatWay/Config.swift
 #
 # Needs the AWS CLI signed in to the account (aws login, or aws sso login, or a profile): set AWS_PROFILE if you use one.
@@ -443,6 +444,29 @@ JSON
       run aws dynamodb update-continuous-backups --region "$REGION" --table-name "$t" --point-in-time-recovery-specification PointInTimeRecoveryEnabled=true
     fi
   done
+
+  echo; echo "== 6. A cap on request volume for the whole API (the budget alert warns, this limits)"
+  # Sized for a handful of daily users: each phone polls every 5 to 30 seconds, so ten people are about 2 requests a second at
+  # the busiest. 10 a second (bursts of 20) leaves five times that, and bounds the worst case a runaway client or an abusive
+  # signed-in account can cost to roughly US$30 a month. Raise it when real users arrive. Per-route limits (usernames) still win.
+  local api rate burst; api=$(api_id); rate="${API_RATE_LIMIT:-10}"; burst="${API_BURST_LIMIT:-20}"
+  local cur; cur=$(aws apigatewayv2 get-stage --region "$REGION" --api-id "$api" --stage-name "$STAGE" --query 'DefaultRouteSettings.[ThrottlingRateLimit,ThrottlingBurstLimit]' --output text 2>/dev/null | tr '\t' ' ')
+  if [ "$cur" = "$rate.0 $burst" ] || [ "$cur" = "$rate $burst" ]; then ok "stage $STAGE already limited to $rate a second, bursts of $burst"; else
+    run aws apigatewayv2 update-stage --region "$REGION" --api-id "$api" --stage-name "$STAGE" --default-route-settings "ThrottlingRateLimit=$rate,ThrottlingBurstLimit=$burst"
+  fi
+
+  echo; echo "== 7. How long a sign-in lasts: refresh tokens for 90 days (the default pool setting was 5, so people were signed out weekly)"
+  local client=2ute5p0mqgufhech5u59sn1is7 have
+  have=$(aws cognito-idp describe-user-pool-client --region "$REGION" --user-pool-id "$POOL_ID" --client-id "$client" --query 'UserPoolClient.RefreshTokenValidity' --output text 2>/dev/null)
+  if [ "$have" = "90" ]; then ok "refresh token validity is 90 days"; else
+    echo "    update-user-pool-client resets every field it is not given, so resubmit the whole current config with only this changed:"
+    if [ "$APPLY" = 1 ]; then
+      local tmp; tmp=$(mktemp)
+      aws cognito-idp describe-user-pool-client --region "$REGION" --user-pool-id "$POOL_ID" --client-id "$client" --query UserPoolClient --output json |
+        python3 -c 'import sys,json; d=json.load(sys.stdin); [d.pop(k,None) for k in ("LastModifiedDate","CreationDate","ClientSecret")]; d["RefreshTokenValidity"]=90; print(json.dumps(d))' > "$tmp"
+      run aws cognito-idp update-user-pool-client --region "$REGION" --cli-input-json "file://$tmp" --query UserPoolClient.RefreshTokenValidity --output text
+    else echo "would: update-user-pool-client with RefreshTokenValidity=90 and every other field unchanged"; fi
+  fi
 }
 
 case "$MODE" in

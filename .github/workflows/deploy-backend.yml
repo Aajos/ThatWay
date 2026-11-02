@@ -12,7 +12,7 @@ on:
 # Sign in with Apple ones are written but not live, and must not be pushed until they are.
 env:
   AWS_REGION: ap-southeast-2
-  FUNCTIONS: postConfirmation friendsSearch friendsRequest friendsRespond friendsList friendsRemove nearby trace grants account plan
+  FUNCTIONS: postConfirmation friendsSearch friendsRequest friendsRespond friendsList friendsRemove nearby trace grants account plan usernameCheck
 
 permissions:
   id-token: write   # needed to mint the OIDC token GitHub exchanges for AWS credentials

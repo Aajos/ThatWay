@@ -80,6 +80,12 @@ enum UsernameRules {
     }
 }
 
+/// Who may use ThatWay. The sign-up screen asks for this to be confirmed, and the terms and privacy policy say the same number.
+enum AgeRule {
+    static let minimum = 17
+    static let confirmation = "I am \(minimum) or older."
+}
+
 /// What the sign-up screen shows under the username field.
 enum UsernameStatus: Equatable {
     case unchecked, checking, available, taken, reserved, invalid
@@ -154,6 +160,15 @@ final class AuthManager: ObservableObject {
             authState = .signedOut
         }
     }
+
+    #if DEBUG
+    /// Simulator aid (`-tw-preview-auth-flip`): signs in without credentials after a moment, to check the screen follows.
+    func previewFlipToSignedIn() {
+        currentUser = AuthUser(id: "preview-me", username: "you")
+        isPreview = true
+        authState = .signedIn
+    }
+    #endif
 
     func signUp(username rawUsername: String, email: String, password: String) async {
         let username = UsernameRules.normalised(rawUsername)      // usernames are lowercase everywhere
@@ -398,31 +413,63 @@ final class AuthManager: ObservableObject {
         return json
     }
 
+    /// A refresh that is already on its way. Callers that arrive meanwhile wait for it instead of sending a second one: two
+    /// refreshes with the same token race, and the loser can be refused, which used to sign the person out for no reason.
+    private var refreshInFlight: Task<Bool, Never>?
+
     /// Called on launch (session restore) and by FriendsManager after a 401 — access tokens
     /// are only valid for 60 minutes. Returns whether a usable access token came out of it.
     @discardableResult
     func refreshAccessToken() async -> Bool {
         if isPreview { return false }
-        guard let refreshToken else { authState = .signedOut; return false }
+        if let running = refreshInFlight { return await running.value }
+        let task = Task { await performRefresh() }
+        refreshInFlight = task
+        let result = await task.value
+        refreshInFlight = nil
+        return result
+    }
+
+    /// Only these mean the saved login is truly finished (expired, revoked, the account disabled or gone). Anything else
+    /// (throttling, a server hiccup, no connection) is temporary, and the person must stay signed in through it.
+    static func isDefiniteRefusal(_ error: AuthError) -> Bool {
+        switch error.cognitoName {
+        case "NotAuthorizedException", "UserNotFoundException", "PasswordResetRequiredException", "UserNotConfirmedException": return true
+        default: return false
+        }
+    }
+
+    private func performRefresh() async -> Bool {
+        guard let used = refreshToken else { if authState == .restoring { authState = .signedOut }; return false }
         do {
             let json = try await cognitoRequest(target: "InitiateAuth", body: [
                 "AuthFlow": "REFRESH_TOKEN_AUTH",
                 "ClientId": Config.cognitoAppClientId,
-                "AuthParameters": ["REFRESH_TOKEN": refreshToken],
+                "AuthParameters": ["REFRESH_TOKEN": used],
             ])
-            try applyAuthResult(json, fallbackRefreshToken: refreshToken)
+            // Signed out while this was on its way: the answer must not sign the person back in.
+            guard refreshToken == used else { return false }
+            try applyAuthResult(json, fallbackRefreshToken: used)
             return true
-        } catch AuthError.cognito(let type, _) {
-            // The server itself refused the saved login (expired or revoked): that is the only reason to sign out.
-            NSLog("TW auth: saved login refused by Cognito (%@)", type)       // the reason only, never a token
+        } catch let error as AuthError where Self.isDefiniteRefusal(error) {
+            guard refreshToken == used else { return false }
+            NSLog("TW auth: saved login refused by Cognito (%@)", error.cognitoName ?? "unknown")       // the reason only, never a token
             signOut()
             return false
         } catch {
-            // No connection, a timeout, a server hiccup: keep the saved login so the next launch can try again.
-            // If there is no cached identity to show, fall back to the sign-in screen without deleting anything.
+            // No connection, a timeout, throttling, a server hiccup: keep the saved login so the next try (the next request that
+            // needs it, or coming back to the app) can use it. With no cached identity to show, the sign-in screen appears for now
+            // without deleting anything.
+            NSLog("TW auth: could not refresh just now, keeping the saved login")
             if authState == .restoring { authState = .signedOut }
             return false
         }
+    }
+
+    /// Coming back to the app after a failed restore (offline at launch): try the saved login again quietly.
+    func retryRestoreIfNeeded() {
+        guard refreshToken != nil, authState == .signedOut, !isPreview else { return }
+        Task { await refreshAccessToken() }
     }
 
     private func applyAuthResult(_ json: [String: Any], fallbackRefreshToken: String? = nil) throws {

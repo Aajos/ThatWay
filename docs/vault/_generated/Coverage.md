@@ -7,7 +7,7 @@ tags: [generated]
 
 | Feature | Status | Risk | Tests | Manual checks | Failure points (test / manual / none / other) |
 |---|---|---|---|---|---|
-| [[auth]] | shipped | high | 2 | 1 | 7 (3 / 4 / 0 / 0) |
+| [[auth]] | shipped | high | 2 | 3 | 11 (5 / 6 / 0 / 0) |
 | [[backend-config]] | shipped | high | 0 | 1 | 2 (0 / 0 / 1 / 1) |
 | [[backend-lambda]] | external | medium | 0 | 0 | 1 (0 / 1 / 0 / 0) |
 | [[friends]] | dormant | low | 4 | 0 | 6 (5 / 1 / 0 / 0) |
@@ -76,4 +76,4 @@ tags: [generated]
 | [[watch-travel-modes]] | spike | low | 1 | 1 | 2 (0 / 2 / 0 / 0) |
 | [[watch-voice-search]] | spike | medium | 0 | 2 | 3 (0 / 1 / 1 / 1) |
 
-**Totals:** 68 features, 166 failure points: 47 caught by tests, 65 by manual checks, 38 partly, 16 not caught at all.
+**Totals:** 68 features, 170 failure points: 49 caught by tests, 67 by manual checks, 38 partly, 16 not caught at all.
