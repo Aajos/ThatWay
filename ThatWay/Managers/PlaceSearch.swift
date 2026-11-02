@@ -11,6 +11,16 @@ import CoreLocation
 import MapKit
 
 enum PlaceSearch {
+    /// What a live search came back with. "Nothing matches" and "the search itself failed" are different things to tell someone.
+    enum Outcome {
+        case found([MKMapItem])
+        case noMatches
+        case failed
+    }
+
+    /// MapKit reports an empty result as an error (placemarkNotFound), not as an empty list; every other error is a failure.
+    static func isNoMatch(_ error: Error) -> Bool { (error as? MKError)?.code == .placemarkNotFound }
+
     /// Resolves `query` to a real coordinate, preferring results near `coordinate`.
     /// Returns the top match, or nil if the search fails or turns up nothing.
     static func firstResult(for query: String, near coordinate: CLLocationCoordinate2D) async -> CLLocationCoordinate2D? {
@@ -31,9 +41,9 @@ enum PlaceSearch {
     /// Searches for `query` and returns up to `limit` matches, nearest-first, for a live
     /// search dropdown — real relevance-ranked results from MapKit, re-sorted by actual
     /// distance from `coordinate` so the closest matching places surface first.
-    static func search(for query: String, near coordinate: CLLocationCoordinate2D, limit: Int = 10) async -> [MKMapItem] {
+    static func search(for query: String, near coordinate: CLLocationCoordinate2D, limit: Int = 10) async -> Outcome {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return [] }
+        guard !trimmed.isEmpty else { return .noMatches }
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = trimmed
         request.region = MKCoordinateRegion(center: coordinate, latitudinalMeters: 20_000, longitudinalMeters: 20_000)
@@ -48,10 +58,10 @@ enum PlaceSearch {
             }
             let top = Array(nearest.prefix(limit))
             print("[PlaceSearch] kept \(top.count) of \(response.mapItems.count) result(s)")
-            return top
+            return top.isEmpty ? .noMatches : .found(top)
         } catch {
             print("[PlaceSearch] failed: \(error.localizedDescription)")
-            return []
+            return isNoMatch(error) ? .noMatches : .failed
         }
     }
 }

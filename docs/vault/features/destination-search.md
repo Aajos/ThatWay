@@ -18,8 +18,10 @@ files:
   - ThatWay/Compass/CompassScreen.swift
   - ThatWay/Compass/AppModel.swift
 tests:
+  - ThatWayTests/PlaceSearchTests.swift
 manual_checks:
   - Search 'coles' near you: results by distance; pick one; pick again from recents
+  - Airplane Mode on, type a place: "Couldn’t search just now" (not "No matches")
 depends_on: [location-manager, persistence-defaults]
 tags: [feature, area/navigation-core, status/shipped, risk/medium]
 ---
@@ -49,7 +51,7 @@ tags: [feature, area/navigation-core, status/shipped, risk/medium]
 | ID | What breaks | Caught by |
 |---|---|---|
 | DS-1 | Search region biased to the placeholder when there is no fix | manual |
-| DS-2 | Network failure shows 'No matches' rather than an error | none |
+| DS-2 | Network failure shows 'No matches' rather than an error | ThatWayTests/PlaceSearchTests.swift::everyOtherErrorIsAFailureNotNoMatches |
 
 ## Tests
 - none yet

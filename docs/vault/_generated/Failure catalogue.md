@@ -16,7 +16,6 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | TR-12 | [[trace-friends]] | high | Remote battery cost of 3 s polling and uploads | none: not measured; see [[P7 Optimisation checks]] | none |
 | TR-18 | [[trace-friends]] | high | The friend's position goes stale (no upload for 90 s) while following, so the destination is an old spot and "arrived" can fire there | none: known; the destination should be marked stale and arrival paused | none |
 | WDG-3 | [[watch-drive-guard]] | high | Self-termination via exit() may be rejected in App Review | none: revisit before shipping | none |
-| DS-2 | [[destination-search]] | medium | Network failure shows 'No matches' rather than an error | none | none |
 | RF-11 | [[route-failure]] | medium | A far but in-range route times out and the app retries for ever | none: known; a retry ceiling is the fix | none |
 | RP-B | [[route-persistence]] | medium | Schema change breaks old saved trips | none | none |
 | RT-1 | [[route-tracker]] | medium | Diverges from `RoutingManager`'s copy | none: known duplicate | none |
@@ -45,6 +44,7 @@ Every documented way a feature can fail. Sorted so the uncaught ones come first.
 | BM-1 | [[bearing-math]] | medium | Flat-earth projection is wrong over very long segments | partly: routes are finely sampled | other |
 | CH-3 | [[compass-health]] | medium | Restarting the heading service cannot fix a system-level fault | by design: GPS-direction is the real fallback | other |
 | DR-2 | [[dead-reckoning]] | medium | Extra redraws from per-second progress changes | perf: quantised publishing; harness `routingPublish` | other |
+| DS-2 | [[destination-search]] | medium | Network failure shows 'No matches' rather than an error | ThatWayTests/PlaceSearchTests.swift::everyOtherErrorIsAFailureNotNoMatches | other |
 | DV-2 | [[dial-view]] | medium | Repeating SwiftUI animations cost 6-10 % CPU | perf harness; sway is native for this reason | other |
 | HD-1 | [[heading]] | medium | The phone's own compass flips 180 degrees or drifts (reproduced in Apple's Compass app, so a sensor/system fault) | compass-health detects it; no code fix possible | other |
 | HD-2 | [[heading]] | medium | Heading frozen on screen when nothing republishes | fixed: DialHost observes LocationManager | other |

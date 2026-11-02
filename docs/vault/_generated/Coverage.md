@@ -43,7 +43,7 @@ tags: [generated]
 | [[arrival]] | shipped | medium | 1 | 1 | 2 (1 / 1 / 0 / 0) |
 | [[compass-tilt]] | shipped | low | 1 | 1 | 2 (1 / 0 / 0 / 1) |
 | [[dead-reckoning]] | shipped | medium | 1 | 1 | 2 (1 / 0 / 0 / 1) |
-| [[destination-search]] | shipped | medium | 0 | 1 | 2 (0 / 1 / 1 / 0) |
+| [[destination-search]] | shipped | medium | 1 | 2 | 2 (0 / 1 / 0 / 1) |
 | [[eta]] | shipped | low | 0 | 1 | 2 (0 / 0 / 0 / 2) |
 | [[guidance-mode]] | shipped | high | 3 | 2 | 5 (2 / 2 / 0 / 1) |
 | [[map-tab]] | shipped | medium | 0 | 1 | 1 (0 / 1 / 0 / 0) |
@@ -76,4 +76,4 @@ tags: [generated]
 | [[watch-travel-modes]] | spike | low | 1 | 1 | 2 (0 / 2 / 0 / 0) |
 | [[watch-voice-search]] | spike | medium | 0 | 2 | 3 (0 / 1 / 1 / 1) |
 
-**Totals:** 68 features, 166 failure points: 47 caught by tests, 65 by manual checks, 37 partly, 17 not caught at all.
+**Totals:** 68 features, 166 failure points: 47 caught by tests, 65 by manual checks, 38 partly, 16 not caught at all.

@@ -29,7 +29,6 @@ tags: [generated]
 - [[background-guidance]] (high, shipped)
 - [[heading]] (medium, shipped)
 - [[location-issues]] (medium, shipped)
-- [[destination-search]] (medium, shipped)
 - [[eta]] (low, shipped)
 - [[map-tab]] (medium, shipped)
 - [[perf-harness]] (low, shipped)
@@ -54,7 +53,6 @@ tags: [generated]
 - RS-1 [[routing-provider-seam]]: The public OSRM demo hosts are not production-grade (rate limits, no uptime promise)
 - AV-1 [[avatars-social-decor]]: Avatar photo options do nothing
 - PD-1 [[persistence-defaults]]: A key renamed without migration silently resets users' choices
-- DS-2 [[destination-search]]: Network failure shows 'No matches' rather than an error
 - SL-1 [[watch-spike-log]]: Log lines carry a location by mistake
 - RM-2 [[route-models]]: Saved trips from an older app version fail to decode
 - RF-11 [[route-failure]]: A far but in-range route times out and the app retries for ever

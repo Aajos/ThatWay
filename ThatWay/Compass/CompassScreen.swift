@@ -876,6 +876,7 @@ private struct SearchResultsPanel: View {
 
     @State private var liveResults: [MKMapItem] = []
     @State private var isSearching = false
+    @State private var searchFailed = false
     @State private var searchTask: Task<Void, Never>?
 
     var body: some View {
@@ -892,6 +893,11 @@ private struct SearchResultsPanel: View {
                         recentList(theme: theme)
                     } else if isSearching && liveResults.isEmpty {
                         Text("Searching…")
+                            .font(.nunito(13, .semibold))
+                            .foregroundStyle(theme.textSecondary)
+                            .padding(.vertical, Spacing.element)
+                    } else if liveResults.isEmpty && searchFailed {
+                        Text("Couldn’t search just now. Check your connection and try again.")
                             .font(.nunito(13, .semibold))
                             .foregroundStyle(theme.textSecondary)
                             .padding(.vertical, Spacing.element)
@@ -1011,17 +1017,23 @@ private struct SearchResultsPanel: View {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {
             liveResults = []
+            searchFailed = false
             isSearching = false
             return
         }
         isSearching = true
+        searchFailed = false
         let origin = app.currentPosition
         searchTask = Task {
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
-            let found = await PlaceSearch.search(for: trimmed, near: origin)
+            let outcome = await PlaceSearch.search(for: trimmed, near: origin)
             guard !Task.isCancelled else { return }
-            liveResults = found
+            switch outcome {
+            case .found(let items): liveResults = items; searchFailed = false
+            case .noMatches: liveResults = []; searchFailed = false
+            case .failed: liveResults = []; searchFailed = true
+            }
             isSearching = false
         }
     }
